@@ -1,7 +1,7 @@
 {
   "name": "Ágil CM Soluções Integradas",
   "short_name": "Ágil CM",
-  "icons": [{ "src": "/favicon.png", "sizes": "180x180", "type": "image/png" }],
+  "icons": [{ "src": "./favicon.png", "sizes": "180x180", "type": "image/png" }],
   "theme_color": "#0F2053",
   "background_color": "#ffffff",
   "display": "browser",

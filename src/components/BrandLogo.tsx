@@ -14,7 +14,7 @@ export default function BrandLogo({ size = 'md', variant = 'full', theme = 'dark
     const h = { sm: 'h-16', md: 'h-24', lg: 'h-32' }[size];
     return (
       <img
-        src={`/brand/logo-completo${suffix}.png`}
+        src={`${import.meta.env.BASE_URL}brand/logo-completo${suffix}.png`}
         alt="Ágil CM Soluções Integradas"
         className={`${h} w-auto select-none ${className}`}
         width={600}
@@ -29,7 +29,7 @@ export default function BrandLogo({ size = 'md', variant = 'full', theme = 'dark
   return (
     <div className={`flex items-center gap-2.5 select-none ${className}`}>
       <img
-        src={`/brand/logo-emblema${suffix}.png`}
+        src={`${import.meta.env.BASE_URL}brand/logo-emblema${suffix}.png`}
         alt={variant === 'icon-only' ? 'Ágil CM' : ''}
         aria-hidden={variant === 'icon-only' ? undefined : true}
         className={`${emblem} w-auto shrink-0`}
@@ -38,7 +38,7 @@ export default function BrandLogo({ size = 'md', variant = 'full', theme = 'dark
       />
       {variant === 'full' && (
         <img
-          src={`/brand/logo-texto${suffix}.png`}
+          src={`${import.meta.env.BASE_URL}brand/logo-texto${suffix}.png`}
           alt="Ágil CM Soluções Integradas"
           className={`${word} w-auto`}
           width={480}

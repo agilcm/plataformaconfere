@@ -18,6 +18,7 @@ const apiDevServer = (): Plugin => ({
 
 export default defineConfig(() => {
   return {
+    base: process.env.SITE_BASE_PATH || '/',
     plugins: [react(), tailwindcss(), apiDevServer()],
     resolve: {
       alias: {

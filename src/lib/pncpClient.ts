@@ -5,6 +5,7 @@
 export type Fonte = 'servidor' | 'direto' | 'salvo' | 'amostra';
 
 export async function callApi<T>(path: string, params: Record<string, string>): Promise<T | null> {
+  if (import.meta.env.VITE_STATIC_HOST === 'true') return null;
   try {
     const res = await fetch(`/api/${path}?${new URLSearchParams(params)}`, { headers: { Accept: 'application/json' } });
     const isJson = (res.headers.get('content-type') || '').includes('json');

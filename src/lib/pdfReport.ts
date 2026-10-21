@@ -3,7 +3,7 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFImage, type PDFPage } from 'pdf-lib';
 import { COMPANY_PROFILE } from '../data/servicesData.ts';
 
-export const LOGO_URL = '/brand/logo-doc-branco.png';
+export const LOGO_URL = `${import.meta.env.BASE_URL}brand/logo-doc-branco.png`;
 
 const hex = (h: string) => rgb(parseInt(h.slice(0, 2), 16) / 255, parseInt(h.slice(2, 4), 16) / 255, parseInt(h.slice(4, 6), 16) / 255);
 const NAVY = hex('0F2053');

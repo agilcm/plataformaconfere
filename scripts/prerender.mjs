@@ -19,3 +19,6 @@ for (const [page, file] of [
   console.log(`✓ ${file} pré-renderizado`);
 }
 fs.rmSync(path.resolve('dist-ssr'), { recursive: true, force: true });
+
+// Vite copies public files verbatim: keep their asset URLs relative to the deployment base.
+fs.writeFileSync(path.join(dist, '.nojekyll'), '');

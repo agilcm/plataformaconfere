@@ -46,3 +46,13 @@ O envio administrativo pelo Documentos usa a pasta central de dados. As empresas
 Histórico e detalhes: [Documentos](docs/Documentos.md) e [documentação original do site recebido](docs/Site-original.md).
 
 O nome visível da plataforma é **Documentos**. O arquivo `bancodoc-dados.json` e a chave OAuth legada continuam com seus identificadores anteriores para reutilizar os cadastros. Pastas existentes no Google Drive não são renomeadas automaticamente. Novas bases usam a pasta “Documentos”.
+
+## Publicar pelo GitHub Pages
+
+1. No GitHub, abra **Settings → Pages** e selecione **GitHub Actions** em **Source**.
+2. Abra **Actions → Publicar site no GitHub Pages → Run workflow** e execute na branch `main`.
+3. Aguarde o job `deploy` concluir e use o endereço exibido no ambiente `github-pages`.
+
+O workflow `.github/workflows/pages.yml` também publica novos pushes em `main`. Ele obtém o caminho configurado pelo Pages, portanto suporta renomear o repositório e hospedar em um subdiretório sem quebrar os links de Documentos, Licitações ou imagens. O endereço padrão depende do nome atual do repositório; não é confirmado até o deploy terminar.
+
+No Pages, `VITE_STATIC_HOST=true` ignora as funções `/api/` inexistentes nessa hospedagem e usa o acesso direto ao PNCP. A disponibilidade dessas consultas depende do PNCP e de CORS. A integração Google Drive exige autorizar `https://agilcm.github.io` como origem OAuth; o caminho do repositório não faz parte dessa origem.
