@@ -1,12 +1,12 @@
-# Ágil CM — site principal e BancoDoc
+# Ágil CM — site principal e Documentos
 
-O site institucional ocupa a raiz. O botão **Documentos**, ao lado de **Licitações** no cabeçalho, abre a plataforma BancoDoc no mesmo domínio.
+O site institucional ocupa a raiz. O botão **Documentos**, ao lado de **Licitações** no cabeçalho, abre a plataforma Documentos no mesmo domínio.
 
 | Caminho | Conteúdo |
 | --- | --- |
 | `/` | Site principal da Ágil CM |
 | `/licitacoes/` | Consulta de licitações |
-| `/documentos/` | BancoDoc / Gestão de Terceiros, sem login administrativo |
+| `/documentos/` | Documentos / Gestão de Terceiros, sem login administrativo |
 | `/api/*` | Funções de consulta ao PNCP, para hospedagem compatível |
 
 ## Desenvolvimento
@@ -18,7 +18,7 @@ npm ci
 npm run dev
 ```
 
-O código editável do site fica em `src/`; imagens e outros arquivos públicos em `public/`. O BancoDoc fica em `public/documentos/` e é copiado para `dist/documentos/` durante o build. Edite essa origem, não os arquivos gerados.
+O código editável do site fica em `src/`; imagens e outros arquivos públicos em `public/`. O Documentos fica em `public/documentos/` e é copiado para `dist/documentos/` durante o build. Edite essa origem, não os arquivos gerados.
 
 ```sh
 npm test
@@ -37,10 +37,12 @@ Hospedagens exclusivamente estáticas não executam `/api/*`; nesse caso, as con
 
 ## Google Drive e documentos
 
-A conexão ao Drive continua pelo OAuth no navegador. Cadastre no Google Cloud a origem exata da hospedagem, sem caminhos, e informe o Client ID em Configurações do BancoDoc. O sistema mostra a origem atual nessa tela. A autorização feita no domínio antigo não é transferida automaticamente para o novo domínio.
+A conexão ao Drive continua pelo OAuth no navegador. Cadastre no Google Cloud a origem exata da hospedagem, sem caminhos, e informe o Client ID em Configurações do Documentos. O sistema mostra a origem atual nessa tela. A autorização feita no domínio antigo não é transferida automaticamente para o novo domínio.
 
 Não há login administrativo, backend documental ou OCR nesta etapa. A leitura de valores, validade e presença de assinatura continua manual. Os relatórios usam os campos conferidos. Os dados demonstrativos aparecem antes de conectar ao Drive; nenhum dado real foi incluído no site.
 
-O envio administrativo pelo BancoDoc usa a pasta central “BancoDoc”. As empresas continuam enviando arquivos pelos links das suas pastas no Drive.
+O envio administrativo pelo Documentos usa a pasta central de dados. As empresas continuam enviando arquivos pelos links das suas pastas no Drive.
 
-Histórico e detalhes: [BancoDoc](docs/BancoDoc.md) e [documentação original do site recebido](docs/Site-original.md).
+Histórico e detalhes: [Documentos](docs/Documentos.md) e [documentação original do site recebido](docs/Site-original.md).
+
+O nome visível da plataforma é **Documentos**. O arquivo `bancodoc-dados.json` e a chave OAuth legada continuam com seus identificadores anteriores para reutilizar os cadastros. Pastas existentes no Google Drive não são renomeadas automaticamente. Novas bases usam a pasta “Documentos”.

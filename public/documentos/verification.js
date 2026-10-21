@@ -179,7 +179,7 @@
       '<div class="field-row"><div class="field"><label for="verify-expiry">Validade do documento</label><input id="verify-expiry" name="expiryDate" type="date" value="'+esc(doc.expiryDate||'')+'"></div><div class="field"><label for="verify-signature">Assinatura da ficha de EPI</label><select id="verify-signature" name="signatureStatus">'+signatureOptions+'</select></div></div>'+
       '<div class="field"><label for="verify-status">Situação da análise</label><select id="verify-status" name="status">'+statusOptions+'</select></div>'+
       '<div class="field"><label for="verify-notes">Observações da conferência</label><textarea id="verify-notes" name="verificationNotes" placeholder="Anote divergências ou dados que precisam ser confirmados">'+esc(doc.verificationNotes||'')+'</textarea></div>'+
-      '<p class="form-footnote">OCR não está ativo nesta versão. Não registre uma ficha como assinada sem conferir o arquivo. Os dados serão salvos na base do BancoDoc no Drive.</p>'+
+      '<p class="form-footnote">OCR não está ativo nesta versão. Não registre uma ficha como assinada sem conferir o arquivo. Os dados serão salvos na base do portal Documentos no Drive.</p>'+
       '<div class="form-actions"><button type="button" class="button" data-action="close-modal">Cancelar</button><button type="submit" class="button button-primary">Salvar conferência</button></div></form>');
   }
   async function saveReview(form){
@@ -233,7 +233,7 @@
     const csv='\ufeff'+rows.map(function(row){return row.map(function(value){return '"'+String(value===null||value===undefined?'':value).replace(/"/g,'""')+'"'}).join(';')}).join('\r\n');
     const anchor=document.createElement('a');
     anchor.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
-    anchor.download='bancodoc-conferencias-'+new Date().toISOString().slice(0,10)+'.csv';
+    anchor.download='documentos-conferencias-'+new Date().toISOString().slice(0,10)+'.csv';
     anchor.click();
     URL.revokeObjectURL(anchor.href);
   }
