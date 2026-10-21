@@ -83,9 +83,9 @@
   }
   function statusClassFor(value){
     const normalized=norm(value);
-    if(/confere|assinada|vigente/.test(normalized))return 'status-approved';
-    if(/divergencia|sem comprovante|nao conferida|nao identificada|pendente|sem guia/.test(normalized))return 'status-pending';
-    if(/vencido|nao assinada/.test(normalized))return 'status-rejected';
+    if(/divergencia|sem comprovante|nao conferid[oa]|nao identificada|pendente|sem guia/.test(normalized))return 'status-pending';
+    if(/vencid[oa]|reprovado|nao assinada/.test(normalized))return 'status-rejected';
+    if(/confere|conferida|assinada|vigente|aprovado/.test(normalized))return 'status-approved';
     return 'status-inactive';
   }
   function verifyButton(doc){
@@ -134,6 +134,7 @@
     const guides=docs.filter(isGuide);
     const missingProof=guides.filter(function(guide){return paymentCheck(guide).state==='missing'});
     const mismatches=guides.filter(function(guide){return paymentCheck(guide).state==='mismatch'});
+    const unknownValues=guides.filter(function(guide){return paymentCheck(guide).state==='unknown'});
     const certificates=docs.filter(function(doc){return isCertificate(doc)&&overdueDays(doc)!==null});
     const epis=docs.filter(function(doc){return isEpi(doc)&&doc.signatureStatus!=='signed'});
     const expired=docs.filter(function(doc){return overdueDays(doc)!==null});
@@ -150,8 +151,9 @@
     return titleBlock('Relatórios de conferência','Acompanhe guias, pagamentos, certidões, fichas de EPI e vencimentos.','<button class="button" data-action="print-report">'+icon('download')+' Imprimir / PDF</button><button class="button button-primary" data-action="export-checks">'+icon('download')+' Exportar conferências</button>')+
       syncWarning()+
       '<div class="verification-note"><strong>OCR não conectado:</strong> os relatórios usam os dados cadastrados na conferência do documento. “Sem comprovante” significa que nenhum recibo foi vinculado; não confirma, por si só, que a guia não foi paga. A análise de assinatura verifica apenas presença registrada, não autenticidade.</div>'+
-      '<div class="report-grid">'+metric('Guias sem comprovante',missingProof.length,'Sem recibo de pagamento vinculado.','red')+metric('Divergências de valor',mismatches.length,'Valor pago diferente do valor da guia.','amber')+metric('Certidões vencidas',certificates.length,'Certidões com validade registrada e já vencida.','red')+metric('Fichas de EPI pendentes',epis.length,'Sem assinatura confirmada no cadastro.','amber')+metric('Documentos vencidos',expired.length,'Todos os tipos com validade registrada.','red')+metric('Vencimentos em até 30 dias',soon.length,'Documentos que exigem atualização em breve.','teal')+'</div>'+
+      '<div class="report-grid">'+metric('Guias sem comprovante',missingProof.length,'Sem recibo de pagamento vinculado.','red')+metric('Valores não conferidos',unknownValues.length,'Guia ou comprovante sem valor informado.','amber')+metric('Divergências de valor',mismatches.length,'Valor pago diferente do valor da guia.','amber')+metric('Certidões vencidas',certificates.length,'Certidões com validade registrada e já vencida.','red')+metric('Fichas de EPI pendentes',epis.length,'Sem assinatura confirmada no cadastro.','amber')+metric('Documentos vencidos',expired.length,'Todos os tipos com validade registrada.','red')+metric('Vencimentos em até 30 dias',soon.length,'Documentos que exigem atualização em breve.','teal')+'</div>'+
       reportTable('Guias sem comprovante de pagamento','Vincule o comprovante à guia e informe os valores para comparar.',['Guia','Empresa','Competência','Valor da guia','Vencimento','Conferência','Postado no Drive / idade','Arquivo / ação'],guideRows,'Nenhuma guia sem comprovante','Quando o OCR estiver integrado, os dados poderão ser sugeridos automaticamente; por enquanto, confira cada arquivo.')+
+      reportTable('Guias com valores não conferidos','Há comprovante vinculado, mas falta informar o valor da guia ou de algum pagamento.',['Guia','Empresa','Pendência','Arquivo','Ação'],unknownValues.map(function(guide){return reportRow(guide,'Valor da guia ou do comprovante não informado')}),'Nenhum valor pendente','Todos os pares vinculados têm valores informados.')+
       reportTable('Divergências entre guia e pagamento','A soma dos comprovantes vinculados difere do valor registrado na guia.',['Guia','Empresa','Valor da guia','Total pago','Diferença','Comprovantes','Postado no Drive / idade','Ação'],mismatchRows,'Nenhuma divergência registrada','A comparação considera os valores informados manualmente e aceita diferença de até R$ 0,01.')+
       reportTable('Certidões vencidas','Somente certidões classificadas e com data de validade registrada.',['Certidão','Empresa','Validade','Atraso','Postado no Drive / idade','Arquivo / ação'],certificateRows,'Nenhuma certidão vencida identificada','Certidões sem validade precisam ser conferidas antes de concluir que estão regulares.')+
       reportTable('Fichas de EPI sem assinatura confirmada','Registre a situação da assinatura na conferência de cada ficha.',['Ficha','Empresa','Colaborador','Assinatura','Postado no Drive / idade','Arquivo / ação'],epiRows,'Nenhuma ficha pendente','Fichas marcadas como assinadas ficam fora desta lista.')+
@@ -218,13 +220,14 @@
     docs.filter(isGuide).forEach(function(guide){
       const check=paymentCheck(guide);
       if(check.state==='missing')rows.push(['Sem comprovante vinculado',companyName(guide.companyId),guide.fileName||guide.type,guide.competency||'',guide.amount||'','','',guide.dueDate||'','','',driveDate(guide),daysSinceDrivePost(guide)??'',guide.driveUrl||'']);
+      if(check.state==='unknown')rows.push(['Valor não conferido',companyName(guide.companyId),guide.fileName||guide.type,guide.competency||'',guide.amount??'','','',guide.dueDate||'','','',driveDate(guide),daysSinceDrivePost(guide)??'',guide.driveUrl||'']);
       if(check.state==='mismatch')rows.push(['Divergência de valor',companyName(guide.companyId),guide.fileName||guide.type,guide.competency||'',guide.amount||'',check.paid,Math.abs(check.difference),guide.dueDate||'','','',driveDate(guide),daysSinceDrivePost(guide)??'',guide.driveUrl||'']);
     });
     docs.filter(function(doc){return isCertificate(doc)&&overdueDays(doc)!==null}).forEach(function(doc){
       rows.push(['Certidão vencida',companyName(doc.companyId),doc.fileName||doc.type,'','','','','',doc.expiryDate||'','',driveDate(doc),daysSinceDrivePost(doc)??'',doc.driveUrl||'']);
     });
     docs.filter(function(doc){return isEpi(doc)&&doc.signatureStatus!=='signed'}).forEach(function(doc){
-      rows.push([doc.signatureStatus==='unsigned'?'Ficha EPI marcada como não assinada':'Ficha EPI sem assinatura conferida',companyName(doc.companyId),doc.fileName||doc.type,'','','','','',doc.signatureStatus||'Não conferida',driveDate(doc),daysSinceDrivePost(doc)??'',doc.driveUrl||'']);
+      rows.push([doc.signatureStatus==='unsigned'?'Ficha EPI marcada como não assinada':'Ficha EPI sem assinatura conferida',companyName(doc.companyId),doc.fileName||doc.type, '', '', '', '', '', '', doc.signatureStatus||'Não conferida',driveDate(doc),daysSinceDrivePost(doc)??'',doc.driveUrl||'']);
     });
     if(rows.length===1){showToast('Não há pendências desse tipo registradas.');return}
     const csv='\ufeff'+rows.map(function(row){return row.map(function(value){return '"'+String(value===null||value===undefined?'':value).replace(/"/g,'""')+'"'}).join(';')}).join('\r\n');
