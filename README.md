@@ -35,6 +35,10 @@ O arquivo `vercel.json` configura a Vercel para executar o build e servir `dist/
 
 Hospedagens exclusivamente estáticas não executam `/api/*`; nesse caso, as consultas de licitações dependem da alternativa de acesso direto ao PNCP e das permissões CORS desse serviço.
 
+## Filtro por CNAE
+
+Em Editais abertos, o botão **CNAE** permite escolher qualquer CNAE do catálogo (`src/lib/catalogoCnae.js`): os 19 CNAEs da Ágil CM e cerca de 80 grupos de CNAE de `src/lib/sugestoes.js`, buscando pelo código (com ou sem pontuação) ou pela atividade. Só aparecem os editais cujo objeto tem os termos desses CNAEs. A escolha fica salva no navegador.
+
 ## Local do pregão
 
 Cada edital mostra o **local do pregão**, a plataforma onde acontece a disputa (BNC, Licitanet, Portal de Compras Públicas, AMM Licita…), tirada do link da plataforma informado no PNCP; quando a modalidade é presencial, aparece "Presencial (no órgão)". Sem link, usa a plataforma que publicou o edital. O botão **Local do pregão** filtra por ela.

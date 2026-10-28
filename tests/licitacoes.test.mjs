@@ -171,3 +171,17 @@ test('local do pregão: plataforma pelo link, presencial pela modalidade, filtro
   assert.deepEqual(contarLocais(lista)[0], { nome: 'BNC', total: 2 });
   assert.equal(filterEditais(lista, { locais: 'Licitanet|Não informado' }).length, 2);
 });
+
+test('filtro por qualquer CNAE: busca no catálogo por código ou atividade e filtra os editais', async () => {
+  const { buscarCnae, regrasDoCatalogo, CATALOGO_POR_ID } = await import('../src/lib/catalogoCnae.js');
+  const { filtrarPorRegras } = await import('../src/lib/agilCnae.js');
+  assert.ok(buscarCnae('4761-0/03').some((c) => c.id === '47.61-0-03'), 'código completo da Ágil');
+  const combust = buscarCnae('4731')[0];
+  assert.equal(combust.descricao, 'Combustíveis e lubrificantes');
+  assert.ok(buscarCnae('uniforme').some((c) => c.descricao === 'Uniformes e confecção'));
+  const ed = (id, objeto, modalidade = 'Pregão - Eletrônico') => ({ id, titulo: '', objeto, modalidade });
+  const lista = [ed(1, 'Aquisição de combustível (gasolina e diesel) para a frota'), ed(2, 'Aquisição de uniformes escolares'), ed(3, 'Obra de pavimentação'), ed(4, 'Leilão de veículos e combustível', 'Leilão')];
+  const r = filtrarPorRegras(lista, regrasDoCatalogo([combust.id]));
+  assert.deepEqual(r.map((e) => e.id), [1]);
+  assert.equal(CATALOGO_POR_ID.get(r[0].cnaes[0]).descricao, 'Combustíveis e lubrificantes');
+});

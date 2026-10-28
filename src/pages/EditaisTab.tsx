@@ -3,7 +3,8 @@ import { Container, Icon, WhatsAppIcon } from '../components/ui.tsx';
 import { formatBRL, whatsappLink } from '../data/servicesData.ts';
 import { MICRORREGIOES } from '../data/zonaDaMata.js';
 import { AGIL_CNAES } from '../data/agilCnaes.js';
-import { filtrarPorCnaes } from '../lib/agilCnae.js';
+import { filtrarPorCnaes, filtrarPorRegras } from '../lib/agilCnae.js';
+import { buscarCnae, CATALOGO_POR_ID, regrasDoCatalogo } from '../lib/catalogoCnae.js';
 import { contarFontes, contarLocais, fetchAllMG, fetchDetalheCompra, fetchItensCompra, fetchPage, filterEditais, sortByUpdate } from '../lib/pncp.js';
 import { abasEditais } from '../lib/exportarEditais.js';
 import { baixarXlsx } from '../lib/xlsx.js';
@@ -55,7 +56,7 @@ const lerFontesSalvas = (): string[] => {
   }
 };
 const MICROS = Object.keys(MICRORREGIOES);
-const CNAE_POR_CODIGO = new Map(AGIL_CNAES.map((c) => [c.codigo, c]));
+const CNAES_KEY = 'agilcm:cnaes-livres';
 
 // Datas do PNCP vêm no horário de Brasília, sem fuso: tratamos como -03:00
 const parseBR = (s?: string | null) => {
@@ -113,6 +114,8 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
   const [facetasLocais, setFacetasLocais] = useState<{ nome: string; total: number }[] | null>(null);
   const [cnaesSel, setCnaesSel] = useState<string[]>([]);
   const [painelCnaes, setPainelCnaes] = useState(false);
+  const [livres, setLivres] = useState<string[]>([]); // CNAEs escolhidos em Editais abertos
+  const [buscaCnae, setBuscaCnae] = useState('');
   const [todasFontes, setTodasFontes] = useState(false);
   const [facetas, setFacetas] = useState<{ nome: string; total: number }[] | null>(null);
   const [facetasEstado, setFacetasEstado] = useState<'idle' | 'loading' | 'erro'>('idle');
@@ -140,23 +143,43 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
       /* sem armazenamento: só não lembra na próxima visita */
     }
   }, [fontes]);
+  // CNAEs escolhidos da última visita (só neste aparelho)
+  useEffect(() => {
+    if (agil) return;
+    try {
+      const v = JSON.parse(localStorage.getItem(CNAES_KEY) || '[]');
+      if (Array.isArray(v)) setLivres(v.filter((x) => typeof x === 'string' && CATALOGO_POR_ID.has(x)));
+    } catch {
+      /* sem armazenamento */
+    }
+  }, [agil]);
+  useEffect(() => {
+    if (agil) return;
+    try {
+      localStorage.setItem(CNAES_KEY, JSON.stringify(livres));
+    } catch {
+      /* sem armazenamento: só não lembra na próxima visita */
+    }
+  }, [livres, agil]);
+  const livresKey = agil ? '' : livres.slice().sort().join('|');
   const fontesKey = fontes.slice().sort().join('|');
   const cnaesKey = cnaesSel.slice().sort().join('|');
   const locaisKey = locais.slice().sort().join('|');
 
-  useEffect(() => setPagina(1), [regiao, micro, q, fontesKey, cnaesKey, locaisKey]);
+  useEffect(() => setPagina(1), [regiao, micro, q, fontesKey, cnaesKey, locaisKey, livresKey]);
 
   // Filtro local (modo direto e amostra), igual ao da função /api/editais
   const aplicar = useCallback(
     (list: Edital[], opts: { regiao: Regiao; micro: string; q: string; fontes?: string; locais?: string }): Edital[] => {
       const f = filterEditais(list, opts);
-      return agil ? filtrarPorCnaes(f, { cnaes: cnaesKey }) : f;
+      if (agil) return filtrarPorCnaes(f, { cnaes: cnaesKey });
+      return livresKey ? filtrarPorRegras(f, regrasDoCatalogo(livresKey)) : f;
     },
-    [agil, cnaesKey],
+    [agil, cnaesKey, livresKey],
   );
 
   const carregar = useCallback(async (pag: number): Promise<Resultado & { fonte: Fonte }> => {
-    const key = `${agil ? `agil:${cnaesKey}` : 'editais'}:${regiao}:${micro}:${q}:${fontesKey}:${locaisKey}:${pag}`;
+    const key = `${agil ? `agil:${cnaesKey}` : `editais:${livresKey}`}:${regiao}:${micro}:${q}:${fontesKey}:${locaisKey}:${pag}`;
     // 1) Função do servidor (site publicado na Vercel)
     const p: Record<string, string> = { regiao, pagina: String(pag), tamanho: String(PAGE_SIZE) };
     if (micro) p.micro = micro;
@@ -165,6 +188,7 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
     if (locaisKey) p.locais = locaisKey;
     if (agil) p.cnae = 'agil';
     if (agil && cnaesKey) p.cnaes = cnaesKey;
+    if (livresKey) Object.assign(p, { cnae: 'lista', cnaes: livresKey });
     const viaApi = await callApi<Resultado>('editais', p);
     if (viaApi) {
       saveLocal(key, viaApi);
@@ -172,7 +196,7 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
     }
     // 2) Direto no PNCP pelo navegador
     try {
-      if (regiao === 'mg' && !micro && !q && !fontesKey && !locaisKey && !agil) {
+      if (regiao === 'mg' && !micro && !q && !fontesKey && !locaisKey && !agil && !livresKey) {
         const r = await fetchPage({ pagina: pag, tamanho: PAGE_SIZE });
         const out = { items: sortByUpdate(r.items), total: r.total, atualizadoEm: new Date().toISOString() };
         saveLocal(key, out);
@@ -200,7 +224,7 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
       return { items: f.slice((pag - 1) * PAGE_SIZE, pag * PAGE_SIZE), total: f.length, atualizadoEm: sample.capturadoEm, fonte: 'amostra' };
     }
     throw new Error('sem conexão');
-  }, [regiao, micro, q, fontesKey, locaisKey, agil, cnaesKey, aplicar]);
+  }, [regiao, micro, q, fontesKey, locaisKey, agil, cnaesKey, livresKey, aplicar]);
 
   useEffect(() => {
     const id = ++reqId.current;
@@ -239,6 +263,7 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
       if (q) p.q = q;
       if (agil) p.cnae = 'agil';
       if (agil && cnaesKey) p.cnaes = cnaesKey;
+      if (livresKey) Object.assign(p, { cnae: 'lista', cnaes: livresKey });
       if (fontesKey) p.fontes = fontesKey;
       if (locaisKey) p.locais = locaisKey;
       const viaApi = await callApi<{ fontes: { nome: string; total: number }[]; locais?: { nome: string; total: number }[] }>('editais', p);
@@ -272,7 +297,7 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
     return () => {
       vivo = false;
     };
-  }, [painelFontes, painelLocais, regiao, micro, q, fontesKey, locaisKey, tentativa, agil, cnaesKey, aplicar]);
+  }, [painelFontes, painelLocais, regiao, micro, q, fontesKey, locaisKey, tentativa, agil, cnaesKey, livresKey, aplicar]);
 
   // Todos os editais com os filtros atuais (não só as páginas já mostradas); tudo: MG inteira, sem filtros
   const listarTodos = async ({ tudo = false, onProgress }: { tudo?: boolean; onProgress?: (lidos: number, total: number) => void } = {}): Promise<Edital[]> => {
@@ -284,6 +309,7 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
     if (f.locais) p.locais = f.locais;
     if (agil && !tudo) p.cnae = 'agil';
     if (agil && !tudo && cnaesKey) p.cnaes = cnaesKey;
+    if (!tudo && livresKey) Object.assign(p, { cnae: 'lista', cnaes: livresKey });
     const viaApi = await callApi<Resultado>('editais', p);
     if (viaApi) return viaApi.items;
     const filtrar = (lista: Edital[]) => (tudo ? filterEditais(lista, f) : aplicar(lista, f));
@@ -335,7 +361,7 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
         .replace(/[\u0300-\u036f]/g, '')
         .replace(/\s+/g, '-')
         .toLowerCase();
-      baixarXlsx(nome, abasEditais(lista, itens, { agil }));
+      baixarXlsx(nome, abasEditais(lista, itens, { agil: agil || !!livresKey }));
     } catch {
       setExportErro('O PNCP não respondeu para montar a planilha. Tente de novo em alguns minutos.');
     } finally {
@@ -390,6 +416,20 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
                   />
                 </label>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 lg:flex lg:flex-wrap lg:gap-4 shrink-0">
+                {!agil && (
+                  <button
+                    type="button"
+                    aria-expanded={painelCnaes}
+                    aria-controls="filtro-cnae-livre"
+                    onClick={() => setPainelCnaes((v) => !v)}
+                    className={`shrink-0 inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-base font-bold border-2 transition-colors cursor-pointer ${
+                      painelCnaes || livres.length ? 'border-[#0478CA] text-[#0478CA] bg-[#0478CA]/5' : 'border-slate-300 text-slate-700 hover:border-[#0478CA]'
+                    }`}
+                  >
+                    <Icon name="building" className="w-5 h-5" />
+                    CNAE{livres.length ? ` (${livres.length})` : ''}
+                  </button>
+                )}
                 {agil && (
                   <button
                     type="button"
@@ -524,6 +564,81 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
                 </div>
               )}
 
+              {!agil && painelCnaes && (
+                <div id="filtro-cnae-livre" className="mt-4 pt-4 border-t border-slate-100">
+                  <div className="flex flex-wrap items-baseline justify-between gap-2 mb-2">
+                    <p className="text-sm font-semibold text-slate-600">
+                      CNAE · mostra os editais cujo objeto tem relação com os CNAEs escolhidos {livres.length ? '' : '(nenhum = todos os editais)'}
+                    </p>
+                    {livres.length > 0 && (
+                      <button type="button" onClick={() => setLivres([])} className="text-sm font-bold text-[#0478CA] underline cursor-pointer">
+                        Limpar ({livres.length})
+                      </button>
+                    )}
+                  </div>
+                  {livres.length > 0 && (
+                    <div className="mb-3 flex flex-wrap gap-2">
+                      {livres.map((id) => {
+                        const c = CATALOGO_POR_ID.get(id)!;
+                        return (
+                          <button
+                            key={id}
+                            type="button"
+                            onClick={() => setLivres((l) => l.filter((x) => x !== id))}
+                            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-full text-sm font-semibold bg-[#0F2053] text-white cursor-pointer"
+                            title="Remover"
+                          >
+                            <span className="tabular-nums">{c.rotulo.length > 24 ? `${c.rotulo.slice(0, 22)}…` : c.rotulo}</span>
+                            <span className="text-white/80">{c.descricao}</span>
+                            <span aria-hidden="true">×</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                  <label className="relative block">
+                    <span className="sr-only">Buscar CNAE</span>
+                    <Icon name="search" className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                    <input
+                      type="search"
+                      value={buscaCnae}
+                      onChange={(e) => setBuscaCnae(e.target.value)}
+                      placeholder="Digite o código (ex.: 4761-0/03) ou a atividade (ex.: papelaria, limpeza)"
+                      className="w-full pl-11 pr-4 py-2.5 rounded-xl border border-slate-300 text-base focus:outline-none focus:border-[#0478CA] focus:ring-2 focus:ring-[#0478CA]/20"
+                    />
+                  </label>
+                  <ul className="mt-2 max-h-72 overflow-auto divide-y divide-slate-100 rounded-xl border border-slate-200">
+                    {buscarCnae(buscaCnae, 40).map((c) => {
+                      const on = livres.includes(c.id);
+                      return (
+                        <li key={c.id}>
+                          <button
+                            type="button"
+                            aria-pressed={on}
+                            onClick={() => setLivres((l) => (l.includes(c.id) ? l.filter((x) => x !== c.id) : [...l, c.id]))}
+                            className={`w-full text-left px-3.5 py-2.5 flex items-start gap-3 cursor-pointer ${on ? 'bg-[#0478CA]/10' : 'hover:bg-slate-50'}`}
+                          >
+                            <span aria-hidden="true" className={`mt-0.5 w-4 h-4 shrink-0 rounded border flex items-center justify-center text-[11px] ${on ? 'bg-[#0F2053] text-white border-[#0F2053]' : 'border-slate-400'}`}>
+                              {on ? '✓' : ''}
+                            </span>
+                            <span className="min-w-0">
+                              <span className="block text-[15px] font-semibold text-slate-800">{c.descricao}</span>
+                              <span className="block text-sm text-slate-500 tabular-nums">
+                                CNAE {c.rotulo}
+                                {c.agil ? ' · da Ágil CM' : ''}
+                              </span>
+                            </span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                    {!buscarCnae(buscaCnae, 1).length && (
+                      <li className="px-3.5 py-3 text-[15px] text-slate-600">Ainda não há palavras-chave para esse CNAE. Tente pela atividade (ex.: "uniformes").</li>
+                    )}
+                  </ul>
+                </div>
+              )}
+
               {painelLocais && (
                 <div id="filtro-locais" className="mt-4 pt-4 border-t border-slate-100">
                   <div className="flex flex-wrap items-baseline justify-between gap-2 mb-2">
@@ -635,7 +750,9 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
                 {loading && pagina === 1
                   ? 'Buscando editais…'
                   : `${total.toLocaleString('pt-BR')} ${total === 1 ? 'edital aberto' : 'editais abertos'}${
-                      agil ? (cnaesSel.length === 1 ? ` do CNAE ${cnaesSel[0]}` : cnaesSel.length ? ` de ${cnaesSel.length} CNAEs da Ágil CM` : ' ligados aos CNAEs da Ágil CM') : ''
+                      livres.length && !agil ? ` ${total === 1 ? 'ligado' : 'ligados'} a ${livres.length === 1 ? `${CATALOGO_POR_ID.get(livres[0])?.descricao}` : `${livres.length} CNAEs`}` : ''
+                    }${
+                      agil ? (cnaesSel.length === 1 ? ` do CNAE ${cnaesSel[0]}` : cnaesSel.length ? ` de ${cnaesSel.length} CNAEs da Ágil CM` : ` ${total === 1 ? 'ligado' : 'ligados'} aos CNAEs da Ágil CM`) : ''
                     }${
                       regiao === 'zona-da-mata' ? (micro ? ` na microrregião de ${micro}` : ' na Zona da Mata') : ' em Minas Gerais'
                     }${fontes.length ? ` · ${fontes.length === 1 ? `fonte ${fontes[0]}` : `${fontes.length} fontes`}` : ''}${
@@ -752,8 +869,8 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
                         {e.cnaes && e.cnaes.length > 0 && (
                           <div className="mt-3 flex flex-wrap gap-2 text-sm">
                             {e.cnaes.map((c) => (
-                              <span key={c} title={CNAE_POR_CODIGO.get(c)?.descricao} className="px-2.5 py-1 rounded-full bg-[#F5A623]/15 text-[#8a5a00] font-bold">
-                                CNAE {c} · {CNAE_POR_CODIGO.get(c)?.descricao}
+                              <span key={c} title={CATALOGO_POR_ID.get(c)?.rotulo} className="px-2.5 py-1 rounded-full bg-[#F5A623]/15 text-[#8a5a00] font-bold">
+                                {CATALOGO_POR_ID.get(c)?.agil ? `CNAE ${c}` : 'CNAE'} · {CATALOGO_POR_ID.get(c)?.descricao}
                               </span>
                             ))}
                             {e.termos && e.termos.length > 0 && (

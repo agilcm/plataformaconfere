@@ -1,8 +1,11 @@
 // Planilha Excel dos editais abertos (abas Editais e Itens), usada em "Editais abertos" e "AGIL CNAE".
 // Na aba Itens as informações do edital se repetem em cada linha (sem mesclar células), para filtrar e somar.
-import { AGIL_CNAES } from '../data/agilCnaes.js';
+import { CATALOGO_POR_ID } from './catalogoCnae.js';
 
-const DESCRICAO_CNAE = new Map(AGIL_CNAES.map((c) => [c.codigo, c.descricao]));
+const nomeCnae = (id) => {
+  const c = CATALOGO_POR_ID.get(id);
+  return c ? `${c.rotulo} ${c.descricao}` : id;
+};
 
 /** "Pregão Eletrônico nº 90012/2025" -> "90012/2025" */
 export const numeroDoEdital = (titulo) => String(titulo || '').match(/n[º°o.]*\s*(\d[\d.]*\s*\/\s*\d{4})/i)?.[1].replace(/\s+/g, '') || '';
@@ -36,7 +39,7 @@ export function abasEditais(editais, itensPorId, { agil = false } = {}) {
     { titulo: 'Fonte (plataforma)', largura: 22 },
     { titulo: 'Local do pregão', largura: 26 },
     { titulo: 'Link do local do pregão', largura: 50 },
-    ...(agil ? [{ titulo: 'CNAEs da Ágil CM', largura: 40 }, { titulo: 'Termos encontrados no objeto', largura: 34 }] : []),
+    ...(agil ? [{ titulo: 'CNAEs', largura: 40 }, { titulo: 'Termos encontrados no objeto', largura: 34 }] : []),
     { titulo: 'Qtde de itens', largura: 10, tipo: 'numero' },
     { titulo: 'Itens', largura: 30 },
     { titulo: 'Link no PNCP', largura: 50 },
@@ -61,7 +64,7 @@ export function abasEditais(editais, itensPorId, { agil = false } = {}) {
       e.fonte || '',
       e.local || '',
       e.linkLocal || '',
-      ...(agil ? [(e.cnaes || []).map((c) => `${c} ${DESCRICAO_CNAE.get(c) || ''}`.trim()).join('; '), (e.termos || []).join(', ')] : []),
+      ...(agil ? [(e.cnaes || []).map(nomeCnae).join('; '), (e.termos || []).join(', ')] : []),
       r?.itens ? r.itens.length : null,
       situacaoItens(e),
       e.link,

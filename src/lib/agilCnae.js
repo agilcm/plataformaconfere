@@ -1,18 +1,16 @@
-// Aba "AGIL CNAE": editais abertos cujo objeto tem relação com os CNAEs da Ágil CM.
-// Usado pela função /api/editais (cnae=agil) e, como plano B, direto no navegador.
+// Filtro de editais por CNAE: termos de cada CNAE procurados no objeto do edital.
+// Usado pela função /api/editais (cnae=agil ou cnae=lista) e, como plano B, direto no navegador.
 import { AGIL_CNAES } from '../data/agilCnaes.js';
 import { IGNORAR, hasTerm, norm } from './sugestoes.js';
 
 const REGRAS = AGIL_CNAES.map((c) => ({ codigo: c.codigo, termos: c.termos.map(norm) }));
 
 /**
- * Mantém só os editais ligados a pelo menos um CNAE e anota quais CNAEs e termos casaram.
+ * Mantém só os editais cujo objeto tem algum termo das regras e anota quais regras (CNAEs) e termos casaram.
  * @param {any[]} list  editais no formato mapItem (pncp.js)
- * @param {{ cnaes?: string | string[] }} options  códigos para restringir (vazio = todos os CNAEs da Ágil CM)
+ * @param {{ codigo: string, termos: string[] }[]} regras  termos já normalizados
  */
-export function filtrarPorCnaes(list, { cnaes = [] } = {}) {
-  const sel = new Set(Array.isArray(cnaes) ? cnaes : String(cnaes || '').split('|').filter(Boolean));
-  const regras = sel.size ? REGRAS.filter((r) => sel.has(r.codigo)) : REGRAS;
+export function filtrarPorRegras(list, regras) {
   const out = [];
   for (const e of list) {
     if (/leil/i.test(e.modalidade || '')) continue;
@@ -29,4 +27,14 @@ export function filtrarPorCnaes(list, { cnaes = [] } = {}) {
     if (casou.length) out.push({ ...e, cnaes: casou, termos: [...termos] });
   }
   return out;
+}
+
+/**
+ * Aba AGIL CNAE: só os editais ligados aos CNAEs da Ágil CM.
+ * @param {any[]} list
+ * @param {{ cnaes?: string | string[] }} options  códigos para restringir (vazio = todos os CNAEs da Ágil CM)
+ */
+export function filtrarPorCnaes(list, { cnaes = [] } = {}) {
+  const sel = new Set(Array.isArray(cnaes) ? cnaes : String(cnaes || '').split('|').filter(Boolean));
+  return filtrarPorRegras(list, sel.size ? REGRAS.filter((r) => sel.has(r.codigo)) : REGRAS);
 }
