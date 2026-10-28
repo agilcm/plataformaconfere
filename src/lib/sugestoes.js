@@ -2,7 +2,7 @@
 // Tudo roda no navegador: a planilha do cliente nunca é enviada nem armazenada.
 import { microrregiaoDe, normalizeName } from '../data/zonaDaMata.js';
 
-const norm = (s) =>
+export const norm = (s) =>
   String(s || '')
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
@@ -218,10 +218,10 @@ export function regraDoCnae(cnae) {
 /* 3. Cruzamento empresa x edital                                       */
 /* ------------------------------------------------------------------ */
 
-const hasTerm = (texto, termo) => ` ${texto} `.includes(` ${termo} `);
+export const hasTerm = (texto, termo) => ` ${texto} `.includes(` ${termo} `);
 
 // Editais que não são "vender para o governo" (leilão: a prefeitura vende; cartão-alimentação etc.)
-const IGNORAR = ['leilao', 'alienacao de bens', 'leiloeiro', 'agricultura familiar', 'agricultores familiares', 'auxilio alimentacao', 'cartao alimentacao'];
+export const IGNORAR = ['leilao', 'alienacao de bens', 'leiloeiro', 'agricultura familiar', 'agricultores familiares', 'auxilio alimentacao', 'cartao alimentacao'];
 
 function proximidade(empresa, edital) {
   const cidE = normalizeName(empresa.cidade);

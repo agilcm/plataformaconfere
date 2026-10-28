@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Container, Icon, WhatsAppIcon } from '../components/ui.tsx';
 import { formatBRL, whatsappLink } from '../data/servicesData.ts';
 import { MICRORREGIOES } from '../data/zonaDaMata.js';
+import { AGIL_CNAES } from '../data/agilCnaes.js';
+import { filtrarPorCnaes } from '../lib/agilCnae.js';
 import { contarFontes, fetchAllMG, fetchDetalheCompra, fetchPage, filterEditais, sortByUpdate } from '../lib/pncp.js';
 import { callApi, formatHora, loadLocal, saveLocal, type Fonte } from '../lib/pncpClient.ts';
 import SugestaoPanel from './SugestaoPanel.tsx';
@@ -25,6 +27,8 @@ interface Edital {
   linkOrigem: string | null;
   fonte?: string;
   compra?: { cnpj: string; ano: string; seq: string } | null;
+  cnaes?: string[]; // só na aba AGIL CNAE: CNAEs da Ágil CM que casaram com o objeto
+  termos?: string[];
 }
 
 interface Resultado {
@@ -46,6 +50,7 @@ const lerFontesSalvas = (): string[] => {
   }
 };
 const MICROS = Object.keys(MICRORREGIOES);
+const CNAE_POR_CODIGO = new Map(AGIL_CNAES.map((c) => [c.codigo, c]));
 
 // Datas do PNCP vêm no horário de Brasília, sem fuso: tratamos como -03:00
 const parseBR = (s?: string | null) => {
@@ -78,7 +83,8 @@ declare global {
   }
 }
 
-export default function EditaisTab() {
+// agil: aba AGIL CNAE, mesma lista restrita aos editais ligados aos CNAEs da Ágil CM
+export default function EditaisTab({ agil = false }: { agil?: boolean }) {
   const [regiao, setRegiao] = useState<Regiao>('mg');
   const [micro, setMicro] = useState('');
   const [busca, setBusca] = useState('');
@@ -96,6 +102,8 @@ export default function EditaisTab() {
   const [sugestao, setSugestao] = useState(false);
   const [fontes, setFontes] = useState<string[]>([]);
   const [painelFontes, setPainelFontes] = useState(false);
+  const [cnaesSel, setCnaesSel] = useState<string[]>([]);
+  const [painelCnaes, setPainelCnaes] = useState(false);
   const [todasFontes, setTodasFontes] = useState(false);
   const [facetas, setFacetas] = useState<{ nome: string; total: number }[] | null>(null);
   const [facetasEstado, setFacetasEstado] = useState<'idle' | 'loading' | 'erro'>('idle');
@@ -121,16 +129,28 @@ export default function EditaisTab() {
     }
   }, [fontes]);
   const fontesKey = fontes.slice().sort().join('|');
+  const cnaesKey = cnaesSel.slice().sort().join('|');
 
-  useEffect(() => setPagina(1), [regiao, micro, q, fontesKey]);
+  useEffect(() => setPagina(1), [regiao, micro, q, fontesKey, cnaesKey]);
+
+  // Filtro local (modo direto e amostra), igual ao da função /api/editais
+  const aplicar = useCallback(
+    (list: Edital[], opts: { regiao: Regiao; micro: string; q: string; fontes?: string }): Edital[] => {
+      const f = filterEditais(list, opts);
+      return agil ? filtrarPorCnaes(f, { cnaes: cnaesKey }) : f;
+    },
+    [agil, cnaesKey],
+  );
 
   const carregar = useCallback(async (pag: number): Promise<Resultado & { fonte: Fonte }> => {
-    const key = `editais:${regiao}:${micro}:${q}:${fontesKey}:${pag}`;
+    const key = `${agil ? `agil:${cnaesKey}` : 'editais'}:${regiao}:${micro}:${q}:${fontesKey}:${pag}`;
     // 1) Função do servidor (site publicado na Vercel)
     const p: Record<string, string> = { regiao, pagina: String(pag), tamanho: String(PAGE_SIZE) };
     if (micro) p.micro = micro;
     if (q) p.q = q;
     if (fontesKey) p.fontes = fontesKey;
+    if (agil) p.cnae = 'agil';
+    if (agil && cnaesKey) p.cnaes = cnaesKey;
     const viaApi = await callApi<Resultado>('editais', p);
     if (viaApi) {
       saveLocal(key, viaApi);
@@ -138,7 +158,7 @@ export default function EditaisTab() {
     }
     // 2) Direto no PNCP pelo navegador
     try {
-      if (regiao === 'mg' && !micro && !q && !fontesKey) {
+      if (regiao === 'mg' && !micro && !q && !fontesKey && !agil) {
         const r = await fetchPage({ pagina: pag, tamanho: PAGE_SIZE });
         const out = { items: sortByUpdate(r.items), total: r.total, atualizadoEm: new Date().toISOString() };
         saveLocal(key, out);
@@ -149,7 +169,7 @@ export default function EditaisTab() {
         allMG.current = r.items;
         setProgresso(null);
       }
-      const f = filterEditais(allMG.current, { regiao, micro, q, fontes: fontesKey });
+      const f = aplicar(allMG.current, { regiao, micro, q, fontes: fontesKey });
       const out = { items: f.slice((pag - 1) * PAGE_SIZE, pag * PAGE_SIZE), total: f.length, atualizadoEm: new Date().toISOString() };
       saveLocal(key, out);
       return { ...out, fonte: 'direto' };
@@ -162,11 +182,11 @@ export default function EditaisTab() {
     // 4) Amostra embutida (apenas na visualização de demonstração)
     const sample = typeof window !== 'undefined' ? window.__PNCP_SAMPLE__ : undefined;
     if (sample) {
-      const f = sortByUpdate(filterEditais(sample.items, { regiao, micro, q, fontes: fontesKey }));
+      const f = sortByUpdate(aplicar(sample.items, { regiao, micro, q, fontes: fontesKey }));
       return { items: f.slice((pag - 1) * PAGE_SIZE, pag * PAGE_SIZE), total: f.length, atualizadoEm: sample.capturadoEm, fonte: 'amostra' };
     }
     throw new Error('sem conexão');
-  }, [regiao, micro, q, fontesKey]);
+  }, [regiao, micro, q, fontesKey, agil, cnaesKey, aplicar]);
 
   useEffect(() => {
     const id = ++reqId.current;
@@ -203,6 +223,8 @@ export default function EditaisTab() {
       const p: Record<string, string> = { facetas: '1', regiao };
       if (micro) p.micro = micro;
       if (q) p.q = q;
+      if (agil) p.cnae = 'agil';
+      if (agil && cnaesKey) p.cnaes = cnaesKey;
       const viaApi = await callApi<{ fontes: { nome: string; total: number }[] }>('editais', p);
       let lista = viaApi?.fontes ?? null;
       if (!lista) {
@@ -211,10 +233,10 @@ export default function EditaisTab() {
             const r = await fetchAllMG({ onProgress: (loaded: number, t: number) => vivo && setProgresso({ loaded, total: t }) });
             allMG.current = r.items;
           }
-          lista = contarFontes(filterEditais(allMG.current, { regiao, micro, q }));
+          lista = contarFontes(aplicar(allMG.current, { regiao, micro, q }));
         } catch {
           const sample = typeof window !== 'undefined' ? window.__PNCP_SAMPLE__ : undefined;
-          if (sample) lista = contarFontes(filterEditais(sample.items, { regiao, micro, q }));
+          if (sample) lista = contarFontes(aplicar(sample.items, { regiao, micro, q }));
         } finally {
           if (vivo) setProgresso(null);
         }
@@ -228,8 +250,9 @@ export default function EditaisTab() {
     return () => {
       vivo = false;
     };
-  }, [painelFontes, regiao, micro, q, tentativa]);
+  }, [painelFontes, regiao, micro, q, tentativa, agil, cnaesKey, aplicar]);
 
+  const alternarCnae = (codigo: string) => setCnaesSel((c) => (c.includes(codigo) ? c.filter((x) => x !== codigo) : [...c, codigo]));
   const alternarFonte = (nome: string) => setFontes((f) => (f.includes(nome) ? f.filter((x) => x !== nome) : [...f, nome]));
 
   const temMais = items.length < total;
@@ -275,7 +298,21 @@ export default function EditaisTab() {
                     className="w-full pl-11 pr-4 py-3 rounded-xl border border-slate-300 text-base focus:outline-none focus:border-[#0478CA] focus:ring-2 focus:ring-[#0478CA]/20"
                   />
                 </label>
-                <div className="grid grid-cols-2 gap-3 lg:flex lg:gap-4 shrink-0">
+                <div className={`grid ${agil ? 'grid-cols-3' : 'grid-cols-2'} gap-3 lg:flex lg:gap-4 shrink-0`}>
+                {agil && (
+                  <button
+                    type="button"
+                    aria-expanded={painelCnaes}
+                    aria-controls="filtro-cnaes"
+                    onClick={() => setPainelCnaes((v) => !v)}
+                    className={`shrink-0 inline-flex items-center justify-center gap-2 px-3 sm:px-4 py-3 rounded-xl text-base font-bold border-2 transition-colors cursor-pointer ${
+                      painelCnaes || cnaesSel.length ? 'border-[#0478CA] text-[#0478CA] bg-[#0478CA]/5' : 'border-slate-300 text-slate-700 hover:border-[#0478CA]'
+                    }`}
+                  >
+                    <Icon name="building" className="w-5 h-5" />
+                    CNAEs{cnaesSel.length ? ` (${cnaesSel.length})` : ''}
+                  </button>
+                )}
                 <button
                   type="button"
                   aria-expanded={painelFontes}
@@ -323,6 +360,46 @@ export default function EditaisTab() {
                         {m || 'Toda a Zona da Mata'}
                       </button>
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {agil && painelCnaes && (
+                <div id="filtro-cnaes" className="mt-4 pt-4 border-t border-slate-100">
+                  <div className="flex flex-wrap items-baseline justify-between gap-2 mb-2">
+                    <p className="text-sm font-semibold text-slate-600">
+                      CNAEs da Ágil CM {cnaesSel.length ? '' : '(nenhum marcado = todos)'}
+                    </p>
+                    {cnaesSel.length > 0 && (
+                      <button type="button" onClick={() => setCnaesSel([])} className="text-sm font-bold text-[#0478CA] underline cursor-pointer">
+                        Limpar ({cnaesSel.length})
+                      </button>
+                    )}
+                  </div>
+                  <div role="group" aria-label="CNAEs" className="flex flex-wrap gap-2">
+                    {AGIL_CNAES.map((c) => {
+                      const on = cnaesSel.includes(c.codigo);
+                      return (
+                        <button
+                          key={c.codigo}
+                          type="button"
+                          aria-pressed={on}
+                          onClick={() => alternarCnae(c.codigo)}
+                          className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-full text-sm font-semibold border text-left transition-colors cursor-pointer ${
+                            on ? 'bg-[#0F2053] border-[#0F2053] text-white' : 'bg-white border-slate-300 text-slate-700 hover:border-[#0478CA]'
+                          }`}
+                        >
+                          <span aria-hidden="true" className={`w-4 h-4 shrink-0 rounded border flex items-center justify-center text-[11px] ${on ? 'bg-white text-[#0F2053] border-white' : 'border-slate-400'}`}>
+                            {on ? '✓' : ''}
+                          </span>
+                          <span className="tabular-nums whitespace-nowrap">{c.codigo}</span>
+                          <span className={on ? 'text-white/85' : 'text-slate-500'}>
+                            {c.descricao}
+                            {c.principal ? ' (principal)' : ''}
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -391,6 +468,8 @@ export default function EditaisTab() {
                 {loading && pagina === 1
                   ? 'Buscando editais…'
                   : `${total.toLocaleString('pt-BR')} ${total === 1 ? 'edital aberto' : 'editais abertos'}${
+                      agil ? (cnaesSel.length === 1 ? ` do CNAE ${cnaesSel[0]}` : cnaesSel.length ? ` de ${cnaesSel.length} CNAEs da Ágil CM` : ' ligados aos CNAEs da Ágil CM') : ''
+                    }${
                       regiao === 'zona-da-mata' ? (micro ? ` na microrregião de ${micro}` : ' na Zona da Mata') : ' em Minas Gerais'
                     }${fontes.length ? ` · ${fontes.length === 1 ? `fonte ${fontes[0]}` : `${fontes.length} fontes`}` : ''}`}
               </p>
@@ -421,7 +500,7 @@ export default function EditaisTab() {
             {progresso && (
               <div className="mt-4 p-4 rounded-xl bg-white border border-slate-200">
                 <p className="text-[15px] text-slate-700">
-                  Lendo editais de Minas Gerais para filtrar a Zona da Mata: {progresso.loaded.toLocaleString('pt-BR')} de{' '}
+                  Lendo editais de Minas Gerais para filtrar {agil ? 'pelos CNAEs da Ágil CM' : 'a Zona da Mata'}: {progresso.loaded.toLocaleString('pt-BR')} de{' '}
                   {progresso.total.toLocaleString('pt-BR')}
                 </p>
                 <div className="mt-2 h-2 rounded-full bg-slate-100 overflow-hidden">
@@ -466,6 +545,18 @@ export default function EditaisTab() {
                           <span className="text-slate-500">Atualizado {ha(e.atualizadoEm)}</span>
                         </div>
                         <h2 className="mt-3 text-lg font-bold text-[#0F2053] leading-snug line-clamp-3">{e.objeto || e.titulo}</h2>
+                        {e.cnaes && e.cnaes.length > 0 && (
+                          <div className="mt-3 flex flex-wrap gap-2 text-sm">
+                            {e.cnaes.map((c) => (
+                              <span key={c} title={CNAE_POR_CODIGO.get(c)?.descricao} className="px-2.5 py-1 rounded-full bg-[#F5A623]/15 text-[#8a5a00] font-bold">
+                                CNAE {c} · {CNAE_POR_CODIGO.get(c)?.descricao}
+                              </span>
+                            ))}
+                            {e.termos && e.termos.length > 0 && (
+                              <span className="px-1 py-1 text-slate-500">Termos no objeto: {e.termos.slice(0, 4).join(', ')}</span>
+                            )}
+                          </div>
+                        )}
                         <dl className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-[15px]">
                           <div className="min-w-0">
                             <dt className="text-sm text-slate-500">Órgão</dt>
@@ -543,7 +634,9 @@ export default function EditaisTab() {
                 {!loading && !erro && items.length === 0 && (
                   <li className="p-8 rounded-2xl bg-white border border-slate-200 text-center">
                     <p className="text-lg font-bold text-[#0F2053]">Nenhum edital encontrado com esses filtros</p>
-                    <p className="mt-1 text-base text-slate-600">Tente outra palavra, marque mais fontes ou volte para toda Minas Gerais.</p>
+                    <p className="mt-1 text-base text-slate-600">
+                      Tente outra palavra, marque mais {agil ? 'CNAEs ou ' : ''}fontes ou volte para toda Minas Gerais.
+                    </p>
                   </li>
                 )}
                 {temMais && !loading && (

@@ -107,3 +107,28 @@ test('parseAlterdataCsv mantém só matrizes ativas com CNPJ, sem duplicar', () 
   assert.deepEqual(empresas.map((e) => [e.razao, e.cnpj, e.cnae]), [['Alfa Ltda', '11222333000181', '8121400']]);
   assert.throws(() => parseAlterdataCsv('Nome;Outro\nx;y'), /Razão Social/);
 });
+
+test('filtrarPorCnaes mostra só editais ligados aos CNAEs da Ágil CM e diz quais casaram', async () => {
+  const { filtrarPorCnaes } = await import('../src/lib/agilCnae.js');
+  const { AGIL_CNAES } = await import('../src/data/agilCnaes.js');
+  assert.equal(AGIL_CNAES.length, 19);
+  assert.equal(AGIL_CNAES.filter((c) => c.principal).map((c) => c.codigo).join(), '81.21-4-00');
+  const ed = (id, objeto, modalidade = 'Pregão - Eletrônico') => ({ id, titulo: 'Edital', objeto, modalidade });
+  const lista = [
+    ed(1, 'Contratação de empresa para prestação de serviços de limpeza e conservação predial'),
+    ed(2, 'Registro de preços para aquisição de toner e cartuchos para impressoras'),
+    ed(3, 'Execução de obra de pavimentação asfáltica'),
+    ed(4, 'Aquisição de MATERIAL DE LIMPEZA e copa e cozinha'),
+    ed(5, 'Leilão de veículos inservíveis e material de informática', 'Leilão - Eletrônico'),
+    ed(6, 'Aquisição de gêneros alimentícios da agricultura familiar'),
+    ed(7, 'Serviços de roçada, capina e poda de árvores'),
+  ];
+  const r = filtrarPorCnaes(lista);
+  assert.deepEqual(r.map((e) => e.id), [1, 2, 4, 7]);
+  assert.deepEqual(r[0].cnaes, ['81.21-4-00']);
+  assert.ok(r[0].termos.includes('limpeza e conservacao'));
+  assert.deepEqual(r[1].cnaes, ['47.51-2-01']);
+  assert.deepEqual(r[2].cnaes, ['47.89-0-05', '47.89-0-99']);
+  assert.deepEqual(r[3].cnaes, ['81.30-3-00']);
+  assert.deepEqual(filtrarPorCnaes(lista, { cnaes: '81.30-3-00|43.21-5-00' }).map((e) => e.id), [7]);
+});

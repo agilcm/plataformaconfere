@@ -5,7 +5,7 @@ O site institucional ocupa a raiz. O botão **Licitações** no cabeçalho abre 
 | Caminho | Conteúdo |
 | --- | --- |
 | `/` | Site principal da Ágil CM |
-| `/licitacoes/` | Consulta de licitações |
+| `/licitacoes/` | Consulta de licitações: Editais abertos, Contratos e AGIL CNAE (`#agil-cnae`) |
 | `/api/*` | Funções de consulta ao PNCP, para hospedagem compatível |
 
 ## Desenvolvimento
@@ -33,6 +33,10 @@ O build gera o site completo em `dist/`, com a página principal e Licitações 
 O arquivo `vercel.json` configura a Vercel para executar o build e servir `dist/`, com as funções da pasta `api/`. Publicar exige acesso à conta de hospedagem; salvar os arquivos no GitHub não publica automaticamente sem uma integração de deploy configurada.
 
 Hospedagens exclusivamente estáticas não executam `/api/*`; nesse caso, as consultas de licitações dependem da alternativa de acesso direto ao PNCP e das permissões CORS desse serviço.
+
+## AGIL CNAE
+
+A aba AGIL CNAE mostra os mesmos editais abertos, mas só os ligados aos CNAEs da Ágil CM. Os CNAEs e os termos procurados no objeto de cada edital ficam em `src/data/agilCnaes.js`; para incluir um CNAE ou ajustar um termo, edite esse arquivo.
 
 Histórico e detalhes: [documentação original do site recebido](docs/Site-original.md).
 
