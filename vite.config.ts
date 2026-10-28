@@ -30,6 +30,7 @@ export default defineConfig(() => {
         input: {
           main: path.resolve(import.meta.dirname, 'index.html'),
           licitacoes: path.resolve(import.meta.dirname, 'licitacoes/index.html'),
+          privado: path.resolve(import.meta.dirname, 'privado/index.html'),
         },
       },
     },

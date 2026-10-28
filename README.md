@@ -6,6 +6,7 @@ O site institucional ocupa a raiz. O botão **Licitações** no cabeçalho abre 
 | --- | --- |
 | `/` | Site principal da Ágil CM |
 | `/licitacoes/` | Consulta de licitações: Editais abertos, Contratos e AGIL CNAE (`#agil-cnae`) |
+| `/privado/` | Área restrita: organiza no Google Drive os termos de homologação/adjudicação e gera relatórios |
 | `/api/*` | Funções de consulta ao PNCP, para hospedagem compatível |
 
 ## Desenvolvimento
@@ -37,6 +38,23 @@ Hospedagens exclusivamente estáticas não executam `/api/*`; nesse caso, as con
 ## AGIL CNAE
 
 A aba AGIL CNAE mostra os mesmos editais abertos, mas só os ligados aos CNAEs da Ágil CM. Os CNAEs e os termos procurados no objeto de cada edital ficam em `src/data/agilCnaes.js`; para incluir um CNAE ou ajustar um termo, edite esse arquivo.
+
+## Privado
+
+A página `/privado/` pede o login da tela e depois o login Google da conta dona da pasta `Licitacoes - Agil`. Tudo roda no navegador: os PDFs são baixados do Drive e lidos com pdf.js, sem servidor.
+
+- **Organizar pastas** cria `Órgão/Processo NNN-AAAA - Modalidade NNN-AAAA/`, renomeia os termos de homologação e adjudicação para `Processo NNN-AAAA - Termo de Homologação.pdf` e leva o resto da pasta original para `Outros` dentro do processo. Arquivos soltos que não são termos vão para `Outros` na raiz. Nada é apagado, e **Desfazer a última organização** devolve tudo ao lugar.
+- Pastas sem termo de homologação ou adjudicação ficam onde estão e aparecem em vermelho.
+- Relatórios: PDF consolidado e planilhas (CSV para Excel) de processos, itens ganhos e produtos somados.
+- A leitura de cada PDF fica guardada em `_agil-dados.json` na pasta, junto com o histórico para desfazer.
+
+Configuração em `src/data/privadoConfig.ts`: `GOOGLE_CLIENT_ID` (ID do cliente OAuth "Aplicativo da Web" com a origem do site autorizada e a Google Drive API ativada) e o ID da pasta. O login da tela guarda só o hash PBKDF2 de e-mail e senha; num site estático ele apenas esconde a tela, e quem protege os documentos é a permissão da conta Google na pasta. Para trocar a senha, gere um novo hash:
+
+```sh
+node -e "const c=require('crypto'),s=c.randomBytes(16).toString('hex');console.log(s,c.pbkdf2Sync('EMAIL\nSENHA',Buffer.from(s,'hex'),210000,32,'sha256').toString('hex'))"
+```
+
+O leitor de termos está em `src/lib/privado/termo.js` (formato AMM Licita / Licitar Digital); o planejamento das pastas, em `src/lib/privado/plano.js`.
 
 Histórico e detalhes: [documentação original do site recebido](docs/Site-original.md).
 

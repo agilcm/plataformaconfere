@@ -17,7 +17,7 @@ export const LICITACOES_PAGE = ROUTES.licitacoes;
 
 interface HeaderProps {
   /** Página atual: na página de licitações os links apontam para a home (/#secao) */
-  page?: 'home' | 'licitacoes';
+  page?: 'home' | 'licitacoes' | 'privado';
 }
 
 export default function Header({ page = 'home' }: HeaderProps) {
@@ -70,6 +70,15 @@ export default function Header({ page = 'home' }: HeaderProps) {
             LICITAÇÕES
           </a>
           <a
+            href={ROUTES.privado}
+            aria-current={page === 'privado' ? 'page' : undefined}
+            className={`inline-flex items-center px-4 py-2.5 text-sm font-extrabold tracking-wide rounded-xl border-2 transition-colors whitespace-nowrap ${
+              page === 'privado' ? 'bg-[#0478CA] border-[#0478CA] text-white' : 'border-[#0478CA] text-[#0478CA] hover:bg-[#0478CA] hover:text-white'
+            }`}
+          >
+            Privado
+          </a>
+          <a
             href={whatsappLink('Olá! Vim pelo site da Ágil CM e gostaria de atendimento.')}
             target="_blank"
             rel="noopener noreferrer"
@@ -87,6 +96,9 @@ export default function Header({ page = 'home' }: HeaderProps) {
           >
             <span className="w-1.5 h-1.5 rounded-full bg-[#7cc4ff]" aria-hidden="true" />
             LICITAÇÕES
+          </a>
+          <a href={ROUTES.privado} className="sm:hidden inline-flex items-center px-2 py-2 text-xs font-bold text-[#0478CA] border border-[#0478CA] rounded-lg">
+            Privado
           </a>
           <button
             type="button"
@@ -121,6 +133,9 @@ export default function Header({ page = 'home' }: HeaderProps) {
               className="mb-2 inline-flex items-center justify-center gap-2 px-4 py-3 text-base font-extrabold tracking-wide text-white bg-[#0F2053] rounded-xl"
             >
               LICITAÇÕES · editais abertos em MG
+            </a>
+            <a href={ROUTES.privado} className="mb-2 inline-flex items-center justify-center px-4 py-3 text-base font-bold text-[#0478CA] border-2 border-[#0478CA] rounded-xl">
+              Privado
             </a>
             {NAV_LINKS.map((l) => (
               <a
