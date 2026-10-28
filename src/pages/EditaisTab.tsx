@@ -4,7 +4,9 @@ import { formatBRL, whatsappLink } from '../data/servicesData.ts';
 import { MICRORREGIOES } from '../data/zonaDaMata.js';
 import { AGIL_CNAES } from '../data/agilCnaes.js';
 import { filtrarPorCnaes } from '../lib/agilCnae.js';
-import { contarFontes, fetchAllMG, fetchDetalheCompra, fetchPage, filterEditais, sortByUpdate } from '../lib/pncp.js';
+import { contarFontes, fetchAllMG, fetchDetalheCompra, fetchItensCompra, fetchPage, filterEditais, sortByUpdate } from '../lib/pncp.js';
+import { abasEditais } from '../lib/exportarEditais.js';
+import { baixarXlsx } from '../lib/xlsx.js';
 import { callApi, formatHora, loadLocal, saveLocal, type Fonte } from '../lib/pncpClient.ts';
 import SugestaoPanel from './SugestaoPanel.tsx';
 
@@ -107,6 +109,9 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
   const [todasFontes, setTodasFontes] = useState(false);
   const [facetas, setFacetas] = useState<{ nome: string; total: number }[] | null>(null);
   const [facetasEstado, setFacetasEstado] = useState<'idle' | 'loading' | 'erro'>('idle');
+  const [exportando, setExportando] = useState<{ etapa: string; feito: number; total: number } | null>(null);
+  const [exportErro, setExportErro] = useState('');
+  const cancelarExport = useRef(false);
   const allMG = useRef<Edital[] | null>(null); // cache do modo direto
   const reqId = useRef(0);
 
@@ -251,6 +256,72 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
       vivo = false;
     };
   }, [painelFontes, regiao, micro, q, tentativa, agil, cnaesKey, aplicar]);
+
+  // Todos os editais com os filtros atuais (não só as páginas já mostradas)
+  const listarTodos = async (): Promise<Edital[]> => {
+    const p: Record<string, string> = { regiao, todos: '1' };
+    if (micro) p.micro = micro;
+    if (q) p.q = q;
+    if (fontesKey) p.fontes = fontesKey;
+    if (agil) p.cnae = 'agil';
+    if (agil && cnaesKey) p.cnaes = cnaesKey;
+    const viaApi = await callApi<Resultado>('editais', p);
+    if (viaApi) return viaApi.items;
+    try {
+      if (!allMG.current) {
+        const r = await fetchAllMG({ onProgress: (loaded, t) => setExportando({ etapa: 'Lendo os editais de Minas Gerais', feito: loaded, total: t }) });
+        allMG.current = r.items;
+      }
+      return aplicar(allMG.current, { regiao, micro, q, fontes: fontesKey });
+    } catch {
+      const sample = typeof window !== 'undefined' ? window.__PNCP_SAMPLE__ : undefined;
+      if (sample) return sortByUpdate(aplicar(sample.items, { regiao, micro, q, fontes: fontesKey }));
+      throw new Error('sem conexão');
+    }
+  };
+
+  // Excel com duas abas: informações básicas de cada edital e os itens (uma linha por item)
+  const exportar = async () => {
+    cancelarExport.current = false;
+    setExportErro('');
+    setExportando({ etapa: 'Reunindo os editais', feito: 0, total: 0 });
+    try {
+      const lista = await listarTodos();
+      const comCompra = lista.filter((e) => e.compra);
+      const itens = new Map<string, { itens: unknown[] | null; erro?: string }>();
+      let feitos = 0;
+      setExportando({ etapa: 'Buscando os itens de cada edital no PNCP', feito: 0, total: comCompra.length });
+      let i = 0;
+      await Promise.all(
+        Array.from({ length: Math.min(6, comCompra.length) }, async () => {
+          while (i < comCompra.length && !cancelarExport.current) {
+            const e = comCompra[i++];
+            const ref = e.compra!;
+            try {
+              const viaApi = await callApi<{ itens: unknown[] | null }>('compra', { cnpj: ref.cnpj, ano: ref.ano, seq: ref.seq });
+              itens.set(e.id, { itens: viaApi?.itens ?? (await fetchItensCompra(ref)) });
+            } catch {
+              itens.set(e.id, { itens: null, erro: 'PNCP' });
+            }
+            setExportando({ etapa: 'Buscando os itens de cada edital no PNCP', feito: ++feitos, total: comCompra.length });
+          }
+        }),
+      );
+      if (cancelarExport.current) return;
+      const hoje = new Date().toISOString().slice(0, 10);
+      const regiaoNome = regiao === 'zona-da-mata' ? (micro ? `zona-da-mata-${micro}` : 'zona-da-mata') : 'mg';
+      const nome = `${agil ? 'editais-agil-cnae' : 'editais-abertos'}-${regiaoNome}-${hoje}.xlsx`
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, '-')
+        .toLowerCase();
+      baixarXlsx(nome, abasEditais(lista, itens, { agil }));
+    } catch {
+      setExportErro('O PNCP não respondeu para montar a planilha. Tente de novo em alguns minutos.');
+    } finally {
+      setExportando(null);
+    }
+  };
 
   const alternarCnae = (codigo: string) => setCnaesSel((c) => (c.includes(codigo) ? c.filter((x) => x !== codigo) : [...c, codigo]));
   const alternarFonte = (nome: string) => setFontes((f) => (f.includes(nome) ? f.filter((x) => x !== nome) : [...f, nome]));
@@ -473,13 +544,48 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
                       regiao === 'zona-da-mata' ? (micro ? ` na microrregião de ${micro}` : ' na Zona da Mata') : ' em Minas Gerais'
                     }${fontes.length ? ` · ${fontes.length === 1 ? `fonte ${fontes[0]}` : `${fontes.length} fontes`}` : ''}`}
               </p>
-              <p className="text-sm text-slate-500">
-                Ordenados pela última atualização
-                {atualizadoEm && !loading
-                  ? ` · consulta em ${formatHora(atualizadoEm)}`
-                  : ''}
-              </p>
+              <div className="flex flex-wrap items-center gap-3">
+                <p className="text-sm text-slate-500">
+                  Ordenados pela última atualização
+                  {atualizadoEm && !loading ? ` · consulta em ${formatHora(atualizadoEm)}` : ''}
+                </p>
+                <button
+                  type="button"
+                  onClick={exportar}
+                  disabled={!!exportando || loading || total === 0}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#1D6F42] hover:bg-[#185C37] text-white text-[15px] font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Icon name="sheet" className="w-5 h-5" />
+                  Exportar Excel
+                </button>
+              </div>
             </div>
+
+            {exportando && (
+              <div className="mt-4 p-4 rounded-xl bg-white border border-slate-200" aria-live="polite">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-[15px] text-slate-700">
+                    {exportando.etapa}
+                    {exportando.total ? `: ${exportando.feito.toLocaleString('pt-BR')} de ${exportando.total.toLocaleString('pt-BR')}` : '…'}
+                  </p>
+                  <button type="button" onClick={() => (cancelarExport.current = true)} className="text-sm font-bold text-slate-600 underline cursor-pointer">
+                    Cancelar
+                  </button>
+                </div>
+                <div className="mt-2 h-2 rounded-full bg-slate-100 overflow-hidden">
+                  <div
+                    className={`h-full bg-[#1D6F42] transition-all ${exportando.total ? '' : 'w-1/3 animate-pulse'}`}
+                    style={exportando.total ? { width: `${Math.min(100, (exportando.feito / Math.max(1, exportando.total)) * 100)}%` } : undefined}
+                  />
+                </div>
+                {exportando.total > 300 && <p className="mt-2 text-sm text-slate-500">São muitos editais: pode levar alguns minutos. Filtre a lista para exportar mais rápido.</p>}
+              </div>
+            )}
+            {exportErro && (
+              <p role="alert" className="mt-4 p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[15px]">
+                {exportErro}
+              </p>
+            )}
 
             {aviso && (
               <p role="status" className="mt-4 p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[15px] flex flex-wrap items-center gap-3">

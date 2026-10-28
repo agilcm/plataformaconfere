@@ -132,3 +132,27 @@ test('filtrarPorCnaes mostra só editais ligados aos CNAEs da Ágil CM e diz qua
   assert.deepEqual(r[3].cnaes, ['81.30-3-00']);
   assert.deepEqual(filtrarPorCnaes(lista, { cnaes: '81.30-3-00|43.21-5-00' }).map((e) => e.id), [7]);
 });
+
+test('Exportar Excel: aba Editais e aba Itens repetindo os dados do pregão em cada linha', async () => {
+  const { abasEditais, numeroDoEdital } = await import('../src/lib/exportarEditais.js');
+  const { criarXlsx } = await import('../src/lib/xlsx.js');
+  assert.equal(numeroDoEdital('Pregão Eletrônico nº 90012/2025'), '90012/2025');
+  const e = { id: 'x1', titulo: 'Pregão Eletrônico nº 12/2026', modalidade: 'Pregão - Eletrônico', orgao: 'Prefeitura de Ubá', municipio: 'Ubá', objeto: 'Café', valor: 100, propostasAte: '2026-11-10T09:00:00', link: 'L', compra: { cnpj: '1', ano: '2026', seq: '1' } };
+  const itens = new Map([['x1', { itens: [{ numero: 1, descricao: 'CAFÉ', quantidade: 4, unidade: 'PCT', valorUnitarioEstimado: 2.5, valorTotalEstimado: null }, { numero: 2, descricao: 'AÇÚCAR', quantidade: 1, unidade: 'FD', valorUnitarioEstimado: 3, valorTotalEstimado: 3 }] }]]);
+  const [basicas, det] = abasEditais([e], itens);
+  assert.deepEqual([basicas.nome, det.nome], ['Editais', 'Itens']);
+  assert.equal(basicas.linhas.length, 1);
+  assert.equal(det.linhas.length, 2);
+  const col = (n) => det.colunas.findIndex((c) => c.titulo === n);
+  for (const l of det.linhas) {
+    assert.equal(l[col('Nº do edital / pregão')], '12/2026');
+    assert.equal(l[col('Órgão')], 'Prefeitura de Ubá');
+    assert.equal(l[col('Data do pregão (fim das propostas)')], '2026-11-10T09:00:00');
+  }
+  assert.equal(det.linhas[0][col('Valor total estimado')], 10, 'sem total no PNCP: quantidade × unitário');
+  const zip = criarXlsx([basicas, det]);
+  assert.deepEqual([...zip.slice(0, 4)], [0x50, 0x4b, 0x03, 0x04]);
+  const texto = new TextDecoder().decode(zip);
+  assert.match(texto, /<sheet name="Itens" sheetId="2"/);
+  assert.ok(!/mergeCell/.test(texto), 'sem células mescladas');
+});

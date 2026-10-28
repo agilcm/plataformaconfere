@@ -35,6 +35,10 @@ O arquivo `vercel.json` configura a Vercel para executar o build e servir `dist/
 
 Hospedagens exclusivamente estáticas não executam `/api/*`; nesse caso, as consultas de licitações dependem da alternativa de acesso direto ao PNCP e das permissões CORS desse serviço.
 
+## Exportar Excel
+
+Em Editais abertos e em AGIL CNAE, o botão **Exportar Excel** baixa um .xlsx com os editais da lista (com os filtros atuais, não só os que já apareceram na tela). A aba **Editais** tem as informações básicas; a aba **Itens** tem uma linha por item de cada pregão (número, órgão, data, item, quantidade, valor unitário e total estimados), repetindo os dados do pregão em cada linha, sem células mescladas. Os itens são consultados no PNCP na hora: com muitos editais, leva alguns minutos.
+
 ## AGIL CNAE
 
 A aba AGIL CNAE mostra os mesmos editais abertos, mas só os ligados aos CNAEs da Ágil CM. Os CNAEs e os termos procurados no objeto de cada edital ficam em `src/data/agilCnaes.js`; para incluir um CNAE ou ajustar um termo, edite esse arquivo.
