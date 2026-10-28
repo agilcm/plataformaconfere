@@ -156,3 +156,18 @@ test('Exportar Excel: aba Editais e aba Itens repetindo os dados do pregão em c
   assert.match(texto, /<sheet name="Itens" sheetId="2"/);
   assert.ok(!/mergeCell/.test(texto), 'sem células mescladas');
 });
+
+test('local do pregão: plataforma pelo link, presencial pela modalidade, filtro e contagem', async () => {
+  const { localDoPregao, contarLocais } = await import('../src/lib/pncp.js');
+  assert.deepEqual(localDoPregao({ link_sistema_origem: 'https://bnc.org.br/sistema/edital/123' }), { nome: 'BNC', link: 'https://bnc.org.br/sistema/edital/123' });
+  assert.equal(localDoPregao({ link_sistema_origem: 'https://www.portaldecompraspublicas.com.br/processos/mg/x' }).nome, 'Portal de Compras Públicas');
+  assert.equal(localDoPregao({ link_sistema_origem: 'https://cnetmobile.estaleiro.serpro.gov.br/comprasnetmobile/x' }).nome, 'Compras.gov.br');
+  assert.equal(localDoPregao({ link_sistema_origem: 'https://www.pmuba.mg.gov.br/licitacoes' }).nome, 'pmuba.mg.gov.br');
+  assert.equal(localDoPregao({ modalidade_licitacao_nome: 'Pregão - Presencial' }).nome, 'Presencial (no órgão)');
+  assert.equal(localDoPregao({ usuario_nome: 'LICITANET LICITACOES ONLINE LTDA' }).nome, 'Licitanet', 'sem link: usa a plataforma que publicou');
+  const e = mapItem({ item_url: '/compras/18338178000102/2026/1', link_sistema_origem: 'https://licitanet.com.br/x' });
+  assert.deepEqual([e.local, e.linkLocal], ['Licitanet', 'https://licitanet.com.br/x']);
+  const lista = [{ local: 'BNC' }, { local: 'BNC' }, { local: 'Licitanet' }, {}];
+  assert.deepEqual(contarLocais(lista)[0], { nome: 'BNC', total: 2 });
+  assert.equal(filterEditais(lista, { locais: 'Licitanet|Não informado' }).length, 2);
+});

@@ -35,13 +35,17 @@ O arquivo `vercel.json` configura a Vercel para executar o build e servir `dist/
 
 Hospedagens exclusivamente estáticas não executam `/api/*`; nesse caso, as consultas de licitações dependem da alternativa de acesso direto ao PNCP e das permissões CORS desse serviço.
 
+## Local do pregão
+
+Cada edital mostra o **local do pregão**, a plataforma onde acontece a disputa (BNC, Licitanet, Portal de Compras Públicas, AMM Licita…), tirada do link da plataforma informado no PNCP; quando a modalidade é presencial, aparece "Presencial (no órgão)". Sem link, usa a plataforma que publicou o edital. O botão **Local do pregão** filtra por ela.
+
 ## Exportar Excel
 
 Em Editais abertos e em AGIL CNAE, o botão **Exportar Excel** baixa um .xlsx com os editais da lista (com os filtros atuais, não só os que já apareceram na tela). A aba **Editais** tem as informações básicas; a aba **Itens** tem uma linha por item de cada pregão (número, órgão, data, item, quantidade, valor unitário e total estimados), repetindo os dados do pregão em cada linha, sem células mescladas. Os itens são consultados no PNCP na hora: com muitos editais, leva alguns minutos.
 
 ## Super Sugestão
 
-Na aba AGIL CNAE, o botão **Super Sugestão** cruza os editais abertos de MG com o histórico do que a AGIL já ganhou: mesma cidade e mesmo produto (alerta vermelho), mesma cidade e mesma categoria (amarelo) e mesmo produto em outra cidade. O histórico é gravado neste navegador quando a área Privado lê a pasta do Drive; ele nunca vai para o código do site. As categorias ficam em `src/data/categoriasProdutos.js`.
+Na aba AGIL CNAE, o botão **Super Sugestão** cruza os editais abertos de MG com o histórico do que a AGIL já ganhou: mesma cidade e mesmo produto (alerta vermelho), mesma cidade e mesma categoria (amarelo) e mesmo produto em outra cidade. O Excel da Super Sugestão tem duas abas: **Mesma cidade** (mesmo produto e mesma categoria) e **Outras cidades** (mesmo produto). O histórico é gravado neste navegador quando a área Privado lê a pasta do Drive; ele nunca vai para o código do site. As categorias ficam em `src/data/categoriasProdutos.js`.
 
 ## AGIL CNAE
 

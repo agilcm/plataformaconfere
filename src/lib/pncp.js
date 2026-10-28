@@ -170,6 +170,51 @@ export function fonteDe(it) {
   return 'Não informada';
 }
 
+// ---------------------------------------------------------------- local do pregão (onde acontece a disputa)
+// Vem do link da plataforma informado no PNCP (link_sistema_origem); presencial quando a modalidade diz.
+const LOCAIS_CONHECIDOS = [
+  [/portaldecompraspublicas|ecustomize/i, 'Portal de Compras Públicas'],
+  [/bnc\.org|bnccompras|bolsanacional/i, 'BNC'],
+  [/bll\.org|bllcompras/i, 'BLL Compras'],
+  [/licitanet/i, 'Licitanet'],
+  [/ammlicita/i, 'AMM Licita'],
+  [/licitardigital/i, 'Licitar Digital'],
+  [/comprasnet|compras\.gov\.br|gov\.br\/compras|cnetmobile|estaleiro\.serpro/i, 'Compras.gov.br'],
+  [/compras\.mg\.gov\.br|portaldecompras\.mg/i, 'Portal de Compras de MG'],
+  [/bbmnet/i, 'BBMNET'],
+  [/licitacoes-e|licitacoes-e2/i, 'Licitações-e (BB)'],
+  [/comprasbr/i, 'ComprasBR'],
+  [/publicenter/i, 'Publicenter'],
+  [/licitapp/i, 'Licitapp'],
+  [/novobbmnet|bbm/i, 'BBMNET'],
+  [/portaldecompras|compraspublicas/i, 'Portal de Compras Públicas'],
+];
+
+/** { nome, link } do local onde acontece a sessão do pregão */
+export function localDoPregao(it) {
+  const link = String(it.link_sistema_origem || '').trim();
+  const modalidade = String(it.modalidade_licitacao_nome || '');
+  if (/presencial/i.test(modalidade)) return { nome: 'Presencial (no órgão)', link: /^https?:\/\//.test(link) ? link : null };
+  if (/^https?:\/\//.test(link)) {
+    for (const [re, nome] of LOCAIS_CONHECIDOS) if (re.test(link)) return { nome, link };
+    try {
+      return { nome: new URL(link).hostname.replace(/^www\./, ''), link };
+    } catch {
+      /* link inválido: cai na fonte abaixo */
+    }
+  }
+  // sem link: a plataforma que publicou costuma ser a da disputa
+  const fonte = fonteDe(it);
+  return { nome: fonte === 'Não informada' ? 'Não informado' : fonte, link: null };
+}
+
+/** Conta editais por local do pregão (para o filtro), do maior para o menor. */
+export function contarLocais(list) {
+  const m = new Map();
+  for (const e of list) m.set(e.local || 'Não informado', (m.get(e.local || 'Não informado') || 0) + 1);
+  return [...m.entries()].map(([nome, total]) => ({ nome, total })).sort((a, b) => b.total - a.total || a.nome.localeCompare(b.nome));
+}
+
 /** Conta editais por fonte (para os botões do filtro), do maior para o menor. */
 export function contarFontes(list) {
   const m = new Map();
@@ -180,6 +225,7 @@ export function contarFontes(list) {
 export function mapItem(it) {
   const ref = parseCompraRef(it.item_url);
   const path = String(it.item_url || '').replace(/^\/compras\//, '');
+  const local = localDoPregao(it);
   return {
     id: it.numero_controle_pncp || it.id || it.item_url,
     titulo: fixText(it.title) || 'Edital',
@@ -196,6 +242,8 @@ export function mapItem(it) {
     link: path ? `https://pncp.gov.br/app/editais/${path}` : 'https://pncp.gov.br/app/editais',
     linkOrigem: it.link_sistema_origem || null,
     fonte: fonteDe(it),
+    local: local.nome,
+    linkLocal: local.link,
     compra: ref,
   };
 }
@@ -242,13 +290,15 @@ export async function fetchAllMG({ maxPages = 200, concurrency = 6, tamanho = 50
 
 /**
  * @param {any[]} list
- * @param {{ regiao?: string, micro?: string, q?: string, fontes?: string | string[] }} options
+ * @param {{ regiao?: string, micro?: string, q?: string, fontes?: string | string[], locais?: string | string[] }} options
  */
-export function filterEditais(list, { regiao = 'mg', micro = '', q = '', fontes = [] } = {}) {
+export function filterEditais(list, { regiao = 'mg', micro = '', q = '', fontes = [], locais = [] } = {}) {
   const terms = norm(q).split(/\s+/).filter(Boolean);
   const fs = new Set(Array.isArray(fontes) ? fontes : String(fontes || '').split('|').filter(Boolean));
+  const ls = new Set(Array.isArray(locais) ? locais : String(locais || '').split('|').filter(Boolean));
   return list.filter((e) => {
     if (fs.size && !fs.has(e.fonte || 'Não informada')) return false;
+    if (ls.size && !ls.has(e.local || 'Não informado')) return false;
     if (regiao === 'zona-da-mata' && !e.microrregiao) return false;
     if (micro && e.microrregiao !== micro) return false;
     if (terms.length && !matchesAll(`${e.objeto} ${e.orgao} ${e.municipio} ${e.titulo}`, terms)) return false;

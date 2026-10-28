@@ -74,40 +74,50 @@ export default function SuperSugestaoPanel({ obterEditais, onClose }: { obterEdi
     }
   };
 
+  // Excel: aba 1 com as oportunidades na mesma cidade (mesmo produto e mesma categoria); aba 2 com o mesmo produto em outras cidades
   const exportar = () => {
-    const linhas = res.flatMap((r) =>
-      r.motivos.map((m: any) => [
-        NIVEIS[m.nivel as Nivel].titulo,
-        r.edital.orgao,
-        r.edital.municipio,
-        r.edital.objeto,
-        r.edital.propostasAte,
-        m.nivel === 'media' ? `Categoria: ${m.porque}` : `Produto: ${m.porque}`,
-        m.orgao,
-        m.processo,
-        SIT[m.situacao] || '',
-        m.exemplos.map((x: any) => x.descricao).join(' | '),
-        r.edital.link,
-      ]),
-    );
+    const colunas = [
+      { titulo: 'Alerta', largura: 30 },
+      { titulo: 'Órgão do edital', largura: 36 },
+      { titulo: 'Cidade', largura: 20 },
+      { titulo: 'Objeto do edital', largura: 70 },
+      { titulo: 'Valor estimado', largura: 16, tipo: 'moeda' as const },
+      { titulo: 'Propostas até', largura: 18, tipo: 'dataHora' as const },
+      { titulo: 'Local do pregão', largura: 26 },
+      { titulo: 'Por quê', largura: 30 },
+      { titulo: 'Onde já ganhamos', largura: 36 },
+      { titulo: 'Processo ganho', largura: 14 },
+      { titulo: 'Situação do processo ganho', largura: 14 },
+      { titulo: 'Itens ganhos (exemplos)', largura: 70 },
+      { titulo: 'Link no PNCP', largura: 50 },
+      { titulo: 'Link do local do pregão', largura: 50 },
+    ];
+    const linhas = (aqui: boolean) =>
+      res
+        .filter((r) => (r.nivel === 'fraca') !== aqui)
+        .flatMap((r) =>
+          r.motivos
+            .filter((m: any) => !aqui || m.nivel !== 'fraca')
+            .map((m: any) => [
+            NIVEIS[m.nivel as Nivel].titulo,
+            r.edital.orgao,
+            r.edital.municipio,
+            r.edital.objeto,
+            r.edital.valor ?? null,
+            r.edital.propostasAte,
+            r.edital.local || '',
+            m.nivel === 'media' ? `Categoria: ${m.porque}` : `Produto: ${m.porque}`,
+            m.orgao,
+            m.processo,
+            SIT[m.situacao] || '',
+            m.exemplos.map((x: any) => x.descricao).join(' | '),
+            r.edital.link,
+            r.edital.linkLocal || '',
+          ]),
+      );
     baixarXlsx(`super-sugestao-agil-${new Date().toISOString().slice(0, 10)}.xlsx`, [
-      {
-        nome: 'Super Sugestão',
-        colunas: [
-          { titulo: 'Alerta', largura: 30 },
-          { titulo: 'Órgão do edital', largura: 36 },
-          { titulo: 'Cidade', largura: 20 },
-          { titulo: 'Objeto do edital', largura: 70 },
-          { titulo: 'Propostas até', largura: 18, tipo: 'dataHora' },
-          { titulo: 'Por quê', largura: 30 },
-          { titulo: 'Onde já ganhamos', largura: 36 },
-          { titulo: 'Processo ganho', largura: 14 },
-          { titulo: 'Situação do processo ganho', largura: 14 },
-          { titulo: 'Itens ganhos (exemplos)', largura: 70 },
-          { titulo: 'Link no PNCP', largura: 50 },
-        ],
-        linhas,
-      },
+      { nome: 'Mesma cidade', colunas, linhas: linhas(true) },
+      { nome: 'Outras cidades', colunas, linhas: linhas(false) },
     ]);
   };
 
@@ -204,6 +214,7 @@ export default function SuperSugestaoPanel({ obterEditais, onClose }: { obterEdi
                         <span>{r.edital.orgao}</span>
                         <span>· propostas até {dataBR(r.edital.propostasAte)}</span>
                         {r.edital.valor && <span>· {formatBRL(r.edital.valor, 2)}</span>}
+                        {r.edital.local && <span>· pregão: {r.edital.local}</span>}
                       </div>
                       <p className="mt-1 font-bold text-[#0F2053] line-clamp-2">{r.edital.objeto || r.edital.titulo}</p>
                       <ul className="mt-2 space-y-1 text-[15px]">
