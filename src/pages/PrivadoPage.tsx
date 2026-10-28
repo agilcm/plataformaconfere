@@ -6,7 +6,52 @@ import { dateText, downloadPdf } from '../lib/pdfReport.ts';
 import { conferirLogin, sair, sessaoAtiva } from '../lib/privado/auth.ts';
 import { conectado, conectar, desconectar, idDoLink, usuario } from '../lib/privado/drive.ts';
 import { desfazer, executar, lerPasta, type Leitura } from '../lib/privado/organizar.ts';
-import { blocosRelatorio, consolidarProdutos, csvItens, csvPendencias, csvProcessos, csvProdutos, dataBR, resumo, rotulo } from '../lib/privado/relatorios.js';
+import {
+  blocosRelatorio,
+  consolidarProdutos,
+  csvItens,
+  csvPendencias,
+  csvProcessos,
+  csvProdutos,
+  dataBR,
+  DIAS_ALERTA,
+  resumo,
+  rotulo,
+  textoVigencia,
+  vigencia,
+} from '../lib/privado/relatorios.js';
+import { salvarHistorico } from '../lib/historicoVitorias.js';
+
+type Situacao = 'vigente' | 'vencendo' | 'vencido' | 'sem-data';
+const COR_SITUACAO: Record<Situacao, string> = {
+  vigente: 'bg-emerald-50 text-emerald-800',
+  vencendo: 'bg-amber-100 text-amber-900',
+  vencido: 'bg-red-100 text-red-800',
+  'sem-data': 'bg-slate-100 text-slate-600',
+};
+
+/** Texto longo em até 2 linhas, com "ver mais" */
+function TextoCurto({ texto }: { texto: string }) {
+  const [aberto, setAberto] = useState(false);
+  const longo = texto.length > 110;
+  return (
+    <span className="block">
+      <span className={aberto || !longo ? '' : 'line-clamp-2'}>{texto}</span>
+      {longo && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setAberto((v) => !v);
+          }}
+          className="text-sm font-bold text-[#0478CA] underline cursor-pointer"
+        >
+          {aberto ? 'ver menos' : 'ver mais'}
+        </button>
+      )}
+    </span>
+  );
+}
 
 const CHAVE_CLIENT = 'agilcm:privado:clientId';
 const CHAVE_PASTA = 'agilcm:privado:pasta';
@@ -138,6 +183,7 @@ function Painel({ onSair }: { onSair: () => void }) {
   const [confirmar, setConfirmar] = useState<'organizar' | 'desfazer' | null>(null);
   const [aba, setAba] = useState<'processos' | 'produtos'>('processos');
   const [busca, setBusca] = useState('');
+  const [filtroVig, setFiltroVig] = useState<'todos' | Situacao>('todos');
   const [config, setConfig] = useState(false);
 
   useEffect(() => {
@@ -153,6 +199,7 @@ function Painel({ onSair }: { onSair: () => void }) {
     try {
       const l = await lerPasta(pastaId, progresso);
       setLeitura(l);
+      salvarHistorico(l.resultado.processos, (p: any) => vigencia(p).situacao);
     } catch (e) {
       setErro((e as Error).message);
     } finally {
@@ -193,11 +240,13 @@ function Painel({ onSair }: { onSair: () => void }) {
   const processos = (res?.processos || []) as any[];
   const filtrados = useMemo(() => {
     const t = busca.trim().toLowerCase();
-    if (!t) return processos;
-    return processos.filter((p) =>
-      `${p.orgao} ${rotulo(p)} ${p.objeto} ${p.itens.map((i: any) => i.descricao).join(' ')}`.toLowerCase().includes(t),
+    return processos.filter(
+      (p) =>
+        (filtroVig === 'todos' || vigencia(p).situacao === filtroVig) &&
+        (!t || `${p.orgao} ${rotulo(p)} ${p.objeto} ${p.itens.map((i: any) => i.descricao).join(' ')}`.toLowerCase().includes(t)),
     );
-  }, [processos, busca]);
+  }, [processos, busca, filtroVig]);
+  const geral = useMemo(() => resumo(processos), [processos]);
   const r = useMemo(() => resumo(filtrados), [filtrados]);
   const porOrgao = useMemo(() => {
     const m = new Map<string, any[]>();
@@ -362,19 +411,44 @@ function Painel({ onSair }: { onSair: () => void }) {
           )}
 
           {/* Números */}
-          <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-3">
-            {[
-              ['Total ganho', moeda(r.total)],
-              ['Processos', r.processos.toLocaleString('pt-BR')],
-              ['Itens ganhos', r.itens.toLocaleString('pt-BR')],
-              ['Pastas sem termo', String(res.pendencias.length)],
-            ].map(([k, v], i) => (
-              <div key={k} className={`p-4 rounded-2xl border ${i === 3 && res.pendencias.length ? 'bg-red-50 border-red-200' : 'bg-white border-slate-200'}`}>
-                <p className={`text-sm ${i === 3 && res.pendencias.length ? 'text-red-700' : 'text-slate-500'}`}>{k}</p>
-                <p className={`mt-1 text-xl sm:text-2xl font-bold tabular-nums ${i === 3 && res.pendencias.length ? 'text-red-700' : 'text-[#0F2053]'}`}>{v}</p>
+          <div className="mt-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            {(
+              [
+                ['Total ganho', moeda(r.total), ''],
+                ['Processos', r.processos.toLocaleString('pt-BR'), ''],
+                ['Itens ganhos', r.itens.toLocaleString('pt-BR'), ''],
+                [`Vencendo (${DIAS_ALERTA} dias)`, String(geral.vencendo), geral.vencendo ? 'amber' : ''],
+                ['Vencidos', String(geral.vencidos), geral.vencidos ? 'red' : ''],
+                ['Pastas sem termo', String(res.pendencias.length), res.pendencias.length ? 'red' : ''],
+              ] as const
+            ).map(([k, v, cor]) => (
+              <div
+                key={k}
+                className={`p-4 rounded-2xl border ${cor === 'red' ? 'bg-red-50 border-red-200' : cor === 'amber' ? 'bg-amber-50 border-amber-200' : 'bg-white border-slate-200'}`}
+              >
+                <p className={`text-sm ${cor === 'red' ? 'text-red-700' : cor === 'amber' ? 'text-amber-800' : 'text-slate-500'}`}>{k}</p>
+                <p className={`mt-1 text-lg sm:text-xl xl:text-2xl font-bold tabular-nums break-words ${cor === 'red' ? 'text-red-700' : cor === 'amber' ? 'text-amber-900' : 'text-[#0F2053]'}`}>{v}</p>
               </div>
             ))}
           </div>
+
+          {geral.vencendo > 0 && (
+            <div role="status" className="mt-4 p-4 rounded-2xl bg-amber-50 border-2 border-amber-300 flex flex-wrap items-center gap-3">
+              <p className="flex-1 min-w-0 text-[15px] text-amber-900">
+                <strong>
+                  {geral.vencendo} {geral.vencendo === 1 ? 'processo vence' : 'processos vencem'} nos próximos {DIAS_ALERTA} dias
+                </strong>{' '}
+                (a homologação vale 1 ano):{' '}
+                {processos
+                  .filter((p) => vigencia(p).situacao === 'vencendo')
+                  .map((p) => `${p.orgao} ${rotulo(p)}`)
+                  .join(' · ')}
+              </p>
+              <button type="button" onClick={() => setFiltroVig('vencendo')} className="text-sm font-bold text-amber-900 underline cursor-pointer">
+                Ver só estes
+              </button>
+            </div>
+          )}
 
           {/* Pendências em vermelho */}
           {res.pendencias.length > 0 && (
@@ -421,7 +495,7 @@ function Painel({ onSair }: { onSair: () => void }) {
 
           {/* Relatórios */}
           <div className="mt-6 p-4 sm:p-5 rounded-2xl bg-white border border-slate-200">
-            <p className="font-bold text-[#0F2053]">Relatórios consolidados{busca ? ' (com o filtro atual)' : ''}</p>
+            <p className="font-bold text-[#0F2053]">Relatórios consolidados{busca || filtroVig !== 'todos' ? ' (com o filtro atual)' : ''}</p>
             <div className="mt-3 flex flex-wrap gap-2">
               <button type="button" onClick={baixarPdf} className={`${botao} bg-[#0478CA] hover:bg-[#03609F] text-white`}>
                 <Icon name="doc" className="w-5 h-5" /> PDF consolidado
@@ -459,6 +533,28 @@ function Painel({ onSair }: { onSair: () => void }) {
                   aria-selected={aba === v}
                   onClick={() => setAba(v)}
                   className={`px-4 py-2 rounded-lg text-[15px] font-bold cursor-pointer ${aba === v ? 'bg-white text-[#0F2053] shadow-sm' : 'text-slate-600'}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div role="group" aria-label="Situação" className="flex flex-wrap gap-2">
+              {(
+                [
+                  ['todos', 'Todos'],
+                  ['vigente', 'Válidos'],
+                  ['vencendo', 'Vencendo'],
+                  ['vencido', 'Vencidos'],
+                ] as const
+              ).map(([v, label]) => (
+                <button
+                  key={v}
+                  type="button"
+                  aria-pressed={filtroVig === v}
+                  onClick={() => setFiltroVig(v)}
+                  className={`px-3.5 py-2 rounded-full text-sm font-semibold border cursor-pointer ${
+                    filtroVig === v ? 'bg-[#0F2053] border-[#0F2053] text-white' : 'bg-white border-slate-300 text-slate-700 hover:border-[#0478CA]'
+                  }`}
                 >
                   {label}
                 </button>
@@ -528,9 +624,10 @@ function PreviaOps({ ops }: { ops: any[] }) {
 
 function Processo({ p }: { p: any }) {
   const [aberto, setAberto] = useState(false);
-  const alerta = p.conferido === false || !p.agilVenceu;
+  const v = vigencia(p);
+  const alerta = p.conferido === false || !p.agilVenceu || v.situacao === 'vencendo' || v.situacao === 'vencido';
   return (
-    <li className={`rounded-2xl bg-white border ${alerta ? 'border-amber-300' : 'border-slate-200'}`}>
+    <li className={`rounded-2xl bg-white border ${v.situacao === 'vencido' ? 'border-red-300' : alerta ? 'border-amber-300' : 'border-slate-200'}`}>
       <button type="button" onClick={() => setAberto((v) => !v)} aria-expanded={aberto} className="w-full text-left p-4 sm:p-5 cursor-pointer">
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <span className="px-2.5 py-1 rounded-full bg-[#0478CA]/10 text-[#0478CA] font-bold">Processo {rotulo(p)}</span>
@@ -542,6 +639,7 @@ function Processo({ p }: { p: any }) {
           <span className={`px-2.5 py-1 rounded-full font-semibold ${p.termoUsado === 'homologacao' ? 'bg-emerald-50 text-emerald-800' : 'bg-violet-50 text-violet-800'}`}>
             {p.termos.map((t: any) => (t.tipo === 'homologacao' ? 'Homologação' : 'Adjudicação')).filter((x: string, i: number, a: string[]) => a.indexOf(x) === i).join(' + ')}
           </span>
+          <span className={`px-2.5 py-1 rounded-full font-bold ${COR_SITUACAO[v.situacao as Situacao]}`}>{textoVigencia(v)}</span>
           {p.conferido === false && <span className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-900 font-bold">Soma dos itens diferente do total</span>}
           {!p.agilVenceu && <span className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-900 font-bold">AGIL não aparece como vencedora</span>}
           <span className="ml-auto text-lg font-bold text-[#0F2053] tabular-nums">{moeda(p.valorAgil)}</span>
@@ -549,7 +647,8 @@ function Processo({ p }: { p: any }) {
         <p className="mt-2 text-[15px] text-slate-700 line-clamp-2">{p.objeto}</p>
         <p className="mt-2 text-sm text-slate-500">
           {p.dataPregao && <>Pregão: {dataBR(p.dataPregao, true)} · </>}
-          Termo: {dataBR(p.dataTermo, true) || '—'}
+          {p.dataHomologacao ? <>Homologação: {dataBR(p.dataHomologacao, true)}</> : <>Termo: {dataBR(p.dataTermo, true) || '—'}</>}
+          {v.validoAte && <> · Válido até {dataBR(v.validoAte)}</>}
           {p.dataDocumento && <> · Documento: {dataBR(p.dataDocumento)}</>} · {p.itens.length} {p.itens.length === 1 ? 'item' : 'itens'}
         </p>
       </button>
@@ -584,7 +683,7 @@ function Processo({ p }: { p: any }) {
                     <tr key={i} className="border-b border-slate-100 align-top">
                       <td className="py-2 pr-3 tabular-nums">{it.lote}</td>
                       <td className="py-2 pr-3">
-                        {it.descricao}
+                        <TextoCurto texto={it.descricao} />
                         {(it.marca || it.modelo) && (
                           <span className="block text-slate-500">
                             {[it.marca && `Marca: ${it.marca}`, it.fabricante && it.fabricante !== it.marca && `Fabricante: ${it.fabricante}`, it.modelo && `Modelo: ${it.modelo}`]
@@ -617,21 +716,21 @@ function Produtos({ processos }: { processos: any[] }) {
   const lista = useMemo(() => consolidarProdutos(processos), [processos]);
   return (
     <div className="mt-4 overflow-x-auto rounded-2xl bg-white border border-slate-200">
-      <table className="w-full min-w-[44rem] text-sm">
+      <table className="w-full min-w-[62rem] text-sm">
         <thead>
           <tr className="text-left text-slate-500 border-b border-slate-200">
             <th className="p-3 font-semibold">Produto</th>
             <th className="p-3 font-semibold text-right">Quantidade</th>
-            <th className="p-3 font-semibold text-right">Preço (menor–maior)</th>
+            <th className="p-3 font-semibold text-right whitespace-nowrap">Preço unitário</th>
             <th className="p-3 font-semibold text-right">Valor total</th>
-            <th className="p-3 font-semibold">Órgãos</th>
+            <th className="p-3 font-semibold">Processos</th>
           </tr>
         </thead>
         <tbody>
           {lista.map((g, i) => (
             <tr key={i} className="border-b border-slate-100 align-top">
               <td className="p-3">
-                {g.descricao}
+                <TextoCurto texto={g.descricao} />
                 {g.marcas.length > 0 && <span className="block text-slate-500">Marca: {g.marcas.join(', ')}</span>}
               </td>
               <td className="p-3 text-right tabular-nums whitespace-nowrap">
@@ -641,7 +740,21 @@ function Produtos({ processos }: { processos: any[] }) {
                 {g.precoMin === g.precoMax ? moeda(g.precoMin) : `${moeda(g.precoMin)} – ${moeda(g.precoMax)}`}
               </td>
               <td className="p-3 text-right tabular-nums whitespace-nowrap font-semibold">{moeda(g.valor)}</td>
-              <td className="p-3 text-slate-600">{g.orgaos.join(', ')}</td>
+              <td className="p-3 min-w-[17rem]">
+                <ul className="space-y-1">
+                  {g.lista.map((x: any) => (
+                    <li key={`${x.orgao}${x.processo}`} className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-slate-700">
+                        {x.orgao} · <strong className="tabular-nums">{x.processo}</strong>
+                      </span>
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${COR_SITUACAO[x.situacao as Situacao]}`}>
+                        {x.situacao === 'vencido' ? 'vencido' : x.situacao === 'vencendo' ? 'vencendo' : x.situacao === 'vigente' ? 'válido' : 'sem data'}
+                        {x.validoAte ? ` · ${dataBR(x.validoAte)}` : ''}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </td>
             </tr>
           ))}
         </tbody>

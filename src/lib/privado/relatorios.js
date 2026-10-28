@@ -11,6 +11,31 @@ export function dataBR(iso, comHora = false) {
   return `${m[3]}/${m[2]}/${m[1]}${comHora && m[4] ? ` ${m[4]}` : ''}`;
 }
 
+/** Avisar quando faltar até este número de dias para vencer */
+export const DIAS_ALERTA = 60;
+
+/**
+ * Validade do registro: 1 ano a partir da homologação (sem homologação, da adjudicação/termo).
+ * @returns {{ base: string | null, validoAte: string | null, dias: number | null, situacao: 'vigente' | 'vencendo' | 'vencido' | 'sem-data' }}
+ */
+export function vigencia(p, hoje = new Date()) {
+  const base = p.dataHomologacao || p.dataTermo || p.dataDocumento || null;
+  const m = String(base || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return { base: null, validoAte: null, dias: null, situacao: 'sem-data' };
+  const fim = Date.UTC(Number(m[1]) + 1, Number(m[2]) - 1, Number(m[3]));
+  const validoAte = new Date(fim).toISOString().slice(0, 10); // 29/02 vira 01/03
+  const hj = Date.UTC(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+  const dias = Math.round((fim - hj) / 86400000);
+  return { base, validoAte, dias, situacao: dias < 0 ? 'vencido' : dias <= DIAS_ALERTA ? 'vencendo' : 'vigente' };
+}
+
+export function textoVigencia(v) {
+  if (v.situacao === 'sem-data') return 'Sem data de homologação';
+  if (v.situacao === 'vencido') return `Vencido em ${dataBR(v.validoAte)}`;
+  if (v.situacao === 'vencendo') return v.dias === 0 ? 'Vence hoje' : `Vence em ${v.dias} ${v.dias === 1 ? 'dia' : 'dias'} (${dataBR(v.validoAte)})`;
+  return `Válido até ${dataBR(v.validoAte)}`;
+}
+
 export const rotulo = (p) => `${String(Number(p.processo.numero)).padStart(3, '0')}/${p.processo.ano}`;
 const edital = (p) => (p.edital ? `${p.modalidade} ${String(Number(p.edital.numero)).padStart(3, '0')}/${p.edital.ano}` : p.modalidade || '');
 const conferencia = (p) => (p.conferido == null ? 'Sem itens no termo' : p.conferido ? 'Conferido' : 'Divergente');
@@ -24,17 +49,18 @@ const norm = (s) =>
     .trim();
 
 /** Produtos ganhos somados entre todos os processos (mesma descrição e unidade). */
-export function consolidarProdutos(processos) {
+export function consolidarProdutos(processos, hoje = new Date()) {
   const m = new Map();
   for (const p of processos) {
     for (const it of p.itens) {
       const k = `${norm(it.descricao).slice(0, 140)}|${norm(it.medida)}`;
-      if (!m.has(k)) m.set(k, { descricao: it.descricao, medida: it.medida, quantidade: 0, valor: 0, precos: [], processos: new Set(), orgaos: new Set(), marcas: new Set() });
+      if (!m.has(k)) m.set(k, { descricao: it.descricao, medida: it.medida, quantidade: 0, valor: 0, precos: [], processos: new Map(), orgaos: new Set(), marcas: new Set() });
       const g = m.get(k);
       g.quantidade += it.quantidade || 0;
       g.valor += it.subtotal || 0;
       if (it.unitario != null) g.precos.push(it.unitario);
-      g.processos.add(`${p.orgao} ${rotulo(p)}`);
+      const v = vigencia(p, hoje);
+      g.processos.set(`${p.orgao} ${rotulo(p)}`, { orgao: p.orgao, processo: rotulo(p), situacao: v.situacao, validoAte: v.validoAte });
       g.orgaos.add(p.orgao);
       if (it.marca) g.marcas.add(it.marca);
     }
@@ -48,6 +74,8 @@ export function consolidarProdutos(processos) {
       precoMin: g.precos.length ? Math.min(...g.precos) : null,
       precoMax: g.precos.length ? Math.max(...g.precos) : null,
       processos: g.processos.size,
+      lista: [...g.processos.values()],
+      vencidos: [...g.processos.values()].filter((x) => x.situacao === 'vencido').length,
       orgaos: [...g.orgaos],
       marcas: [...g.marcas],
     }))
@@ -74,17 +102,21 @@ export function resumo(processos) {
     orgaos: [...porOrgao.values()].sort((a, b) => b.valor - a.valor),
     anos: [...porAno.entries()].sort((a, b) => b[0].localeCompare(a[0])).map(([ano, valor]) => ({ ano, valor })),
     divergentes: processos.filter((p) => p.conferido === false).length,
+    vencendo: processos.filter((p) => vigencia(p).situacao === 'vencendo').length,
+    vencidos: processos.filter((p) => vigencia(p).situacao === 'vencido').length,
   };
 }
 
 // ---------------------------------------------------------------- CSV (Excel em português: ";" e vírgula decimal)
+
+const SITUACAO = { vigente: 'vigente', vencendo: 'vencendo', vencido: 'vencido', 'sem-data': 'sem data' };
 
 const celula = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
 const csv = (cab, linhas) => `﻿${[cab, ...linhas].map((l) => l.map(celula).join(';')).join('\r\n')}\r\n`;
 
 export function csvProcessos(processos) {
   return csv(
-    ['Órgão', 'CNPJ do órgão', 'Processo', 'Modalidade / nº', 'Objeto', 'Data do pregão', 'Data do termo', 'Data do documento', 'Termo usado', 'Valor ganho pela AGIL (R$)', 'Estimado (R$)', 'Soma dos itens (R$)', 'Conferência', 'Itens', 'Arquivos', 'Pasta no Drive'],
+    ['Órgão', 'CNPJ do órgão', 'Processo', 'Modalidade / nº', 'Objeto', 'Data do pregão', 'Data da homologação', 'Válido até (1 ano)', 'Situação', 'Data do termo', 'Data do documento', 'Termo usado', 'Valor ganho pela AGIL (R$)', 'Estimado (R$)', 'Soma dos itens (R$)', 'Conferência', 'Itens', 'Arquivos', 'Pasta no Drive'],
     processos.map((p) => [
       p.orgao,
       p.cnpjOrgao,
@@ -92,6 +124,9 @@ export function csvProcessos(processos) {
       edital(p),
       p.objeto,
       dataBR(p.dataPregao, true),
+      dataBR(p.dataHomologacao || '', true),
+      dataBR(vigencia(p).validoAte),
+      textoVigencia(vigencia(p)),
       dataBR(p.dataTermo, true),
       dataBR(p.dataDocumento),
       p.termoUsado === 'homologacao' ? 'Homologação' : 'Adjudicação',
@@ -108,13 +143,15 @@ export function csvProcessos(processos) {
 
 export function csvItens(processos) {
   return csv(
-    ['Órgão', 'Processo', 'Modalidade / nº', 'Data do termo', 'Lote', 'Descrição do item', 'Quantidade', 'Unidade', 'Valor unitário (R$)', 'Valor total (R$)', 'Marca', 'Fabricante', 'Modelo', 'Conferir'],
+    ['Órgão', 'Processo', 'Modalidade / nº', 'Data do termo', 'Válido até', 'Situação', 'Lote', 'Descrição do item', 'Quantidade', 'Unidade', 'Valor unitário (R$)', 'Valor total (R$)', 'Marca', 'Fabricante', 'Modelo', 'Conferir'],
     processos.flatMap((p) =>
       p.itens.map((it) => [
         p.orgao,
         rotulo(p),
         edital(p),
         dataBR(it.data || p.dataTermo, true),
+        dataBR(vigencia(p).validoAte),
+        textoVigencia(vigencia(p)),
         it.lote,
         it.descricao,
         qtd(it.quantidade),
@@ -132,8 +169,20 @@ export function csvItens(processos) {
 
 export function csvProdutos(processos) {
   return csv(
-    ['Produto', 'Unidade', 'Quantidade total', 'Valor total (R$)', 'Menor preço (R$)', 'Maior preço (R$)', 'Processos', 'Órgãos', 'Marcas'],
-    consolidarProdutos(processos).map((g) => [g.descricao, g.medida, qtd(g.quantidade), brl(g.valor), brl(g.precoMin), brl(g.precoMax), g.processos, g.orgaos.join(', '), g.marcas.join(', ')]),
+    ['Produto', 'Unidade', 'Quantidade total', 'Valor total (R$)', 'Menor preço (R$)', 'Maior preço (R$)', 'Nº de processos', 'Processos (órgão, número e situação)', 'Vencidos', 'Órgãos', 'Marcas'],
+    consolidarProdutos(processos).map((g) => [
+      g.descricao,
+      g.medida,
+      qtd(g.quantidade),
+      brl(g.valor),
+      brl(g.precoMin),
+      brl(g.precoMax),
+      g.processos,
+      g.lista.map((x) => `${x.orgao} ${x.processo} (${SITUACAO[x.situacao]}${x.validoAte ? ` até ${dataBR(x.validoAte)}` : ''})`).join('; '),
+      g.vencidos,
+      g.orgaos.join(', '),
+      g.marcas.join(', '),
+    ]),
   );
 }
 
@@ -174,14 +223,14 @@ export function blocosRelatorio(processos, pendencias, { dataText }) {
   b.push({ type: 'heading', text: 'Processos' });
   b.push({
     type: 'table',
-    widths: [0.3, 0.14, 0.16, 0.14, 0.26],
-    header: ['Órgão', 'Processo', 'Modalidade', 'Termo', 'Valor ganho'],
+    widths: [0.27, 0.12, 0.15, 0.2, 0.26],
+    header: ['Órgão', 'Processo', 'Modalidade', 'Válido até', 'Valor ganho'],
     headerAlign: ['left', 'center', 'left', 'center', 'right'],
     rows: processos.map((p) => [
       p.orgao,
       { text: rotulo(p), align: 'center' },
       edital(p),
-      { text: dataBR(p.dataTermo), align: 'center' },
+      { text: `${dataBR(vigencia(p).validoAte)}${vigencia(p).situacao === 'vencido' ? ' (vencido)' : vigencia(p).situacao === 'vencendo' ? ' (vencendo)' : ''}`, align: 'center' },
       { text: `${moeda(p.valorAgil)}${p.conferido === false ? ' (!)' : ''}`, align: 'right' },
     ]),
   });

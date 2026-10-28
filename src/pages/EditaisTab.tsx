@@ -9,6 +9,7 @@ import { abasEditais } from '../lib/exportarEditais.js';
 import { baixarXlsx } from '../lib/xlsx.js';
 import { callApi, formatHora, loadLocal, saveLocal, type Fonte } from '../lib/pncpClient.ts';
 import SugestaoPanel from './SugestaoPanel.tsx';
+import SuperSugestaoPanel from './SuperSugestaoPanel.tsx';
 
 type Regiao = 'mg' | 'zona-da-mata';
 
@@ -102,6 +103,7 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
   const [aviso, setAviso] = useState('');
   const [tentativa, setTentativa] = useState(0);
   const [sugestao, setSugestao] = useState(false);
+  const [superSug, setSuperSug] = useState(false);
   const [fontes, setFontes] = useState<string[]>([]);
   const [painelFontes, setPainelFontes] = useState(false);
   const [cnaesSel, setCnaesSel] = useState<string[]>([]);
@@ -257,25 +259,27 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
     };
   }, [painelFontes, regiao, micro, q, tentativa, agil, cnaesKey, aplicar]);
 
-  // Todos os editais com os filtros atuais (não só as páginas já mostradas)
-  const listarTodos = async (): Promise<Edital[]> => {
-    const p: Record<string, string> = { regiao, todos: '1' };
-    if (micro) p.micro = micro;
-    if (q) p.q = q;
-    if (fontesKey) p.fontes = fontesKey;
-    if (agil) p.cnae = 'agil';
-    if (agil && cnaesKey) p.cnaes = cnaesKey;
+  // Todos os editais com os filtros atuais (não só as páginas já mostradas); tudo: MG inteira, sem filtros
+  const listarTodos = async ({ tudo = false, onProgress }: { tudo?: boolean; onProgress?: (lidos: number, total: number) => void } = {}): Promise<Edital[]> => {
+    const f = tudo ? { regiao: 'mg' as Regiao, micro: '', q: '', fontes: '' } : { regiao, micro, q, fontes: fontesKey };
+    const p: Record<string, string> = { regiao: f.regiao, todos: '1' };
+    if (f.micro) p.micro = f.micro;
+    if (f.q) p.q = f.q;
+    if (f.fontes) p.fontes = f.fontes;
+    if (agil && !tudo) p.cnae = 'agil';
+    if (agil && !tudo && cnaesKey) p.cnaes = cnaesKey;
     const viaApi = await callApi<Resultado>('editais', p);
     if (viaApi) return viaApi.items;
+    const filtrar = (lista: Edital[]) => (tudo ? filterEditais(lista, f) : aplicar(lista, f));
     try {
       if (!allMG.current) {
-        const r = await fetchAllMG({ onProgress: (loaded, t) => setExportando({ etapa: 'Lendo os editais de Minas Gerais', feito: loaded, total: t }) });
+        const r = await fetchAllMG({ onProgress: onProgress || ((loaded, t) => setExportando({ etapa: 'Lendo os editais de Minas Gerais', feito: loaded, total: t })) });
         allMG.current = r.items;
       }
-      return aplicar(allMG.current, { regiao, micro, q, fontes: fontesKey });
+      return filtrar(allMG.current);
     } catch {
       const sample = typeof window !== 'undefined' ? window.__PNCP_SAMPLE__ : undefined;
-      if (sample) return sortByUpdate(aplicar(sample.items, { regiao, micro, q, fontes: fontesKey }));
+      if (sample) return sortByUpdate(filtrar(sample.items));
       throw new Error('sem conexão');
     }
   };
@@ -369,7 +373,7 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
                     className="w-full pl-11 pr-4 py-3 rounded-xl border border-slate-300 text-base focus:outline-none focus:border-[#0478CA] focus:ring-2 focus:ring-[#0478CA]/20"
                   />
                 </label>
-                <div className={`grid ${agil ? 'grid-cols-3' : 'grid-cols-2'} gap-3 lg:flex lg:gap-4 shrink-0`}>
+                <div className={`grid ${agil ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-2'} gap-3 lg:flex lg:gap-4 shrink-0`}>
                 {agil && (
                   <button
                     type="button"
@@ -411,6 +415,23 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
                   <Icon name="sheet" className="w-5 h-5" />
                   Sugestão
                 </button>
+                {agil && (
+                  <button
+                    type="button"
+                    aria-expanded={superSug}
+                    aria-controls="super-sugestao"
+                    onClick={() => {
+                      setSuperSug((v) => !v);
+                      setTimeout(() => document.getElementById('super-sugestao')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+                    }}
+                    className={`shrink-0 inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-base font-extrabold tracking-wide transition-colors cursor-pointer ${
+                      superSug ? 'bg-[#F5A623] text-[#0F2053]' : 'bg-[#0F2053] hover:bg-[#13306f] text-white'
+                    }`}
+                  >
+                    <Icon name="search" className="w-5 h-5" />
+                    Super Sugestão
+                  </button>
+                )}
                 </div>
               </div>
 
@@ -532,6 +553,12 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
             </div>
 
             {sugestao && <SugestaoPanel onClose={() => setSugestao(false)} />}
+            {agil && superSug && (
+              <SuperSugestaoPanel
+                onClose={() => setSuperSug(false)}
+                obterEditais={(prog) => listarTodos({ tudo: true, onProgress: (l, t) => prog('Lendo os editais abertos de Minas Gerais', l, t) })}
+              />
+            )}
 
             {/* Resumo */}
             <div className="mt-6 flex flex-wrap items-baseline justify-between gap-3">

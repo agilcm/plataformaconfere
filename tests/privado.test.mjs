@@ -184,3 +184,51 @@ test('relatórios somam produtos e geram CSV para Excel', () => {
   assert.ok(csv.startsWith('﻿"Órgão";'));
   assert.match(csv, /"OLEO DE SOJA TIPO 1, GARRAFA PET 900 ML";"390";"UN";"7,28";"2\.839,20";"Soya"/);
 });
+
+test('validade: a homologação vale 1 ano, com alerta nos últimos 60 dias', async () => {
+  const { vigencia, textoVigencia, consolidarProdutos } = await import('../src/lib/privado/relatorios.js');
+  const hoje = new Date(2026, 9, 28);
+  assert.equal(vigencia({ dataHomologacao: '2025-07-04T08:41:22' }, hoje).situacao, 'vencido');
+  assert.equal(textoVigencia(vigencia({ dataHomologacao: '2025-07-04T08:41:22' }, hoje)), 'Vencido em 04/07/2026');
+  const v = vigencia({ dataHomologacao: '2025-11-20' }, hoje);
+  assert.deepEqual([v.situacao, v.dias, v.validoAte], ['vencendo', 23, '2026-11-20']);
+  assert.equal(vigencia({ dataHomologacao: '2026-03-01' }, hoje).situacao, 'vigente');
+  assert.equal(vigencia({ dataTermo: '2024-02-29' }, hoje).validoAte, '2025-03-01', 'sem homologação usa a data do termo');
+  assert.equal(vigencia({}, hoje).situacao, 'sem-data');
+  const item = { descricao: 'TONER HP', medida: 'UN', quantidade: 1, unitario: 10, subtotal: 10 };
+  const [g] = consolidarProdutos(
+    [
+      { orgao: 'A', processo: { numero: '1', ano: '2025' }, dataHomologacao: '2025-01-10', itens: [item] },
+      { orgao: 'B', processo: { numero: '2', ano: '2026' }, dataHomologacao: '2026-05-10', itens: [item] },
+    ],
+    hoje,
+  );
+  assert.deepEqual(g.lista.map((x) => `${x.orgao} ${x.processo} ${x.situacao}`), ['A 001/2025 vencido', 'B 002/2026 vigente']);
+  assert.equal(g.vencidos, 1);
+});
+
+test('Super Sugestão: mesmo produto e mesma categoria na cidade onde já ganhamos', async () => {
+  const { superSugestao, palavraDoItem } = await import('../src/lib/superSugestao.js');
+  const { cidadeDoOrgao } = await import('../src/lib/historicoVitorias.js');
+  assert.equal(cidadeDoOrgao('Câmara Municipal de São João Nepomuceno'), 'São João Nepomuceno');
+  assert.equal(palavraDoItem('TONER COMPATÍVEL HP 85A'), 'toner');
+  assert.equal(palavraDoItem('CAIXA PLÁSTICA ORGANIZADORA 20L'), 'organizadora');
+  const historico = {
+    processos: [
+      { orgao: 'Prefeitura Municipal de Astolfo Dutra', cidade: 'Astolfo Dutra', processo: '036/2025', situacao: 'vigente', itens: [{ descricao: 'TONER COMPATÍVEL HP 85A', unitario: 45 }] },
+      { orgao: 'Prefeitura Municipal de Rodeiro', cidade: 'Rodeiro', processo: '028/2025', situacao: 'vencido', itens: [{ descricao: 'CARRINHO DE BRINQUEDO EM PLÁSTICO' }] },
+    ],
+  };
+  const editais = [
+    { id: 'a', titulo: '', objeto: 'Aquisição de toners para impressoras', municipio: 'Astolfo Dutra' },
+    { id: 'b', titulo: '', objeto: 'Aquisição de brinquedos pedagógicos para creches', municipio: 'Rodeiro' },
+    { id: 'c', titulo: '', objeto: 'Aquisição de toner', municipio: 'Belo Horizonte' },
+    { id: 'd', titulo: '', objeto: 'Material de informática', municipio: 'Astolfo Dutra' },
+    { id: 'e', titulo: '', objeto: 'Obra de pavimentação', municipio: 'Rodeiro' },
+  ];
+  const r = superSugestao(historico, editais, new Map([['d', [{ descricao: 'TONER PRETO' }]]]));
+  const nivel = Object.fromEntries(r.map((x) => [x.edital.id, x.nivel]));
+  assert.deepEqual(nivel, { a: 'forte', d: 'forte', b: 'media', c: 'fraca' });
+  assert.equal(r.find((x) => x.edital.id === 'b').motivos[0].porque, 'Brinquedos');
+  assert.equal(r[0].motivos[0].processo, '036/2025');
+});
