@@ -69,9 +69,6 @@ export default function Header({ page = 'home' }: HeaderProps) {
             </span>
             LICITAÇÕES
           </a>
-          <a href={ROUTES.documentos} className="inline-flex items-center px-4 py-2.5 text-sm font-extrabold tracking-wide rounded-xl border-2 border-[#0478CA] text-[#0478CA] hover:bg-[#0478CA] hover:text-white transition-colors whitespace-nowrap">
-            Documentos
-          </a>
           <a
             href={whatsappLink('Olá! Vim pelo site da Ágil CM e gostaria de atendimento.')}
             target="_blank"
@@ -91,7 +88,6 @@ export default function Header({ page = 'home' }: HeaderProps) {
             <span className="w-1.5 h-1.5 rounded-full bg-[#7cc4ff]" aria-hidden="true" />
             LICITAÇÕES
           </a>
-          <a href={ROUTES.documentos} className="sm:hidden inline-flex items-center px-2 py-2 text-xs font-bold text-[#0478CA] border border-[#0478CA] rounded-lg">Documentos</a>
           <button
             type="button"
             onClick={() => setOpen(!open)}
@@ -126,7 +122,6 @@ export default function Header({ page = 'home' }: HeaderProps) {
             >
               LICITAÇÕES · editais abertos em MG
             </a>
-            <a href={ROUTES.documentos} className="mb-2 inline-flex items-center justify-center px-4 py-3 text-base font-bold text-[#0478CA] border-2 border-[#0478CA] rounded-xl">Documentos</a>
             {NAV_LINKS.map((l) => (
               <a
                 key={l.href}
