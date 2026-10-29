@@ -232,3 +232,19 @@ test('Super Sugestão: mesmo produto e mesma categoria na cidade onde já ganham
   assert.equal(r.find((x) => x.edital.id === 'b').motivos[0].porque, 'Brinquedos');
   assert.equal(r[0].motivos[0].processo, '036/2025');
 });
+
+test('cache da Super Sugestão: exporta, importa e recusa arquivos estranhos', async () => {
+  const mem = new Map();
+  globalThis.localStorage = { getItem: (k) => mem.get(k) ?? null, setItem: (k, v) => mem.set(k, String(v)), removeItem: (k) => mem.delete(k) };
+  const { salvarHistorico, exportarHistorico, importarHistorico, lerHistorico } = await import('../src/lib/historicoVitorias.js');
+  salvarHistorico([{ orgao: 'Prefeitura Municipal de Ubá', processo: { numero: '10', ano: '2025' }, dataHomologacao: '2025-03-06', itens: [{ descricao: 'OLEO', quantidade: 2, medida: 'UN', unitario: 7.28 }] }], () => 'vencido');
+  const arquivo = exportarHistorico();
+  mem.clear();
+  assert.equal(lerHistorico(), null);
+  const d = importarHistorico(arquivo);
+  assert.deepEqual([d.processos[0].cidade, d.processos[0].processo, d.processos[0].situacao, d.processos[0].itens[0].unitario], ['Ubá', '010/2025', 'vencido', 7.28]);
+  assert.equal(lerHistorico().processos.length, 1);
+  assert.throws(() => importarHistorico('{"processos":[]}'), /não é um cache/);
+  assert.throws(() => importarHistorico('não é json'), /JSON inválido/);
+  delete globalThis.localStorage;
+});

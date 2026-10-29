@@ -35,6 +35,16 @@ O arquivo `vercel.json` configura a Vercel para executar o build e servir `dist/
 
 Hospedagens exclusivamente estáticas não executam `/api/*`; nesse caso, as consultas de licitações dependem da alternativa de acesso direto ao PNCP e das permissões CORS desse serviço.
 
+## Monitor de pregões (Telegram)
+
+O workflow `.github/workflows/monitor-pregoes.yml` roda `scripts/monitor-pregoes.mjs` a cada 5 minutos e avisa no Telegram quando, num pregão acompanhado, a situação da compra muda (suspensa, revogada…), um item muda de situação ou ganha resultado (destacando quando a AGIL vence) ou sai documento novo (esclarecimento, impugnação, ata…). Os dados vêm da API pública do PNCP. O chat do pregoeiro não entra: no Compras.gov.br ele só existe para o fornecedor logado, e o acompanhamento público exige hCaptcha.
+
+Configuração em **Settings → Secrets and variables → Actions**:
+- variável `MONITOR_PREGOES`: um pregão por linha (link do PNCP, número de controle ou CNPJ/ANO/SEQ), com apelido opcional depois;
+- segredos `TELEGRAM_BOT_TOKEN` e `TELEGRAM_CHAT_ID`.
+
+Em **Actions → Monitorar pregões → Run workflow**, marque "teste" para mandar uma mensagem de teste. O GitHub pode atrasar execuções agendadas e as pausa após 60 dias sem commits no repositório.
+
 ## Filtro por CNAE
 
 Em Editais abertos, o botão **CNAE** permite escolher qualquer CNAE do catálogo (`src/lib/catalogoCnae.js`): os 19 CNAEs da Ágil CM e cerca de 80 grupos de CNAE de `src/lib/sugestoes.js`, buscando pelo código (com ou sem pontuação) ou pela atividade. Só aparecem os editais cujo objeto tem os termos desses CNAEs. A escolha fica salva no navegador.
@@ -49,7 +59,7 @@ Em Editais abertos e em AGIL CNAE, o botão **Exportar Excel** baixa um .xlsx co
 
 ## Super Sugestão
 
-Na aba AGIL CNAE, o botão **Super Sugestão** cruza os editais abertos de MG com o histórico do que a AGIL já ganhou: mesma cidade e mesmo produto (alerta vermelho), mesma cidade e mesma categoria (amarelo) e mesmo produto em outra cidade. O Excel da Super Sugestão tem duas abas: **Mesma cidade** (mesmo produto e mesma categoria) e **Outras cidades** (mesmo produto). O histórico é gravado neste navegador quando a área Privado lê a pasta do Drive; ele nunca vai para o código do site. As categorias ficam em `src/data/categoriasProdutos.js`.
+Na aba AGIL CNAE, o botão **Super Sugestão** cruza os editais abertos de MG com o histórico do que a AGIL já ganhou: mesma cidade e mesmo produto (alerta vermelho), mesma cidade e mesma categoria (amarelo) e mesmo produto em outra cidade. O Excel da Super Sugestão tem duas abas: **Mesma cidade** (mesmo produto e mesma categoria) e **Outras cidades** (mesmo produto). O histórico é gravado neste navegador quando a área Privado lê a pasta do Drive; ele nunca vai para o código do site. As categorias ficam em `src/data/categoriasProdutos.js`. Para não depender do login Google em outro computador, baixe o cache na área Privado (**Baixar cache**) e use **Importar cache** na Super Sugestão.
 
 ## AGIL CNAE
 

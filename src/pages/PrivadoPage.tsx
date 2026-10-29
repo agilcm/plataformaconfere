@@ -20,7 +20,7 @@ import {
   textoVigencia,
   vigencia,
 } from '../lib/privado/relatorios.js';
-import { salvarHistorico } from '../lib/historicoVitorias.js';
+import { baixarHistorico, salvarHistorico } from '../lib/historicoVitorias.js';
 
 type Situacao = 'vigente' | 'vencendo' | 'vencido' | 'sem-data';
 const COR_SITUACAO: Record<Situacao, string> = {
@@ -514,7 +514,19 @@ function Painel({ onSair }: { onSair: () => void }) {
                   Pendências (Excel)
                 </button>
               )}
+              <button
+                type="button"
+                onClick={() => baixarHistorico()}
+                title="Arquivo para importar na Super Sugestão sem precisar entrar no Google"
+                className={`${botao} border-2 border-[#0F2053]/30 text-[#0F2053] hover:border-[#0F2053]`}
+              >
+                <Icon name="box" className="w-5 h-5" /> Baixar cache (Super Sugestão)
+              </button>
             </div>
+            <p className="mt-2 text-sm text-slate-500">
+              O cache tem os processos e itens ganhos. Em outro computador, importe-o na Super Sugestão (aba AGIL CNAE) sem precisar fazer login. Guarde-o
+              com cuidado: é o histórico comercial da AGIL.
+            </p>
           </div>
 
           {/* Lista */}

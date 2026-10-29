@@ -2,7 +2,7 @@
 import { useRef, useState } from 'react';
 import { Icon } from '../components/ui.tsx';
 import { formatBRL } from '../data/servicesData.ts';
-import { lerHistorico } from '../lib/historicoVitorias.js';
+import { baixarHistorico, importarHistorico, lerHistorico } from '../lib/historicoVitorias.js';
 import { fetchItensCompra } from '../lib/pncp.js';
 import { callApi } from '../lib/pncpClient.ts';
 import { ROUTES } from '../lib/routes.ts';
@@ -32,7 +32,24 @@ function motivoTexto(m: any) {
 }
 
 export default function SuperSugestaoPanel({ obterEditais, onClose }: { obterEditais: (p: Progresso) => Promise<any[]>; onClose: () => void }) {
-  const [historico] = useState(() => lerHistorico());
+  const [historico, setHistorico] = useState(() => lerHistorico());
+  const [erroCache, setErroCache] = useState('');
+  const arquivo = useRef<HTMLInputElement>(null);
+
+  // cache baixado na área Privado: dispensa fazer login de novo neste navegador
+  const importar = async (f: File | undefined) => {
+    if (!f) return;
+    setErroCache('');
+    try {
+      setHistorico(importarHistorico(await f.text()));
+      setRes([]);
+      setEstado('idle');
+    } catch (e) {
+      setErroCache((e as Error).message);
+    } finally {
+      if (arquivo.current) arquivo.current.value = '';
+    }
+  };
   const [estado, setEstado] = useState<'idle' | 'loading' | 'ok' | 'erro'>('idle');
   const [prog, setProg] = useState<{ etapa: string; feito: number; total: number } | null>(null);
   const [res, setRes] = useState<any[]>([]);
@@ -138,15 +155,30 @@ export default function SuperSugestaoPanel({ obterEditais, onClose }: { obterEdi
         </button>
       </div>
 
+      <input ref={arquivo} type="file" accept=".json,application/json" className="hidden" onChange={(e) => importar(e.target.files?.[0])} />
+      {erroCache && (
+        <p role="alert" className="mt-4 p-3 rounded-xl bg-red-50 border border-red-200 text-[15px] text-red-800">
+          {erroCache}
+        </p>
+      )}
       {!historico ? (
         <div className="mt-4 p-4 rounded-xl bg-amber-50 border border-amber-200 text-[15px] text-amber-900">
           <p>
-            <strong>Falta o histórico do que a AGIL já ganhou neste navegador.</strong> Abra a área Privado, conecte o Google Drive e espere a leitura
-            das pastas terminar. Depois volte aqui.
+            <strong>Falta o histórico do que a AGIL já ganhou.</strong> Importe o cache baixado na área Privado (botão "Baixar cache") ou entre na área
+            Privado e conecte o Google Drive.
           </p>
-          <a href={ROUTES.privado} className="mt-3 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#0F2053] text-white font-bold">
-            Abrir a área Privado
-          </a>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => arquivo.current?.click()}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#0F2053] hover:bg-[#13306f] text-white font-bold cursor-pointer"
+            >
+              <Icon name="doc" className="w-5 h-5" /> Importar cache
+            </button>
+            <a href={ROUTES.privado} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 border-[#0F2053] text-[#0F2053] font-bold">
+              Entrar na área Privado
+            </a>
+          </div>
         </div>
       ) : (
         <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -161,7 +193,14 @@ export default function SuperSugestaoPanel({ obterEditais, onClose }: { obterEdi
           </button>
           <span className="text-sm text-slate-500">
             Histórico: {historico.processos.length} processos, {historico.processos.reduce((s: number, p: any) => s + p.itens.length, 0)} itens · atualizado em{' '}
-            {dataBR(historico.atualizadoEm)}
+            {dataBR(historico.atualizadoEm)} ·{' '}
+            <button type="button" onClick={() => arquivo.current?.click()} className="font-bold text-[#0478CA] underline cursor-pointer">
+              importar outro cache
+            </button>{' '}
+            ·{' '}
+            <button type="button" onClick={() => baixarHistorico()} className="font-bold text-[#0478CA] underline cursor-pointer">
+              baixar cache
+            </button>
           </span>
           {estado === 'ok' && res.length > 0 && (
             <button type="button" onClick={exportar} className="ml-auto inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#1D6F42] hover:bg-[#185C37] text-white text-[15px] font-bold cursor-pointer">
