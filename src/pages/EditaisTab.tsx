@@ -860,8 +860,10 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
                           {e.microrregiao && (
                             <span className="px-2.5 py-1 rounded-full bg-[#128C4A]/10 text-[#0E7A40] font-bold">Zona da Mata · {e.microrregiao}</span>
                           )}
-                          {e.fonte && (
-                            <span className="px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 font-semibold">Fonte: {e.fonte}</span>
+                          {(e.local || e.fonte) && (
+                            <span className="px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 font-semibold" title={e.fonte ? `Publicado no PNCP por: ${e.fonte}` : undefined}>
+                              Local do pregão: {e.local || e.fonte}
+                            </span>
                           )}
                           <span className="text-slate-500">Atualizado {ha(e.atualizadoEm)}</span>
                         </div>
