@@ -38,7 +38,13 @@ Hospedagens exclusivamente estáticas não executam `/api/*`; nesse caso, as con
 
 ## Dados (simuladores internos)
 
-`/dados/` não tem link no site nem aparece em buscadores. Abas: **Simulador de RH** (custo de um funcionário), **Simples, pró-labore e regime** (pró-labore sempre; marcando "Calcular sobre o faturamento", a projeção do Simples em 12 meses com RBT12 móvel, empresa nova e faturamento mês a mês, Fator R e a conta para conferir; marcando "Comparar regime", Simples × Lucro Presumido com alíquotas padrão editáveis; exporta Excel) e **Eleição** (em construção). Os parâmetros de cada ano ficam em `src/data/parametrosFiscais.js` e as atividades em `src/data/atividadesFiscais.js`.
+`/dados/` não tem link no site nem aparece em buscadores. Abas: **Simulador de RH** (custo de um funcionário), **Simples, pró-labore e regime** (pró-labore sempre; marcando "Calcular sobre o faturamento", a projeção do Simples em 12 meses com RBT12 móvel, empresa nova e faturamento mês a mês, Fator R e a conta para conferir; marcando "Comparar regime", Simples × Lucro Presumido com alíquotas padrão editáveis; exporta Excel) e **Eleição**, que abre o painel `/dados/eleicao/`. Os parâmetros de cada ano ficam em `src/data/parametrosFiscais.js` e as atividades em `src/data/atividadesFiscais.js`.
+
+## Eleições em dados
+
+`/dados/eleicao/` mostra os dados do TSE (1º turno de 2020, 2022, 2024 e 2026) de Astolfo Dutra, Dona Euzébia e Cataguases: resultado por cargo (votos válidos, legenda, brancos e nulos), partidos, votos por local e por seção com o local onde cada candidato é mais forte, comparecimento (sem as seções agregadas, que votam junto com outra), perfil do eleitorado e histórico do candidato entre eleições. Relatórios: Excel completo, PDF do resultado (por ano ou todos os anos) e Excel dos candidatos escolhidos por seção.
+
+Os dados ficam em `public/dados-eleicao/eleicoes-mg.dat` (JSON em gzip). Para atualizar ou incluir municípios, recorte os CSVs do TSE (perfil_eleitor_secao, detalhe_votacao_secao e bweb_1t de cada ano) e rode `python3 scripts/eleicoes/gerar-dados.py --input-dir <pasta>`; os municípios ficam em `CITY_NAMES` no script.
 
 ## Contador de visitas
 

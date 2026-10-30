@@ -46,6 +46,7 @@ export default defineConfig(() => {
           licitacoes: path.resolve(import.meta.dirname, 'licitacoes/index.html'),
           privado: path.resolve(import.meta.dirname, 'privado/index.html'),
           dados: path.resolve(import.meta.dirname, 'dados/index.html'),
+          eleicao: path.resolve(import.meta.dirname, 'dados/eleicao/index.html'),
         },
       },
     },

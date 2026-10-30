@@ -563,7 +563,7 @@ export default function DadosPage() {
                 type="button"
                 role="tab"
                 aria-selected={aba === t.id}
-                onClick={() => trocar(t.id)}
+                onClick={() => (t.id === 'eleicao' ? window.location.assign(`${import.meta.env.BASE_URL}dados/eleicao/`) : trocar(t.id))}
                 className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-[15px] font-bold border-2 transition-colors cursor-pointer ${
                   aba === t.id ? 'bg-[#0F2053] border-[#0F2053] text-white' : 'bg-white border-slate-200 text-[#0F2053] hover:border-[#0478CA]'
                 }`}
@@ -577,8 +577,15 @@ export default function DadosPage() {
             {aba === 'simples' && <SimuladorSimplesProLabore />}
             {aba === 'eleicao' && (
               <div className={card}>
-                <p className="text-lg font-bold text-[#0F2053]">Eleição</p>
-                <p className="mt-1 text-[15px] text-slate-600">Em construção: aguardando as instruções.</p>
+                <p className="text-lg font-bold text-[#0F2053]">Eleições em dados</p>
+                <p className="mt-1 text-[15px] text-slate-600">
+                  Resultado por cargo, votos por local e seção, comparecimento, perfil do eleitorado, histórico de candidatos e relatórios em Excel e PDF
+                  (dados do TSE).
+                </p>
+                <a href={`${import.meta.env.BASE_URL}dados/eleicao/`} className="mt-4 inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-[#0F2053] text-white font-bold">
+                  Abrir o painel de eleições
+                  <Icon name="arrow" className="w-5 h-5" />
+                </a>
               </div>
             )}
           </div>
