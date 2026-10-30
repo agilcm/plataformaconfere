@@ -1,7 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { OPERATIONAL_SERVICES, COMPANY_PROFILE, whatsappLink } from '../data/servicesData.ts';
-import { downloadPdf, slug } from '../lib/pdfReport.ts';
-import { quoteRequestReport } from '../lib/reports.ts';
 import { openMailto, sendEmail } from '../lib/sendEmail.ts';
 import { SectionHeader } from './ui.tsx';
 
@@ -35,7 +33,6 @@ export default function QuoteCalculator({ preselectedServiceId }: QuoteCalculato
   const [notes, setNotes] = useState('');
   const [mailStatus, setMailStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const formRef = useRef<HTMLFormElement>(null);
-  const [exportState, setExportState] = useState<'idle' | 'busy' | 'done' | 'declined' | 'error'>('idle');
 
   useEffect(() => {
     if (preselectedServiceId) setServiceId(preselectedServiceId);
@@ -90,33 +87,6 @@ Aguardo a análise e a proposta da Ágil CM.`;
     window.open(whatsappLink(getRequestText()), '_blank', 'noopener,noreferrer');
   };
 
-  const handleDownload = async () => {
-    setExportState('busy');
-    try {
-      const r = await downloadPdf(
-        `pedido-orcamento-${slug(selectedServiceObj.title)}${companyName ? '-' + slug(companyName) : ''}.pdf`,
-        'Solicitação de Orçamento',
-        quoteRequestReport({
-          serviceTitle: selectedServiceObj.title,
-          serviceSubtitle: selectedServiceObj.subtitle,
-          areaSize,
-          staffCount,
-          frequencyLabel: FREQ_LABELS[frequency],
-          inclusions,
-          companyName: companyName.trim(),
-          contactName: contactName.trim(),
-          contactEmail: contactEmail.trim(),
-          contactPhone: contactPhone.trim(),
-          notes: notes.trim(),
-        }),
-      );
-      setExportState(r === 'declined' ? 'declined' : 'done');
-    } catch (err) {
-      console.error('Falha ao gerar PDF', err);
-      setExportState('error');
-    }
-  };
-
   const handleSendEmail = async (e: React.FormEvent) => {
     e.preventDefault();
     setMailStatus('sending');
@@ -147,7 +117,7 @@ Aguardo a análise e a proposta da Ágil CM.`;
           lead="Conte como é o serviço: área, equipe e frequência. Nossa equipe analisa e envia a proposta personalizada para o seu e-mail."
         />
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
 
           {/* Controls Column (Left) */}
           <div className="lg:col-span-7 bg-white border border-slate-200 rounded-2xl p-6 sm:p-8">
@@ -341,8 +311,7 @@ Aguardo a análise e a proposta da Ágil CM.`;
           <div className="lg:col-span-5 bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 shadow-sm">
             <h3 className="text-xl font-bold font-display text-[#0F2053]">2. Receba a proposta</h3>
             <p className="mt-1 text-[15px] text-slate-600 leading-relaxed">
-              Cada serviço depende da convenção coletiva, do local e da rotina. Por isso nossa equipe analisa o seu caso e monta o
-              orçamento — sem valor pronto de tabela.
+              Cada serviço depende da convenção coletiva, do local e da rotina: nossa equipe analisa e monta o orçamento.
             </p>
 
             <dl className="mt-5 p-4 rounded-xl bg-[#F4F7FB] border border-slate-200 space-y-1.5 text-[15px]">
@@ -362,18 +331,24 @@ Aguardo a análise e a proposta da Ágil CM.`;
               </div>
               <input type="email" required placeholder="Seu e-mail (a proposta chega aqui)" aria-label="Seu e-mail" autoComplete="email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} className={`w-full ${inputCls}`} />
               <input type="tel" placeholder="WhatsApp / telefone (opcional)" aria-label="WhatsApp ou telefone" autoComplete="tel" inputMode="tel" value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} className={`w-full ${inputCls}`} />
-              <textarea rows={3} placeholder="Endereço do local, horários, data prevista de início, outras informações…" aria-label="Observações" value={notes} onChange={(e) => setNotes(e.target.value)} className={`w-full ${inputCls}`} />
+              <textarea rows={2} placeholder="Endereço do local, horários, data prevista de início, outras informações…" aria-label="Observações" value={notes} onChange={(e) => setNotes(e.target.value)} className={`w-full ${inputCls}`} />
 
-              <button
-                type="submit"
-                disabled={mailStatus === 'sending'}
-                className="w-full py-3.5 px-4 bg-[#0478CA] hover:bg-[#03609F] disabled:opacity-60 text-white font-bold text-base rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-md"
-              >
-                <svg className="w-5 h-5" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                </svg>
-                {mailStatus === 'sending' ? 'Enviando…' : 'Enviar para a Ágil montar o orçamento'}
-              </button>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button
+                  type="submit"
+                  disabled={mailStatus === 'sending'}
+                  className="w-full py-3.5 px-3 bg-[#0478CA] hover:bg-[#03609F] disabled:opacity-60 text-white font-bold text-[15px] whitespace-nowrap rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-md"
+                >
+                  {mailStatus === 'sending' ? 'Enviando…' : 'Enviar por e-mail'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSendWhatsApp}
+                  className="w-full py-3.5 px-3 bg-[#128C4A] hover:bg-[#0E7A40] text-white font-bold text-[15px] whitespace-nowrap rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-md"
+                >
+                  Enviar pelo WhatsApp
+                </button>
+              </div>
               <p className="text-sm text-slate-500 text-center">Os dados vão para {COMPANY_PROFILE.email} e você recebe uma cópia.</p>
 
               {mailStatus === 'sent' && (
@@ -391,26 +366,6 @@ Aguardo a análise e a proposta da Ágil CM.`;
                 </div>
               )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={handleSendWhatsApp}
-                  className="py-2.5 px-3 border-2 border-[#128C4A]/30 text-[#0E7A40] hover:bg-[#128C4A]/5 font-bold text-[15px] rounded-xl transition-colors cursor-pointer"
-                >
-                  Enviar pelo WhatsApp
-                </button>
-                <button
-                  type="button"
-                  onClick={handleDownload}
-                  disabled={exportState === 'busy'}
-                  className="py-2.5 px-3 border-2 border-slate-200 hover:border-[#0478CA] disabled:opacity-60 text-[#0F2053] font-bold text-[15px] rounded-xl transition-colors cursor-pointer"
-                >
-                  {exportState === 'busy' ? 'Gerando PDF…' : 'Baixar pedido de orçamento (PDF)'}
-                </button>
-              </div>
-              {exportState === 'done' && <p role="status" className="text-sm text-emerald-800">PDF do pedido gerado. Confira a pasta de downloads.</p>}
-              {exportState === 'declined' && <p role="status" className="text-sm text-slate-600">Download cancelado. Clique novamente quando quiser salvar.</p>}
-              {exportState === 'error' && <p role="alert" className="text-sm text-amber-800">Não foi possível gerar o PDF neste navegador. Tente novamente.</p>}
             </form>
           </div>
         </div>
