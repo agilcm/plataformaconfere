@@ -5,12 +5,12 @@ interface Props {
 }
 
 const DP_ITEMS = [
-  'Folha de pagamento mensal',
-  'Admissões e rescisões',
-  'Férias, 13º e afastamentos',
-  'Controle de ponto e banco de horas',
-  'eSocial, FGTS Digital e DCTFWeb',
-  'Guias e obrigações no prazo',
+  'Revisão e ajuste de cálculos da folha',
+  'Conferência de férias, 13º e rescisões',
+  'Horas extras, adicionais e médias',
+  'Regras de ponto e banco de horas',
+  'Conferência de eSocial, FGTS Digital e DCTFWeb',
+  'Encargos e obrigações sem multa',
 ];
 
 const RH_ITEMS = [
@@ -27,9 +27,9 @@ export default function RhDpSection({ onContact }: Props) {
       <Container>
         <SectionHeader
           id="titulo-rh-dp"
-          eyebrow="RH e Departamento Pessoal"
-          title="Sua folha em dia e seu RH organizado"
-          lead="Assumimos as rotinas do Departamento Pessoal e estruturamos o RH da sua empresa para crescer com segurança."
+          eyebrow="Consultoria em Departamento Pessoal e RH"
+          title="Consultoria para sua folha e seu RH"
+          lead="Revisamos os cálculos da folha, ajustamos o que está errado e orientamos sua equipe de DP e RH para a empresa crescer com segurança."
         />
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -40,8 +40,8 @@ export default function RhDpSection({ onContact }: Props) {
                 <Icon name="sheet" className="w-7 h-7" />
               </div>
               <div>
-                <h3 className="text-2xl font-bold font-display text-[#0F2053]">Folha de pagamento e DP</h3>
-                <p className="text-base text-slate-600">Terceirize o Departamento Pessoal inteiro</p>
+                <h3 className="text-2xl font-bold font-display text-[#0F2053]">Consultoria em folha e DP</h3>
+                <p className="text-base text-slate-600">Cálculos revisados e ajustados, sua equipe orientada</p>
               </div>
             </div>
             <ul className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3 flex-1">
@@ -69,7 +69,7 @@ export default function RhDpSection({ onContact }: Props) {
               onClick={() => onContact('Folha de Pagamento & DP')}
               className="mt-4 inline-flex items-center gap-1.5 text-base font-bold text-[#0478CA] hover:text-[#03609F] cursor-pointer self-start"
             >
-              Pedir orçamento da folha
+              Pedir consultoria de folha
               <Icon name="arrow" className="w-4 h-4" />
             </button>
           </article>

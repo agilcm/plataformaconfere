@@ -1,5 +1,4 @@
-import { useId, useState } from 'react';
-import { CONSULTING_SERVICES, CONSULTING_TO_CONTACT, formatBRL } from '../data/servicesData.ts';
+import { CONSULTING_SERVICES, CONSULTING_TO_CONTACT } from '../data/servicesData.ts';
 import { Container, Icon } from './ui.tsx';
 
 interface Props {
@@ -32,29 +31,7 @@ const sentence = (t: string) =>
     .map((w, i) => (i === 0 || /^[A-ZÁÉÍÓÚ]{2,}$/.test(w) ? w : w.toLowerCase()))
     .join(' ');
 
-// Média observada: a readequação recupera cerca de 1,5% da folha por mês (estimativa, sem garantia)
-const TAXA_RECUPERACAO = 0.015;
-const MESES_RETROATIVO = 60; // 5 anos (prazo de prescrição)
-const FOLHA_MIN = 50000;
-const FOLHA_MAX = 5000000;
-const PREPONDERANCE_THRESHOLD = 33;
-
 export default function PrefeiturasSection({ onContact }: Props) {
-  const folhaId = useId();
-  const educId = useId();
-  const [folhaMensal, setFolhaMensal] = useState(300000);
-  const [folhaTexto, setFolhaTexto] = useState('300.000');
-  const [percEducacao, setPercEducacao] = useState(38);
-  const elegivel = percEducacao >= PREPONDERANCE_THRESHOLD;
-  const economiaMensal = Math.round(folhaMensal * TAXA_RECUPERACAO);
-  const economia60 = economiaMensal * MESES_RETROATIVO;
-  const folhas = economia60 / folhaMensal;
-  const definirFolha = (v: number) => {
-    const n = Math.min(FOLHA_MAX, Math.max(FOLHA_MIN, Math.round(v) || FOLHA_MIN));
-    setFolhaMensal(n);
-    setFolhaTexto(n.toLocaleString('pt-BR'));
-  };
-
   const servicos = CONSULTING_SERVICES.filter((s) => s.audience === 'publico');
 
   return (
@@ -127,132 +104,6 @@ export default function PrefeiturasSection({ onContact }: Props) {
               </li>
             ))}
           </ol>
-        </div>
-
-        {/* Simulador GILRAT */}
-        <div id="simulador-gilrat" className="mt-14 grid grid-cols-1 lg:grid-cols-2 gap-6 p-6 sm:p-8 rounded-3xl bg-white text-slate-800">
-          <div className="min-w-0">
-            <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#0478CA]/10 text-[#0478CA] text-sm font-bold">
-              <Icon name="calc" className="w-4 h-4" />
-              Simulador
-            </span>
-            <h3 className="mt-3 text-2xl font-bold font-display text-[#0F2053]">Quanto o seu município pode economizar no GILRAT?</h3>
-            <p className="mt-2 text-base text-slate-600 leading-relaxed">
-              Quando a Educação pesa muito na folha, o GILRAT pode ser readequado. Em média, isso recupera cerca de{' '}
-              <strong>1,5% da folha por mês</strong>. A confirmação vem com o estudo técnico.
-            </p>
-            <div className="mt-6">
-              <div className="flex flex-wrap justify-between gap-2 mb-2">
-                <label htmlFor={folhaId} className="text-base font-semibold text-slate-800">
-                  Folha mensal do município
-                </label>
-                <span className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-semibold">R$</span>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    aria-label="Valor da folha mensal em reais"
-                    value={folhaTexto}
-                    onChange={(e) => {
-                      const dig = e.target.value.replace(/\D/g, '').slice(0, 8);
-                      setFolhaTexto(dig ? Number(dig).toLocaleString('pt-BR') : '');
-                      const n = Number(dig);
-                      if (n >= FOLHA_MIN && n <= FOLHA_MAX) setFolhaMensal(n);
-                    }}
-                    onBlur={() => definirFolha(Number(folhaTexto.replace(/\D/g, '')))}
-                    className="w-40 pl-10 pr-3 py-1.5 rounded-lg border border-slate-300 text-right text-base font-bold text-[#0478CA] tabular-nums focus:outline-none focus:border-[#0478CA] focus:ring-2 focus:ring-[#0478CA]/20"
-                  />
-                </span>
-              </div>
-              <input
-                id={folhaId}
-                type="range"
-                min={FOLHA_MIN}
-                max={FOLHA_MAX}
-                step={10000}
-                value={folhaMensal}
-                aria-valuetext={formatBRL(folhaMensal)}
-                onChange={(e) => definirFolha(Number(e.target.value))}
-                className="w-full accent-[#0478CA] cursor-pointer"
-              />
-              <div className="mt-1 flex justify-between text-sm text-slate-500">
-                <span>R$ 50 mil</span>
-                <span>R$ 5 milhões</span>
-              </div>
-            </div>
-            <div className="mt-5">
-              <div className="flex flex-wrap justify-between gap-2 mb-2">
-                <label htmlFor={educId} className="text-base font-semibold text-slate-800">
-                  Peso da Educação na folha
-                </label>
-                <span className={`text-base font-bold tabular-nums ${elegivel ? 'text-[#0478CA]' : 'text-amber-700'}`}>{percEducacao}%</span>
-              </div>
-              <input
-                id={educId}
-                type="range"
-                min={20}
-                max={60}
-                step={1}
-                value={percEducacao}
-                onChange={(e) => setPercEducacao(Number(e.target.value))}
-                className="w-full accent-[#0478CA] cursor-pointer"
-              />
-              {!elegivel && (
-                <p role="status" className="mt-3 text-[15px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                  Com esse percentual o enquadramento é menos provável, mas o estudo pode avaliar outras atividades.
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div className="min-w-0 rounded-2xl bg-gradient-to-br from-[#0478CA] to-[#0F2053] text-white p-6 flex flex-col">
-            <p className="text-base text-white/85">Recuperação estimada por mês (1,5% da folha)</p>
-            <p className={`text-4xl sm:text-5xl font-bold font-display tabular-nums mt-1 ${elegivel ? '' : 'opacity-60'}`} aria-live="polite">
-              {formatBRL(economiaMensal)}
-            </p>
-            <dl className="mt-5 space-y-2 text-base">
-              <div className="flex justify-between gap-4">
-                <dt className="text-white/85">Em 12 meses</dt>
-                <dd className="font-bold tabular-nums">{formatBRL(economiaMensal * 12)}</dd>
-              </div>
-              <div className="flex justify-between gap-4">
-                <dt className="text-white/85">Em 60 meses (5 anos)</dt>
-                <dd className="font-bold tabular-nums">{formatBRL(economia60)}</dd>
-              </div>
-            </dl>
-            <div className="mt-5 p-4 rounded-xl bg-white/10">
-              <p className="text-base">
-                Equivale a <strong className="text-2xl font-display tabular-nums">{folhas.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}</strong>{' '}
-                {folhas >= 0.995 && folhas < 1.005 ? 'folha mensal' : 'da folha mensal'} do município
-              </p>
-              <div className="mt-3 h-3 rounded-full bg-white/20 overflow-hidden" aria-hidden="true">
-                <div className="h-full rounded-full bg-[#9fd3ff]" style={{ width: `${Math.min(100, folhas * 100)}%` }} />
-              </div>
-              <p className="mt-1 text-sm text-white/75">{Math.round(folhas * 100)}% de uma folha inteira paga de volta</p>
-            </div>
-            <details className="mt-4 text-sm text-white/85">
-              <summary className="cursor-pointer font-bold text-white">Como calculamos</summary>
-              <ol className="mt-2 space-y-1 list-decimal pl-5 tabular-nums">
-                <li>
-                  Folha mensal × 1,5% = {formatBRL(folhaMensal)} × 1,5% = <strong>{formatBRL(economiaMensal)}</strong> por mês
-                </li>
-                <li>
-                  × 60 meses (5 anos, prazo para recuperar) = <strong>{formatBRL(economia60)}</strong>
-                </li>
-                <li>
-                  {formatBRL(economia60)} ÷ {formatBRL(folhaMensal)} = <strong>{folhas.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} folha</strong>
-                </li>
-              </ol>
-            </details>
-            <p className="mt-4 text-sm text-white/75">Estimativa sem garantia de resultado. Depende do estudo técnico da folha.</p>
-            <button
-              type="button"
-              onClick={() => onContact('Readequação do GILRAT')}
-              className="mt-5 w-full px-5 py-3 text-base font-bold text-[#0F2053] bg-white hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
-            >
-              Solicitar o estudo para meu município
-            </button>
-          </div>
         </div>
 
         {/* Também para o município */}
