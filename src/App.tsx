@@ -6,7 +6,6 @@ import LicitacoesSection from './components/LicitacoesSection.tsx';
 import RhDpSection from './components/RhDpSection.tsx';
 import AuditoriaSection from './components/AuditoriaSection.tsx';
 import PrefeiturasSection from './components/PrefeiturasSection.tsx';
-import DepartamentoPessoal from './components/DepartamentoPessoal.tsx';
 import QuoteCalculator from './components/QuoteCalculator.tsx';
 import WhyAgil from './components/WhyAgil.tsx';
 import FaqSection from './components/FaqSection.tsx';
@@ -47,7 +46,6 @@ export default function App() {
         <QuoteCalculator preselectedServiceId={quoteServiceId} />
         <PrefeiturasSection onContact={goToContact} />
         <RhDpSection onContact={goToContact} />
-        <DepartamentoPessoal onContact={goToContact} />
         <AuditoriaSection onContact={goToContact} />
         <LicitacoesSection onContact={goToContact} />
         <WhyAgil />

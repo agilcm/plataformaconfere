@@ -8,7 +8,6 @@ export const NAV_LINKS = [
   { href: '#terceirizacao', label: 'Terceirização' },
   { href: '#prefeituras', label: 'Prefeituras' },
   { href: '#rh-dp', label: 'RH e DP' },
-  { href: '#simulador-dp', label: 'Simulador de DP' },
   { href: '#simular-orcamento', label: 'Pedir Orçamento' },
   { href: '#contato', label: 'Contato' },
 ];
@@ -17,7 +16,7 @@ export const LICITACOES_PAGE = ROUTES.licitacoes;
 
 interface HeaderProps {
   /** Página atual: na página de licitações os links apontam para a home (/#secao) */
-  page?: 'home' | 'licitacoes' | 'privado';
+  page?: 'home' | 'licitacoes' | 'privado' | 'dados';
 }
 
 export default function Header({ page = 'home' }: HeaderProps) {

@@ -54,22 +54,10 @@ export default function RhDpSection({ onContact }: Props) {
                 </li>
               ))}
             </ul>
-            <div className="mt-7 p-4 rounded-2xl bg-[#F2F7FC] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <p className="text-base text-slate-700">
-                <strong className="text-[#0F2053]">Quanto custa um funcionário?</strong> Calcule em 1 minuto.
-              </p>
-              <a
-                href="#simulador-dp"
-                className="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-base font-bold text-white bg-[#0F2053] hover:bg-[#1a2f6e] rounded-xl whitespace-nowrap"
-              >
-                <Icon name="calc" className="w-5 h-5" />
-                Simulador de DP
-              </a>
-            </div>
             <button
               type="button"
               onClick={() => onContact('Folha de Pagamento & DP')}
-              className="mt-4 inline-flex items-center gap-1.5 text-base font-bold text-[#0478CA] hover:text-[#03609F] cursor-pointer self-start"
+              className="mt-7 inline-flex items-center gap-1.5 text-base font-bold text-[#0478CA] hover:text-[#03609F] cursor-pointer self-start"
             >
               Pedir consultoria de folha
               <Icon name="arrow" className="w-4 h-4" />

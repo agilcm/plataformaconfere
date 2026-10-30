@@ -12,7 +12,7 @@ export const FAQ_ITEMS = [
   },
   {
     q: 'Quanto custa um funcionário para a minha empresa?',
-    a: 'Depende do regime tributário. No Lucro Presumido ou Real, os encargos somam cerca de 36,8% sobre a folha, além de férias, 13º e multa do FGTS. Use o Simulador de DP para calcular o seu caso.',
+    a: 'Depende do regime tributário. No Lucro Presumido ou Real, os encargos somam cerca de 36,8% sobre a folha, além de férias, 13º e multa do FGTS.',
   },
   {
     q: 'Vocês fazem a folha de pagamento da minha empresa?',

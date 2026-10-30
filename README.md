@@ -6,6 +6,7 @@ O site institucional ocupa a raiz. O botão **Licitações** no cabeçalho abre 
 | --- | --- |
 | `/` | Site principal da Ágil CM |
 | `/licitacoes/` | Consulta de licitações: Editais abertos, Contratos e AGIL CNAE (`#agil-cnae`) |
+| `/dados/` | Simuladores internos (sem link no site): RH, pró-labore, encargos do Simples em 12 meses e comparativo de enquadramento |
 | `/privado/` | Área restrita: organiza no Google Drive os termos de homologação/adjudicação e gera relatórios |
 | `/api/*` | Funções de consulta ao PNCP, para hospedagem compatível |
 
@@ -34,6 +35,10 @@ O build gera o site completo em `dist/`, com a página principal e Licitações 
 O arquivo `vercel.json` configura a Vercel para executar o build e servir `dist/`, com as funções da pasta `api/`. Publicar exige acesso à conta de hospedagem; salvar os arquivos no GitHub não publica automaticamente sem uma integração de deploy configurada.
 
 Hospedagens exclusivamente estáticas não executam `/api/*`; nesse caso, as consultas de licitações dependem da alternativa de acesso direto ao PNCP e das permissões CORS desse serviço.
+
+## Dados (simuladores internos)
+
+`/dados/` não tem link no site nem aparece em buscadores. Abas: **Simulador de RH** (custo de um funcionário), **Simulador de pró-labore** (INSS, IRRF com a Lei 15.270/2025 e INSS patronal), **Encargos do Simples** (projeção de 12 meses com RBT12, Fator R e pró-labore; exporta Excel), **Comparativo de enquadramento** (Simples × Lucro Presumido × Lucro Real, com a crítica do Fator R abaixo de 28%) e **Eleição** (em construção). Os parâmetros de cada ano ficam em `src/data/parametrosFiscais.js` e as atividades em `src/data/atividadesFiscais.js`.
 
 ## Contador de visitas
 
