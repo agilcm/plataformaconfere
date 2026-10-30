@@ -38,13 +38,26 @@ test('projeção do Simples: 12 meses, Fator R define Anexo III ou V', () => {
   perto(iv.meses[0].cpp, 20000 * 0.23 + 3000 * 0.2);
 });
 
+test('Fator R: folha com 13º, 1/3 de férias e FGTS (LC 123, art. 18, § 24)', async () => {
+  const { contaFatorR } = await import('../src/lib/tributos.js');
+  const c = contaFatorR(3000, 3000, 360000);
+  perto(c.salarios12, 36000);
+  perto(c.decimoFerias12, 4000);
+  perto(c.fgts12, 3200);
+  perto(c.proLabore12, 36000);
+  perto(c.folha12, 79200);
+  perto(c.fator, 0.22, 1e-9);
+});
+
 test('comparativo: três regimes e crítica do Fator R abaixo de 28%', () => {
   const r = comparativo({ atividadeId: 'servicos-fator-r', faturamentoMensal: 30000, folhaMensal: 3000, proLaboreMensal: 3000, outrasDespesas: 5000 });
   assert.deepEqual(r.regimes.map((x) => x.id), ['simples', 'presumido', 'real']);
   assert.equal(r.anexoSimples, 'V');
   const c = r.criticaFatorR;
   assert.equal(c.ok, false);
-  assert.ok(c.proLaboreNecessario > 5000 && c.ganhoLiquidoAno > 0);
+  // 28% × 30.000 = 8.400 de folha por mês; salários 3.000 + 13º e férias 333,33 + FGTS 266,67 = 3.600 → pró-labore de 4.800
+  perto(c.proLaboreNecessario, 4801, 0.02);
+  assert.ok(c.ganhoLiquidoAno > 0);
   const presumido = r.regimes.find((x) => x.id === 'presumido');
   // serviços: PIS/COFINS 3,65% + IRPJ 15% × 32% + CSLL 9% × 32% = 11,33% + ISS 3%
   perto(presumido.linhas.slice(0, 4).reduce((s, l) => s + l.valor, 0), 30000 * (0.0365 + 0.048 + 0.0288 + 0.03));

@@ -73,6 +73,35 @@ export function aliquotaSimples(anexo, rbt12) {
   return { faixa: (i < 0 ? faixas.length : i + 1), nominal, efetiva: Math.max(0, (receita * nominal - deduzir) / receita) };
 }
 
+/**
+ * Folha de salários do Fator R num mês médio (LC 123/2006, art. 18, § 24): remunerações pagas a pessoas físicas
+ * (salários, com 13º e 1/3 de férias em média mensal, e pró-labore) mais o FGTS recolhido.
+ * A CPP das atividades com Fator R está dentro do DAS (Anexos III e V), por isso não entra aqui.
+ */
+export function folhaFatorR(folhaMensal, proLaboreMensal) {
+  const salarios = folhaMensal || 0;
+  const decimoFerias = salarios / 12 + salarios / 36; // 13º (1/12) + 1/3 de férias (1/12 × 1/3)
+  const fgts = (salarios + decimoFerias) * ENCARGOS.fgts;
+  const proLab = proLaboreMensal || 0;
+  return { salarios, decimoFerias, fgts, proLabore: proLab, total: salarios + decimoFerias + fgts + proLab };
+}
+
+/** Fator R e a conta passo a passo (12 meses), para conferir */
+export function contaFatorR(folhaMensal, proLaboreMensal, rbt12) {
+  const f = folhaFatorR(folhaMensal, proLaboreMensal);
+  const x12 = (v) => r2(v * 12);
+  const folha12 = x12(f.total);
+  return {
+    salarios12: x12(f.salarios),
+    decimoFerias12: x12(f.decimoFerias),
+    fgts12: x12(f.fgts),
+    proLabore12: x12(f.proLabore),
+    folha12,
+    rbt12: r2(rbt12),
+    fator: rbt12 > 0 ? folha12 / rbt12 : 0,
+  };
+}
+
 /** Anexo efetivo: atividades com Fator R vão para o III se a folha de 12 meses for ≥ 28% da receita */
 export function anexoDe(ativ, fatorR) {
   if (!ativ.fatorR) return ativ.anexo;
@@ -92,8 +121,8 @@ export function projecaoSimples(p) {
   const anexoIV = ativ.anexo === 'IV';
   // últimos 12 meses (receita e folha para o Fator R); sem histórico informado, repete o mês atual
   const receitas = Array(12).fill((p.receita12Anterior ?? p.faturamentoMensal * 12) / 12);
-  const folhaFatorR = folha + pl + folha * ENCARGOS.fgts; // salários + pró-labore + FGTS
-  const folhas = Array(12).fill(folhaFatorR);
+  const folhaMes = folhaFatorR(folha, pl).total;
+  const folhas = Array(12).fill(folhaMes);
   const plCalc = proLabore(pl, { dependentes: p.dependentes || 0, cppEmpresa: anexoIV });
   const meses = [];
   let fat = p.faturamentoMensal;
@@ -126,7 +155,7 @@ export function projecaoSimples(p) {
     receitas.shift();
     receitas.push(fat);
     folhas.shift();
-    folhas.push(folhaFatorR);
+    folhas.push(folhaMes);
   }
   const soma = (k) => r2(meses.reduce((s, x) => s + x[k], 0));
   const totais = {
@@ -161,7 +190,7 @@ export function comparativo(p) {
 
   // Simples
   const rbt12 = receita * 12;
-  const fatorR = rbt12 > 0 ? ((folha + pl + folha * ENCARGOS.fgts) * 12) / rbt12 : 0;
+  const fatorR = rbt12 > 0 ? (folhaFatorR(folha, pl).total * 12) / rbt12 : 0;
   const anexo = anexoDe(ativ, fatorR);
   const aliq = aliquotaSimples(anexo, rbt12);
   const anexoIV = anexo === 'IV';
@@ -234,7 +263,7 @@ export function comparativo(p) {
   }
   const validos = regimes.filter((r) => r.elegivel);
   const melhor = validos.reduce((a, b) => (b.anual < a.anual ? b : a), validos[0]);
-  return { atividade: ativ, regimes, melhor: melhor?.id, fatorR, anexoSimples: anexo, criticaFatorR: criticarFatorR(p, ativ, fatorR) };
+  return { atividade: ativ, regimes, melhor: melhor?.id, fatorR, contaFatorR: contaFatorR(folha, pl, rbt12), anexoSimples: anexo, criticaFatorR: criticarFatorR(p, ativ, fatorR) };
 }
 
 /**
@@ -248,7 +277,7 @@ export function criticarFatorR(p, ativ = atividade(p.atividadeId), fatorR) {
   const pl = p.proLaboreMensal || 0;
   if (fatorR >= FATOR_R_MINIMO) return { ok: true, fatorR };
   const rbt12 = receita * 12;
-  const necessario = (FATOR_R_MINIMO * rbt12) / 12 - folha - folha * ENCARGOS.fgts; // pró-labore mensal mínimo
+  const necessario = (FATOR_R_MINIMO * rbt12) / 12 - folhaFatorR(folha, 0).total; // pró-labore mensal mínimo
   const novoPl = Math.ceil(Math.max(necessario, pl) * 100) / 100 + 1; // margem de R$ 1
   const dasV = receita * aliquotaSimples('V', rbt12).efetiva;
   const dasIII = receita * aliquotaSimples('III', rbt12).efetiva;

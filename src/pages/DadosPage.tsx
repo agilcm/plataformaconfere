@@ -6,7 +6,7 @@ import { Container, Icon } from '../components/ui.tsx';
 import { ATIVIDADES } from '../data/atividadesFiscais.js';
 import { FATOR_R_MINIMO, SALARIO_MINIMO, TETO_INSS, VIGENCIA } from '../data/parametrosFiscais.js';
 import { whatsappLink } from '../data/servicesData.ts';
-import { comparativo, projecaoSimples, proLabore } from '../lib/tributos.js';
+import { comparativo, contaFatorR, projecaoSimples, proLabore } from '../lib/tributos.js';
 import { baixarXlsx } from '../lib/xlsx.js';
 
 type Aba = 'rh' | 'prolabore' | 'simples' | 'comparativo' | 'eleicao';
@@ -77,6 +77,51 @@ const Linha = ({ nome, valor, forte, negativo }: { nome: string; valor: string; 
 );
 
 const Nota = ({ children }: { children: React.ReactNode }) => <p className="mt-4 text-sm text-slate-500 leading-relaxed">{children}</p>;
+
+/** Conta do Fator R com os números digitados e a base legal, para conferir */
+function ComoConferirFatorR({ conta }: { conta: ReturnType<typeof contaFatorR> }) {
+  const ok = conta.fator >= FATOR_R_MINIMO;
+  return (
+    <details className={`${card} text-[15px]`}>
+      <summary className="font-bold text-[#0F2053] cursor-pointer">Como conferir o Fator R</summary>
+      <div className="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div>
+          <p className="font-semibold text-slate-700">Folha de salários dos 12 meses anteriores</p>
+          <div className="mt-1">
+            <Linha nome="Salários dos empregados" valor={moeda(conta.salarios12)} />
+            <Linha nome="13º salário e 1/3 de férias" valor={moeda(conta.decimoFerias12)} />
+            <Linha nome="FGTS (8%) sobre salários, 13º e férias" valor={moeda(conta.fgts12)} />
+            <Linha nome="Pró-labore dos sócios" valor={moeda(conta.proLabore12)} />
+            <Linha nome="Folha de salários (A)" valor={moeda(conta.folha12)} forte />
+            <Linha nome="Receita bruta dos 12 meses anteriores (B)" valor={moeda(conta.rbt12)} forte />
+          </div>
+          <p className={`mt-3 p-3 rounded-xl font-bold ${ok ? 'bg-emerald-50 text-emerald-900' : 'bg-red-50 text-red-900'}`}>
+            Fator R = A ÷ B = {moeda(conta.folha12)} ÷ {moeda(conta.rbt12)} = {pct(conta.fator)} → {ok ? 'Anexo III' : 'Anexo V'}
+          </p>
+        </div>
+        <div className="text-slate-600 leading-relaxed space-y-2">
+          <p>
+            <strong className="text-slate-800">Regra:</strong> nas atividades com Fator R, se a folha de salários dos 12 meses anteriores for igual ou maior
+            que 28% da receita bruta dos mesmos 12 meses, a empresa é tributada pelo Anexo III; abaixo de 28%, pelo Anexo V (LC 123/2006, art. 18, §§ 5º-J
+            e 5º-M).
+          </p>
+          <p>
+            <strong className="text-slate-800">O que entra na folha:</strong> tudo o que foi pago a pessoas físicas pelo trabalho nos 12 meses anteriores
+            (salários, 13º, férias, pró-labore), mais o FGTS e a contribuição patronal efetivamente recolhidos (LC 123/2006, art. 18, § 24). Nas atividades
+            com Fator R a contribuição patronal está dentro do DAS, por isso não soma.
+          </p>
+          <p>
+            <strong className="text-slate-800">Para conferir no PGDAS-D:</strong> some, mês a mês, a folha informada nos 12 meses anteriores ao período de
+            apuração e divida pela receita bruta dos mesmos 12 meses (a RBT12). O cálculo é refeito todo mês, então o anexo pode mudar de um mês para o outro.
+          </p>
+          <p className="text-sm">
+            Aqui a folha é a média mensal informada: o 13º entra como 1/12 e o 1/3 de férias como 1/36 por mês. Distribuição de lucros não entra na folha.
+          </p>
+        </div>
+      </div>
+    </details>
+  );
+}
 
 // ---------------------------------------------------------------- pró-labore
 
@@ -217,6 +262,7 @@ function SimuladorSimples() {
             : `abaixo de ${pct(FATOR_R_MINIMO, 0)}, a empresa paga pelo Anexo V. Veja no Comparativo de enquadramento quanto de pró-labore leva ao Anexo III.`}
         </div>
       )}
+      {r.atividade.fatorR && <ComoConferirFatorR conta={contaFatorR(folha, pl, r.meses[0].rbt12)} />}
       {r.meses.some((m) => m.acimaLimite) && (
         <p className="p-4 rounded-2xl bg-red-50 border border-red-300 text-red-900">A receita de 12 meses passa de R$ 4,8 milhões: a empresa sai do Simples Nacional.</p>
       )}
@@ -274,8 +320,8 @@ function SimuladorSimples() {
           </table>
         </div>
         <Nota>
-          A alíquota efetiva de cada mês usa a receita bruta dos 12 meses anteriores (RBT12), como no PGDAS. O Fator R considera salários, pró-labore e FGTS
-          dos 12 meses anteriores. O INSS e o IRRF do pró-labore são descontados do sócio, não somam no custo da empresa. Estimativa para planejamento.
+          A alíquota efetiva de cada mês usa a receita bruta dos 12 meses anteriores (RBT12), como no PGDAS. O Fator R considera salários (com 13º e 1/3 de
+          férias), pró-labore e FGTS dos 12 meses anteriores (LC 123/2006, art. 18, § 24). O INSS e o IRRF do pró-labore são descontados do sócio, não somam no custo da empresa. Estimativa para planejamento.
         </Nota>
       </div>
     </div>
@@ -360,9 +406,10 @@ function ComparativoEnquadramento() {
       )}
       {c && c.ok && (
         <p className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900">
-          Fator R de {pct(c.fatorR, 1)}: acima de {pct(FATOR_R_MINIMO, 0)}, a empresa fica no Anexo III do Simples.
+          Fator R de {pct(c.fatorR, 1)}: igual ou acima de {pct(FATOR_R_MINIMO, 0)}, a empresa fica no Anexo III do Simples.
         </p>
       )}
+      {r.atividade.fatorR && <ComoConferirFatorR conta={r.contaFatorR} />}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {r.regimes.map((g) => (
