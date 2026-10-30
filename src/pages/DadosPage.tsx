@@ -7,6 +7,8 @@ import { ATIVIDADES } from '../data/atividadesFiscais.js';
 import { FATOR_R_MINIMO, SALARIO_MINIMO, TETO_INSS, VIGENCIA } from '../data/parametrosFiscais.js';
 import { whatsappLink } from '../data/servicesData.ts';
 import { aliquotasPresumido, contaFatorR, criticarFatorR, faturamentosDe, folhaFatorR, projecaoPresumido, projecaoSimples, proLabore } from '../lib/tributos.js';
+import { dateText, downloadPdf } from '../lib/pdfReport.ts';
+import { blocosPdfSimples } from '../lib/simplesRelatorio.js';
 import { baixarXlsx } from '../lib/xlsx.js';
 
 type Aba = 'rh' | 'simples' | 'eleicao';
@@ -147,11 +149,11 @@ function SimuladorSimplesProLabore() {
   const [comFaturamento, setComFaturamento] = useState(true);
   const [comparar, setComparar] = useState(false);
   const [fat, setFat] = useState(30000);
-  const [cresc, setCresc] = useState(0);
+  const [cresc, setCresc] = useState(2);
   const [situacao, setSituacao] = useState<'existente' | 'nova'>('existente');
-  const [rec12, setRec12] = useState(360000);
+  const [rec12, setRec12] = useState(300000);
   const [mesAMes, setMesAMes] = useState(false);
-  const [fats, setFats] = useState<number[]>(() => faturamentosDe(30000));
+  const [fats, setFats] = useState<number[]>(() => faturamentosDe(30000, 0.02));
   const atividadeAtual = ATIVIDADES.find((a) => a.id === ativ)!;
   const [aliqP, setAliqP] = useState(() => aliquotasPresumido(atividadeAtual));
   const anexoIV = atividadeAtual.anexo === 'IV';
@@ -224,6 +226,33 @@ function SimuladorSimplesProLabore() {
         linhas: presumido.meses.map((m) => [m.mes, m.faturamento, m.pisCofins, m.irpj, m.csll, m.local, m.encargosFolha, m.patronalPl, m.total]),
       });
     baixarXlsx(`simples-pro-labore-${new Date().toISOString().slice(0, 10)}.xlsx`, abas);
+  };
+
+  const [gerandoPdf, setGerandoPdf] = useState(false);
+  const exportarPdf = async () => {
+    setGerandoPdf(true);
+    try {
+      const blocos = blocosPdfSimples({
+        simples,
+        presumido: comparar ? presumido : null,
+        aliqP: comparar ? aliqP : null,
+        critica,
+        mesQueCai,
+        proLaboreParaMes,
+        plSimples,
+        atividade: atividadeAtual,
+        folha,
+        pl,
+        situacao,
+        rec12,
+        cresc,
+        mesAMes,
+        dataText: dateText(),
+      });
+      await downloadPdf(`projecao-simples-${new Date().toISOString().slice(0, 10)}.pdf`, 'Projeção do Simples Nacional', blocos as never);
+    } finally {
+      setGerandoPdf(false);
+    }
   };
 
   return (
@@ -457,15 +486,32 @@ function SimuladorSimplesProLabore() {
 
           <div className={card}>
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="text-lg font-bold text-[#0F2053]">Simples mês a mês</p>
+              <p className="text-lg font-bold text-[#0F2053] mr-auto">Simples mês a mês</p>
               <button type="button" onClick={exportar} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#1D6F42] hover:bg-[#185C37] text-white font-bold cursor-pointer">
                 <Icon name="sheet" className="w-5 h-5" /> Exportar Excel
               </button>
+              <button
+                type="button"
+                onClick={exportarPdf}
+                disabled={gerandoPdf}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#0F2053] hover:bg-[#0478CA] text-white font-bold cursor-pointer disabled:opacity-60"
+              >
+                <Icon name="doc" className="w-5 h-5" /> {gerandoPdf ? 'Gerando PDF…' : 'Baixar PDF'}
+              </button>
             </div>
+            <p className="mt-2 text-sm text-slate-600">
+              O faturamento que você projeta para cada mês entra na receita dos 12 meses (RBT12) dos meses seguintes. Com o faturamento crescendo, a
+              receita acumulada sobe e a alíquota efetiva aumenta mês a mês (▲).
+            </p>
             {!aliquotaMudou && (
-              <p className="mt-2 text-sm text-slate-600">
-                A alíquota ficou igual nos 12 meses porque a receita dos 12 meses anteriores não mudou. Ela sobe quando essa receita cresce: informe um
-                faturamento crescente, uma receita dos últimos 12 meses menor que o ritmo atual ou marque "Empresa nova".
+              <p className="mt-2 p-3 rounded-xl bg-amber-50 border border-amber-200 text-sm text-amber-900">
+                A alíquota ficou igual nos 12 meses porque cada mês projetado é igual à média dos 12 meses anteriores, então a receita acumulada não
+                muda (é assim no PGDAS-D).{' '}
+                {!mesAMes && (
+                  <button type="button" onClick={() => setCresc(2)} className="font-bold underline cursor-pointer">
+                    Projetar crescimento de 2% ao mês
+                  </button>
+                )}
               </p>
             )}
             <div className="mt-4 overflow-x-auto">
