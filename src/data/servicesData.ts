@@ -142,7 +142,7 @@ export const CONTACT_OPTIONS: { value: string; label: string }[] = [
   { value: 'Fornecimento de Suprimentos', label: 'Fornecimento de Suprimentos & Merenda / Educação' },
   { value: 'Readequação do GILRAT', label: 'Estudo de Readequação do GILRAT' },
   { value: 'Reparcelamento Previdenciário', label: 'Reparcelamento de Débitos Previdenciários do Município' },
-  { value: 'Gestão de RH & Compliance', label: 'Gestão de RH & Compliance (Órgãos Públicos)' },
+  { value: 'Gestão de RH & Compliance', label: 'Consultoria de Folha, RH & Compliance (Órgãos Públicos)' },
   { value: 'Consultoria de RH para Empresas', label: 'Consultoria de RH para Empresas' },
   { value: 'Folha de Pagamento & DP', label: 'Folha de Pagamento & Departamento Pessoal' },
   { value: 'Auditoria de Folha & Recuperação Tributária', label: 'Auditoria de Folha & Recuperação Tributária' },
@@ -251,15 +251,17 @@ export const CONSULTING_SERVICES: ConsultingServiceItem[] = [
     id: 'gestao-rh-compliance',
     audience: 'publico',
     number: '03',
-    title: 'Gestão de RH & Compliance Trabalhista',
-    subtitle: 'Estruturação técnica, auditoria profunda de folha e governança institucional',
-    highlight: 'Blindagem contra passivos e multas',
-    shortDescription: 'Auditoria de folha e rotinas de RH alinhadas ao eSocial e aos Tribunais de Contas.',
-    fullDescription: 'Atuação com ampla experiência comprovada em administrações municipais e órgãos públicos de todo o estado. Solucionamos gargalos complexos de folha, modernizamos rotinas e alinhamos as diretrizes operacionais às exigências do eSocial e Tribunais de Contas.',
+    title: 'Consultoria de Folha, RH & Compliance',
+    subtitle: 'Cálculos e encargos da folha revisados, rotinas de RH seguras',
+    highlight: 'Encargos certos, sem passivos',
+    shortDescription: 'Consultoria para a folha pagar e recolher certo: incidências de INSS, adicionais e rotinas alinhadas ao eSocial e ao Tribunal de Contas.',
+    fullDescription: 'Revisamos os cálculos da folha do município e orientamos a equipe de RH: quais verbas têm incidência de INSS, FGTS e IRRF, se insalubridade e periculosidade estão sendo pagas a quem tem direito e no grau certo, e se as rotinas atendem ao eSocial e ao Tribunal de Contas. Adicional ou encargo pago errado aumenta o risco de passivo e o custo da folha.',
     benefits: [
-      { title: 'Auditoria Profunda de Folha', desc: 'Identificação de inconsistências em adicionais, horas extras, benefícios e retenções previdenciárias.' },
-      { title: 'Mitigação de Riscos & Compliance', desc: 'Garantia de que o ente público opere estritamente dentro da legislação, evitando apontamentos do TCE/TCU.' },
-      { title: 'Modernização das Rotinas', desc: 'Treinamento de servidores, digitalização de processos e indicadores de produtividade.' }
+      { title: 'Incidências de INSS na folha', desc: 'Conferência das verbas com e sem incidência de INSS, FGTS e IRRF, para não recolher a mais nem a menos.' },
+      { title: 'Insalubridade e periculosidade corretas', desc: 'Revisão de laudos, graus e base de cálculo: adicional pago sem fundamento aumenta encargos e risco; pago a menos gera ação.' },
+      { title: 'Horas extras, adicionais e médias', desc: 'Cálculo e reflexos revisados em férias, 13º e rescisões.' },
+      { title: 'Ajuste de cálculos e encargos', desc: 'Correção do que estiver errado e orientação para a equipe aplicar todo mês.' },
+      { title: 'Compliance com eSocial e TCE', desc: 'Rotinas e informações alinhadas ao eSocial e às exigências do Tribunal de Contas.' }
     ]
   },
   {

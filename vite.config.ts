@@ -16,10 +16,24 @@ const apiDevServer = (): Plugin => ({
   },
 });
 
+// Contador de visitas (Cloudflare Web Analytics, sem cookies): entra só se o token estiver configurado
+// na variável CF_WEB_ANALYTICS_TOKEN do GitHub Actions. A área Privado fica de fora.
+const contadorVisitas = (): Plugin => ({
+  name: 'contador-visitas',
+  transformIndexHtml(html, ctx) {
+    const token = (process.env.CF_WEB_ANALYTICS_TOKEN || '').trim();
+    if (!/^[a-f0-9]{32}$/i.test(token) || ctx.path.includes('privado')) return html;
+    return html.replace(
+      '</body>',
+      `  <script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "${token}"}'></script>\n  </body>`,
+    );
+  },
+});
+
 export default defineConfig(() => {
   return {
     base: process.env.SITE_BASE_PATH || '/',
-    plugins: [react(), tailwindcss(), apiDevServer()],
+    plugins: [react(), tailwindcss(), apiDevServer(), contadorVisitas()],
     resolve: {
       alias: {
         '@': path.resolve(import.meta.dirname, '.'),

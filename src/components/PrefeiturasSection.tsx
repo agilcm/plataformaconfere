@@ -24,11 +24,11 @@ const ALSO = [
   { icon: 'box', text: 'Merenda, material escolar e suprimentos' },
 ];
 
-// Deixa só a primeira letra maiúscula (mantém siglas como GILRAT, INSS, RH)
+// Deixa só a primeira letra maiúscula (mantém siglas como GILRAT, INSS, RH e nomes como eSocial)
 const sentence = (t: string) =>
   t
     .split(' ')
-    .map((w, i) => (i === 0 || /^[A-ZÁÉÍÓÚ]{2,}$/.test(w) ? w : w.toLowerCase()))
+    .map((w, i) => (i === 0 || /^[A-ZÁÉÍÓÚ]{2,}$/.test(w) || /[a-z][A-Z]/.test(w) ? w : w.toLowerCase()))
     .join(' ');
 
 export default function PrefeiturasSection({ onContact }: Props) {
@@ -74,7 +74,7 @@ export default function PrefeiturasSection({ onContact }: Props) {
               <h3 className="mt-3 text-xl font-bold font-display text-[#0F2053]">{s.title}</h3>
               <p className="mt-2 text-base text-slate-600 leading-relaxed">{s.shortDescription}</p>
               <ul className="mt-4 space-y-2 flex-1">
-                {s.benefits.slice(0, 3).map((b) => (
+                {s.benefits.slice(0, s.id === 'gestao-rh-compliance' ? 5 : 3).map((b) => (
                   <li key={b.title} className="flex items-start gap-2 text-[15px]">
                     <Icon name="check" className="w-5 h-5 mt-0.5 text-[#0478CA] shrink-0" />
                     {sentence(b.title)}

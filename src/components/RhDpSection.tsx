@@ -6,11 +6,13 @@ interface Props {
 
 const DP_ITEMS = [
   'Revisão e ajuste de cálculos da folha',
-  'Conferência de férias, 13º e rescisões',
+  'Incidências de INSS, FGTS e IRRF nas verbas',
+  'Insalubridade e periculosidade no grau certo',
   'Horas extras, adicionais e médias',
+  'Conferência de férias, 13º e rescisões',
   'Regras de ponto e banco de horas',
   'Conferência de eSocial, FGTS Digital e DCTFWeb',
-  'Encargos e obrigações sem multa',
+  'Encargos certos, sem pagar a mais',
 ];
 
 const RH_ITEMS = [

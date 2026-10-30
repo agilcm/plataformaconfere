@@ -35,6 +35,10 @@ O arquivo `vercel.json` configura a Vercel para executar o build e servir `dist/
 
 Hospedagens exclusivamente estáticas não executam `/api/*`; nesse caso, as consultas de licitações dependem da alternativa de acesso direto ao PNCP e das permissões CORS desse serviço.
 
+## Contador de visitas
+
+O build inclui o Cloudflare Web Analytics (sem cookies) quando a variável `CF_WEB_ANALYTICS_TOKEN` está definida em **Settings → Secrets and variables → Actions → Variables**. Ele entra na página inicial e em Licitações; a área Privado fica de fora. Sem a variável, nada é incluído.
+
 ## Monitor de pregões (Telegram)
 
 O workflow `.github/workflows/monitor-pregoes.yml` roda `scripts/monitor-pregoes.mjs` a cada 5 minutos e avisa no Telegram quando, num pregão acompanhado, a situação da compra muda (suspensa, revogada…), um item muda de situação ou ganha resultado (destacando quando a AGIL vence) ou sai documento novo (esclarecimento, impugnação, ata…). Os dados vêm da API pública do PNCP. O chat do pregoeiro não entra: no Compras.gov.br ele só existe para o fornecedor logado, e o acompanhamento público exige hCaptcha.
