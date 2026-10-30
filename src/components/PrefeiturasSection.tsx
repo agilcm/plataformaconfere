@@ -38,7 +38,7 @@ export default function PrefeiturasSection({ onContact }: Props) {
     <section
       id="prefeituras"
       aria-labelledby="titulo-prefeituras"
-      className="relative py-16 sm:py-24 bg-gradient-to-br from-[#0F2053] via-[#13306f] to-[#0A1640] text-white overflow-hidden"
+      className="relative py-12 sm:py-16 bg-gradient-to-br from-[#0F2053] via-[#13306f] to-[#0A1640] text-white overflow-hidden"
     >
       <div aria-hidden="true" className="absolute -top-40 -left-40 w-[32rem] h-[32rem] rounded-full bg-[#0478CA]/30 blur-3xl" />
       <div aria-hidden="true" className="absolute bottom-0 right-0 w-[26rem] h-[26rem] rounded-full bg-[#0478CA]/20 blur-3xl" />

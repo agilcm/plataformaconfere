@@ -29,7 +29,7 @@ const PORTALS = ['Compras.gov.br', 'BLL Compras', 'Licitanet', 'Portal de Compra
 
 export default function LicitacoesSection({ onContact }: Props) {
   return (
-    <section id="licitacoes" aria-labelledby="titulo-licitacoes" className="relative py-16 sm:py-24 bg-white overflow-hidden">
+    <section id="licitacoes" aria-labelledby="titulo-licitacoes" className="relative py-12 sm:py-16 bg-white overflow-hidden">
       <div aria-hidden="true" className="absolute -top-32 -right-32 w-[28rem] h-[28rem] rounded-full bg-[#0478CA]/8 blur-3xl" />
       <Container className="relative">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-stretch">

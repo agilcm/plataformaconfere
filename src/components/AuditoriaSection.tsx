@@ -20,7 +20,7 @@ const CHECKS = [
 
 export default function AuditoriaSection({ onContact }: Props) {
   return (
-    <section id="recuperacao-tributaria" aria-labelledby="titulo-recuperacao" className="py-16 sm:py-24 bg-white">
+    <section id="recuperacao-tributaria" aria-labelledby="titulo-recuperacao" className="py-12 sm:py-16 bg-white">
       <Container>
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
           <div className="lg:col-span-7">

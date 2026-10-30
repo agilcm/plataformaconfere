@@ -25,7 +25,7 @@ const RH_ITEMS = [
 
 export default function RhDpSection({ onContact }: Props) {
   return (
-    <section id="rh-dp" aria-labelledby="titulo-rh-dp" className="py-16 sm:py-24 bg-[#F4F7FB]">
+    <section id="rh-dp" aria-labelledby="titulo-rh-dp" className="py-12 sm:py-16 bg-[#F4F7FB]">
       <Container>
         <SectionHeader
           id="titulo-rh-dp"

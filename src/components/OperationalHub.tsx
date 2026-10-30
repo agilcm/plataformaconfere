@@ -7,7 +7,7 @@ interface OperationalHubProps {
 
 export default function OperationalHub({ onQuote }: OperationalHubProps) {
   return (
-    <section id="terceirizacao" aria-labelledby="titulo-terceirizacao" className="py-16 sm:py-24 bg-white">
+    <section id="terceirizacao" aria-labelledby="titulo-terceirizacao" className="py-12 sm:py-16 bg-white">
       <Container>
         <SectionHeader
           id="titulo-terceirizacao"

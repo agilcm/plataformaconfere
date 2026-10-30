@@ -62,7 +62,7 @@ export default function ContactSection({ defaultService }: ContactSectionProps) 
   const whatsHref = whatsappLink(`Olá! Vim pelo site da Ágil CM.\n${summary}`);
 
   return (
-    <section id="contato" aria-labelledby="titulo-contato" className="py-16 sm:py-24 bg-[#F4F7FB]">
+    <section id="contato" aria-labelledby="titulo-contato" className="py-12 sm:py-16 bg-[#F4F7FB]">
       <Container>
         <SectionHeader
           id="titulo-contato"

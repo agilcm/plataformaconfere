@@ -9,7 +9,7 @@ const REASONS = [
 
 export default function WhyAgil() {
   return (
-    <section id="diferenciais" aria-labelledby="titulo-diferenciais" className="py-16 sm:py-24 bg-[#F4F7FB]">
+    <section id="diferenciais" aria-labelledby="titulo-diferenciais" className="py-12 sm:py-16 bg-[#F4F7FB]">
       <Container>
         <header className="mb-10 max-w-3xl">
           <p className="text-sm font-bold text-[#0478CA] mb-2">Por que a Ágil CM</p>

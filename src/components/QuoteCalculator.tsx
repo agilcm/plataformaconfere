@@ -108,7 +108,7 @@ Aguardo a análise e a proposta da Ágil CM.`;
     'bg-white border border-slate-300 rounded-lg px-3 py-2.5 text-base text-[#0F2053] placeholder-slate-400 focus:outline-none focus:border-[#0478CA] focus:ring-2 focus:ring-[#0478CA]/20';
 
   return (
-    <section id="simular-orcamento" aria-labelledby="titulo-simular-orcamento" className="py-16 sm:py-24 bg-[#F4F7FB]">
+    <section id="simular-orcamento" aria-labelledby="titulo-simular-orcamento" className="py-12 sm:py-16 bg-[#F4F7FB]">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <SectionHeader
           id="titulo-simular-orcamento"

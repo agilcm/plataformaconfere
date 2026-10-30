@@ -3,7 +3,7 @@ import { Container, SectionHeader } from './ui.tsx';
 
 export default function FaqSection() {
   return (
-    <section id="duvidas" aria-labelledby="titulo-duvidas" className="py-16 sm:py-24 bg-white">
+    <section id="duvidas" aria-labelledby="titulo-duvidas" className="py-12 sm:py-16 bg-white">
       <Container className="max-w-4xl">
         <SectionHeader id="titulo-duvidas" eyebrow="Perguntas frequentes" title="Tire suas dúvidas" center />
         <div className="space-y-3">

@@ -6,7 +6,7 @@ O site institucional ocupa a raiz. O botão **Licitações** no cabeçalho abre 
 | --- | --- |
 | `/` | Site principal da Ágil CM |
 | `/licitacoes/` | Consulta de licitações: Editais abertos, Contratos e AGIL CNAE (`#agil-cnae`) |
-| `/dados/` | Simuladores internos (sem link no site): RH, pró-labore, encargos do Simples em 12 meses e comparativo de enquadramento |
+| `/dados/` | Simuladores internos (sem link no site): RH e Simples, pró-labore e regime (Simples × Lucro Presumido) |
 | `/privado/` | Área restrita: organiza no Google Drive os termos de homologação/adjudicação e gera relatórios |
 | `/api/*` | Funções de consulta ao PNCP, para hospedagem compatível |
 
@@ -38,7 +38,7 @@ Hospedagens exclusivamente estáticas não executam `/api/*`; nesse caso, as con
 
 ## Dados (simuladores internos)
 
-`/dados/` não tem link no site nem aparece em buscadores. Abas: **Simulador de RH** (custo de um funcionário), **Simulador de pró-labore** (INSS, IRRF com a Lei 15.270/2025 e INSS patronal), **Encargos do Simples** (projeção de 12 meses com RBT12, Fator R e pró-labore; exporta Excel), **Comparativo de enquadramento** (Simples × Lucro Presumido × Lucro Real, com a crítica do Fator R abaixo de 28%) e **Eleição** (em construção). Os parâmetros de cada ano ficam em `src/data/parametrosFiscais.js` e as atividades em `src/data/atividadesFiscais.js`.
+`/dados/` não tem link no site nem aparece em buscadores. Abas: **Simulador de RH** (custo de um funcionário), **Simples, pró-labore e regime** (pró-labore sempre; marcando "Calcular sobre o faturamento", a projeção do Simples em 12 meses com RBT12 móvel, empresa nova e faturamento mês a mês, Fator R e a conta para conferir; marcando "Comparar regime", Simples × Lucro Presumido com alíquotas padrão editáveis; exporta Excel) e **Eleição** (em construção). Os parâmetros de cada ano ficam em `src/data/parametrosFiscais.js` e as atividades em `src/data/atividadesFiscais.js`.
 
 ## Contador de visitas
 
