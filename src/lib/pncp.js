@@ -389,13 +389,21 @@ export function mapContrato(it) {
  * Pesquisa um produto nos contratos de MG e devolve, para cada compra, o item correspondente:
  * descrição/modelo solicitado, quantidade, valor estimado, valor homologado e fornecedor vencedor.
  *
+ * Só entram contratos assinados nos últimos `meses` meses (0 = sem limite).
+ *
  * @param {{ q: string, regiao?: 'mg'|'zona-da-mata', micro?: string, soMunicipios?: boolean, pagina?: number,
- *           alvo?: number, maxPaginas?: number }} opts
+ *           alvo?: number, maxPaginas?: number, meses?: number, hoje?: Date }} opts
  */
 export async function searchContratosProduto(
-  { q, regiao = 'mg', micro = '', soMunicipios = true, pagina = 1, alvo = 12, maxPaginas = 5 },
+  { q, regiao = 'mg', micro = '', soMunicipios = true, pagina = 1, alvo = 12, maxPaginas = 5, meses = 0, hoje = new Date() },
   fetchImpl = fetch,
 ) {
+  let corte = '';
+  if (meses) {
+    const d = new Date(hoje);
+    d.setMonth(d.getMonth() - meses);
+    corte = d.toISOString().slice(0, 10);
+  }
   const terms = termsOf(q);
   if (!terms.length) return { rows: [], proximaPagina: null, totalBusca: 0, itensComErro: 0 };
 
@@ -412,6 +420,7 @@ export async function searchContratosProduto(
       if (soMunicipios && c.esfera !== 'M') continue;
       if (regiao === 'zona-da-mata' && !c.microrregiao) continue;
       if (micro && c.microrregiao !== micro) continue;
+      if (corte && (c.assinadoEm || c.atualizadoEm || '').slice(0, 10) < corte) continue;
       contratos.push(c);
     }
   }

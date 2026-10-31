@@ -15,7 +15,7 @@ export default async function handler(req, res) {
   const pagina = Math.max(1, Number(p.get('pagina')) || 1);
   try {
     const key = `contratos:${q.toLowerCase()}:${regiao}:${micro}:${soMunicipios}:${pagina}`;
-    const r = await cached(key, 30 * 60e3, () => searchContratosProduto({ q, regiao, micro, soMunicipios, pagina }));
+    const r = await cached(key, 30 * 60e3, () => searchContratosProduto({ q, regiao, micro, soMunicipios, pagina, alvo: 20, maxPaginas: 8, meses: 6 }));
     return send(res, 200, { ...r.value, atualizadoEm: new Date(r.at).toISOString(), desatualizado: r.stale }, 1800);
   } catch (e) {
     return sendError(res, e);
