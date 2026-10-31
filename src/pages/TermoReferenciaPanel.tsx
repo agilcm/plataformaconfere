@@ -500,7 +500,8 @@ export default function TermoReferenciaPanel() {
           <p className="text-sm text-slate-500">
             Fonte: PNCP, valores unitários homologados de pregões e dispensas de Minas Gerais{interior ? ' (sem Belo Horizonte)' : ''} nos últimos {meses}{' '}
             meses. O PNCP não publica a marca do vencedor: ela aparece quando o órgão a escreveu na descrição do item; nos demais casos, está na ata, no link do
-            pregão. Preços muito abaixo dos demais (menos de 35% da mediana) ficam fora da escolha.
+            pregão. Ficam fora da escolha os preços muito abaixo dos demais (menos de 35% da mediana) e os muito distantes do valor do termo (menos de 20% ou
+            mais de 5 vezes).
           </p>
         </>
       )}

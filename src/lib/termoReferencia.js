@@ -28,6 +28,8 @@ const UNIDADES = [
   [/^(m|metro|metros)$/, 'm'],
   [/^(w|watts?)$/, 'w'],
   [/^(v|volts?)$/, 'v'],
+  [/^(btu|btus)$/, 'btu'],
+  [/^(pol|pols|polegada|polegadas)$/, 'pol'],
 ];
 const ROMANOS = {
   i: '1',
@@ -44,20 +46,23 @@ const ROMANOS = {
 export function tokens(texto) {
   let s = norm(texto)
     .replace(/(\d),(\d)/g, '$1.$2')
+    .replace(/(\d)\s*("|”|'')/g, '$1 pol ')
     .replace(/[^a-z0-9.]+/g, ' ');
-  // medidas: "5 kg" → "5kg"; "1.000 g" → "1000g"
-  s = s.replace(/\b(\d+(?:\.\d+)?)\s*([a-z]{1,11})\b/g, (m, n, u) => {
-    const un = UNIDADES.find(([re]) => re.test(u));
-    if (!un) return m;
-    const numero = /^\d{1,3}(\.\d{3})+$/.test(n) ? n.replace(/\./g, '') : n;
-    return ` ${Number(numero)}${un[1]} `;
-  });
   s = s.replace(/\btipo\s+(i{1,3}|iv|v|0?\d)\b/g, (_, t) => ` tipo${ROMANOS[t] || String(Number(t))} `);
+  // medidas: "5 kg" → "5kg"; "1.000 g" → "1000g"
+  // e quantidades do produto: "48 portas" → "48porta", "04 lugares" → "4lugar", "06 bocas" → "6boca"
+  s = s.replace(/\b(\d+(?:\.\d+)?)\s*([a-z]{1,11})\b/g, (m, n, u) => {
+    const numero = Number(/^\d{1,3}(\.\d{3})+$/.test(n) ? n.replace(/\./g, '') : n);
+    const un = UNIDADES.find(([re]) => re.test(u));
+    if (un) return ` ${numero}${un[1]} `;
+    if (u.length >= 3 && !PARADAS.has(u) && !/^(x|ou|a|e)$/.test(u)) return ` ${numero}${raiz(u)} `;
+    return m;
+  });
   const out = [];
   for (const w of s.split(/\s+/)) {
     const t = w.replace(/^\.+|\.+$/g, '');
     if (!t || PARADAS.has(t)) continue;
-    if (/^\d+(\.\d+)?(kg|g|mg|l|ml|cm|mm|m|w|v)$/.test(t) || /^tipo\d$/.test(t)) out.push(t);
+    if (MEDIDA.test(t) || /^tipo\d$/.test(t)) out.push(t);
     else if (/^[a-z]{3,}$/.test(t)) out.push(raiz(t));
   }
   return [...new Set(out)];
@@ -76,6 +81,21 @@ function raiz(w) {
 export function palavrasChave(item) {
   const base = tokens(item.produto || item.descricao).filter((t) => /^[a-z]+$/.test(t));
   return base.slice(0, 2);
+}
+
+/**
+ * Palavras da especificação usadas na comparação. Especificações longas (equipamentos com dezenas de
+ * exigências) são resumidas no nome do produto, nas medidas do nome, nas 3 primeiras medidas e nas
+ * 10 primeiras palavras da especificação: é o que costuma aparecer na descrição de outros pregões.
+ */
+export function tokensEspec(item) {
+  const todos = tokens(item.descricao);
+  if (todos.length <= 12) return todos;
+  const nome = tokens(item.produto || '');
+  const resto = item.especificacao ? tokens(item.especificacao) : todos.filter((t) => !nome.includes(t));
+  const med = resto.filter((t) => MEDIDA.test(t)).slice(0, 3);
+  const palavras = resto.filter((t) => !MEDIDA.test(t) && !nome.includes(t)).slice(0, 10);
+  return [...new Set([...nome, ...med, ...palavras])];
 }
 
 /** Quanto da especificação do termo aparece na descrição do item ganho (0 a 1). */
@@ -111,7 +131,7 @@ const num = (v) => {
 };
 
 const CAMPOS = {
-  numero: /^(item|it|n|no|nº|n°|num|numero|seq|sequencia|lote item|cod|codigo)\.?$/,
+  numero: /^(item|it|n|no|nº|n°|num|numero|seq|sequencia|lote item|cod|codigo|lote|numero do (lote|item)|n(º|°|o)? do (lote|item))\.?$/,
   produto: /produto|nome|material|objeto|bem\b|^item descri/,
   especificacao: /especifica|descri|discrimina|caracter|detalh/,
   unidade: /^(un|und|unid|unidade|unidade de medida|medida|u\.?m\.?|apresenta)/,
@@ -127,8 +147,12 @@ export function detectarColunas(linhas) {
     const cols = {};
     cab.forEach((h, i) => {
       if (!h || h.length > 60) return;
-      if (CAMPOS.quantidade.test(h)) cols.quantidade ??= i;
-      else if (CAMPOS.valor.test(h) && !/total|global/.test(h)) cols.valor = cols.valor != null && !/unit/.test(h) ? cols.valor : i;
+      if (CAMPOS.numero.test(h)) cols.numero ??= i;
+      else if (CAMPOS.quantidade.test(h)) cols.quantidade ??= i;
+      else if (/marca|fabricante|modelo|propost|ofertad/.test(h))
+        return; // colunas que o licitante preenche
+      else if (CAMPOS.valor.test(h) && !/total|global/.test(h)) cols.valor = cols.valor != null && !/unit|refer/.test(h) ? cols.valor : i;
+      else if (/descri/.test(h) && /lote|resumid|curta|sucinta|nome/.test(h)) cols.produto ??= i;
       else if (CAMPOS.especificacao.test(h)) cols.especificacao ??= i;
       else if (CAMPOS.produto.test(h)) cols.produto ??= i;
       else if (CAMPOS.unidade.test(h)) cols.unidade ??= i;
@@ -172,8 +196,15 @@ export function itensDoTermo(linhas, mapa = detectarColunas(linhas)) {
   const itens = [];
   for (let r = linha + 1; r < linhas.length; r++) {
     const l = linhas[r];
-    const produto = fixText(String(pega(l, 'produto') ?? '')).trim();
-    const espec = fixText(String(pega(l, 'especificacao') ?? '')).trim();
+    let produto = fixText(String(pega(l, 'produto') ?? '')).trim();
+    let espec = fixText(String(pega(l, 'especificacao') ?? '')).trim();
+    // especificação que repete o nome no começo ("ADIPÔMETROInstrumento para...")
+    if (produto && espec.toUpperCase().startsWith(produto.toUpperCase()) && espec.length > produto.length)
+      espec = espec
+        .slice(produto.length)
+        .replace(/^[\s\-–—:.,;]+/, '')
+        .trim();
+    produto = produto.replace(/[\s\-–—:]+$/, '');
     const texto = espec && espec !== produto ? `${produto}${produto ? ' - ' : ''}${espec}` : produto;
     if (texto.length < 3 || /^(total|subtotal|valor total|lote\s*\d*$)/i.test(texto)) continue;
     if (!tokens(texto).some((t) => /^[a-z]+$/.test(t))) continue;
@@ -193,28 +224,35 @@ export function itensDoTermo(linhas, mapa = detectarColunas(linhas)) {
 
 // ---------------------------------------------------------------- escolha do melhor preço
 
-const MEDIDA = /^\d+(\.\d+)?(kg|g|mg|l|ml|cm|mm|m|w|v)$/;
+const MEDIDA = /^\d+(\.\d+)?[a-z]+$/;
 /** Medidas do texto (5kg, 900ml…). */
 export const medidas = (tks) => tks.filter((t) => MEDIDA.test(t));
 
 /** Termo com até 2 palavras de especificação (fora as medidas) = "pouca especificação": vale o mais barato. */
-export const poucaEspecificacao = (item) => tokens(item.descricao).filter((t) => !MEDIDA.test(t)).length <= 2;
+export const poucaEspecificacao = (item) => tokensEspec(item).filter((t) => !MEDIDA.test(t)).length <= 2;
 
-/** Preços muito abaixo do normal (menos de 35% da mediana): erro de cadastro, unidade diferente etc. */
-export function marcarSuspeitos(ocorrencias) {
+/** Preços fora da curva (menos de 35% da mediana ou longe do valor do termo): erro de cadastro, unidade ou produto diferente. */
+export function marcarSuspeitos(ocorrencias, valorTermo = null) {
   const vals = ocorrencias.map((o) => o.valorUnitario).sort((a, b) => a - b);
-  if (vals.length < 4) return ocorrencias;
-  const mediana = vals[Math.floor(vals.length / 2)];
+  const mediana = vals.length >= 4 ? vals[Math.floor(vals.length / 2)] : null;
+  // também fora: menos de 20% ou mais de 5 vezes o valor do termo (outro produto ou outra unidade)
   return ocorrencias.map((o) => ({
     ...o,
-    suspeito: o.valorUnitario < mediana * 0.35,
+    suspeito:
+      (mediana != null && o.valorUnitario < mediana * 0.35) || (!!valorTermo && (o.valorUnitario < valorTermo * 0.2 || o.valorUnitario > valorTermo * 5)),
   }));
 }
+
+/** Núcleo do nome: as 3 primeiras palavras do produto ("mesa reuniao redonda"); precisam estar todas no item ganho. */
+export const nucleoNome = (item) =>
+  tokens(item.produto || item.descricao)
+    .filter((t) => /^[a-z]+$/.test(t))
+    .slice(0, 3);
 
 /**
  * Menor preço que encaixa no termo.
  * - Se o termo tem medida (5 kg, 900 ml…), só valem itens com a mesma medida.
- * - Com pouca especificação, o mais barato; senão, o mais barato com aderência ≥ 60%
+ * - Com pouca especificação, o mais barato; senão, o mais barato com aderência ≥ 60% (≥ 40% em especificação longa)
  *   (se nenhum chega lá, entre os de maior aderência, com aviso).
  * - Preços fora da curva (suspeitos) não entram.
  */
@@ -222,29 +260,49 @@ export function escolherMelhor(item, candidatos) {
   const validos = candidatos.filter((c) => c.valorUnitario > 0 && !c.suspeito);
   if (!validos.length) return null;
   const barato = (lista) => lista.reduce((a, b) => (b.valorUnitario < a.valorUnitario ? b : a));
-  const med = medidas(tokens(item.descricao));
+  // medidas do nome valem todas (9.000 BTUs); da especificação, basta uma
+  // (tensão não conta: 127 V × 220 V é opção de fornecimento; em especificação longa, só as do nome)
+  const semTensao = (l) => l.filter((t) => !t.endsWith('v'));
+  const medNome = semTensao(medidas(tokens(item.produto || '')));
+  const longa = tokens(item.descricao).length > 12;
+  const medEspec = medNome.length || longa ? [] : semTensao(medidas(tokensEspec(item)));
+  const nucleo = nucleoNome(item);
+  const tk = new Map(validos.map((c) => [c, new Set(tokens(c.descricao))]));
+  const N = (c) => nucleo.every((w) => tk.get(c).has(w));
+  const MN = (c) => medNome.every((m) => tk.get(c).has(m));
+  const MS = (c) => !medEspec.length || medEspec.some((m) => tk.get(c).has(m));
+  const temNucleo = (c) => tk.has(c) && N(c);
+  // prioridade: nome + medida do nome ("9.000 BTUs", "48 portas") > medida do nome > nome > o resto
+  const ordem = [[N, MN, MS], [N, MN], [MN, MS], [MN], [N, MS], [N], [MS], []];
   let pool = validos;
-  let aviso = '';
-  if (med.length) {
-    const mesma = validos.filter((c) => {
-      const tk = new Set(tokens(c.descricao));
-      return med.some((m) => tk.has(m));
-    });
-    if (mesma.length) pool = mesma;
-    else aviso = `nenhum com a mesma medida (${med.join(', ')}): confira a unidade`;
+  let usado = [];
+  for (const regras of ordem) {
+    const l = validos.filter((c) => regras.every((r) => r(c)));
+    if (l.length) {
+      pool = l;
+      usado = regras;
+      break;
+    }
   }
+  const med = [...medNome, ...medEspec];
+  const aviso =
+    (medNome.length && !usado.includes(MN)) || (medEspec.length && !usado.includes(MS))
+      ? `nenhum com a mesma medida (${med.join(', ')}): confira a unidade`
+      : '';
   if (poucaEspecificacao(item))
     return {
       ...barato(pool),
       criterio: aviso || 'mais barato (termo com pouca especificação)',
     };
-  const encaixa = pool.filter((c) => c.aderencia >= 0.6);
+  const encaixa = pool.filter((c) => c.aderencia >= (longa ? 0.4 : 0.6) && temNucleo(c));
   if (encaixa.length)
     return {
       ...barato(encaixa),
       criterio: aviso || 'mais barato que encaixa na especificação',
     };
+  // sem nenhum que encaixe: entre os que têm o nome do produto (se houver), os de maior aderência
   const top = Math.max(...pool.map((c) => c.aderencia));
+  if (top < 0.25 && !pool.some(temNucleo)) return null; // nada parecido: melhor não sugerir
   return {
     ...barato(pool.filter((c) => c.aderencia >= top - 0.1)),
     criterio: aviso || 'aderência parcial: confira a especificação',
@@ -285,7 +343,7 @@ export async function pesquisarTermo(itens, opts = {}, fetchImpl = fetch) {
   const trabalho = itens.map((it) => ({
     ...it,
     chave: palavrasChave(it),
-    espec: tokens(it.descricao),
+    espec: tokensEspec(it),
     candidatos: [],
   }));
 
@@ -433,6 +491,7 @@ export async function pesquisarTermo(itens, opts = {}, fetchImpl = fetch) {
         const k = `${o.link}#${o.itemNumero}#${o.fornecedorDoc}`;
         return vistos.has(k) ? false : vistos.add(k);
       }),
+      t.valorTermo,
     ).sort((a, b) => a.valorUnitario - b.valorUnitario);
     ocorrencias.length = 0;
     ocorrencias.push(...unicas);
@@ -554,7 +613,7 @@ export function abasExcelTermo(itens, { meses, interior }) {
         o.data,
         o.fornecedor,
         o.marca || 'Não informada no PNCP',
-        o.suspeito ? `${o.descricao} [preço fora da curva: não usado]` : o.descricao,
+        o.suspeito ? `${o.descricao} [preço fora da curva ou muito distante do termo: não usado]` : o.descricao,
         o.unidade,
         o.quantidade,
         Math.round(o.aderencia * 100),
@@ -574,7 +633,7 @@ export function abasExcelTermo(itens, { meses, interior }) {
       ['Período', `Últimos ${meses} meses`],
       [
         'Regra do melhor preço',
-        'Menor preço homologado entre os itens com 60% ou mais da especificação do termo; se o termo tem pouca especificação, o menor preço.',
+        'Menor preço homologado entre os itens com 60% ou mais da especificação do termo (40% em especificações longas, resumidas no nome, medidas e primeiras exigências); se o termo tem pouca especificação, o menor preço.',
       ],
       [
         'Marca',
@@ -639,7 +698,7 @@ export function blocosPdfTermo(itens, { meses, interior, nomeArquivo, dataText }
   });
   b.push({
     type: 'note',
-    text: 'Fonte: PNCP, valores unitários homologados. Regra: menor preço entre os itens com 60% ou mais da especificação do termo; se o termo tem pouca especificação, o menor preço. Confira unidade de fornecimento e especificação no link do pregão (planilha Excel). O PNCP não publica a marca do vencedor: ela aparece quando o órgão a escreveu na descrição; nos demais casos, está na ata do pregão.',
+    text: 'Fonte: PNCP, valores unitários homologados. Regra: menor preço entre os itens com 60% ou mais da especificação do termo (40% em especificações longas, resumidas no nome, medidas e primeiras exigências); se o termo tem pouca especificação, o menor preço. Confira unidade de fornecimento e especificação no link do pregão (planilha Excel). O PNCP não publica a marca do vencedor: ela aparece quando o órgão a escreveu na descrição; nos demais casos, está na ata do pregão.',
   });
   return b;
 }

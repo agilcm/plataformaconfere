@@ -60,3 +60,25 @@ test('melhor preço: mesma medida, aderência e fora da curva', () => {
   // pouca especificação: o mais barato
   assert.equal(escolherMelhor({ descricao: 'Sabonete' }, [c(3, 'Sabonete 90 g', 1), c(2, 'Sabonete 85 g', 1)]).valorUnitario, 2);
 });
+
+test('planilha de proposta da plataforma: nome no lote, especificação no item', () => {
+  const linhas = [
+    ['Número do lote', 'Descrição do Lote', 'Descrição do item', 'Quantidade', 'Unidade de medida', 'Unitário referência', 'Valor proposto', 'Marca', 'Fabricante', 'Modelo/versão/código'],
+    [1, 'ADIPÔMETRO', 'ADIPÔMETROInstrumento para avaliação antropométrica', 1, 'Un', 161.32, '', '', '', ''],
+    [2, 'APARELHO DE SOM -', 'APARELHO DE SOM -Sistema de áudio portátil, 100 W RMS', 3, 'Un', 234.69, '', '', '', ''],
+  ];
+  const m = detectarColunas(linhas);
+  assert.deepEqual(m.cols, { numero: 0, produto: 1, especificacao: 2, quantidade: 3, unidade: 4, valor: 5 });
+  const itens = itensDoTermo(linhas, m);
+  assert.equal(itens[0].descricao, 'ADIPÔMETRO - Instrumento para avaliação antropométrica');
+  assert.equal(itens[1].produto, 'APARELHO DE SOM');
+  assert.equal(itens[1].valorTermo, 234.69);
+});
+
+test('nome do produto precisa bater: mesa redonda não vira retangular', () => {
+  const item = { produto: 'MESA DE REUNIÃO REDONDA', descricao: 'MESA DE REUNIÃO REDONDA - mesa em MDP, tampo 25 mm, diâmetro 1,20 m, pés em aço, cor a definir' };
+  const c = (valorUnitario, descricao, aderencia) => ({ valorUnitario, descricao, aderencia });
+  const m = escolherMelhor(item, [c(399, 'MESA DE REUNIÃO RETANGULAR MDP 25 mm aço', 0.7), c(410, 'MESA PARA REUNIÃO REDONDA EM MDP', 0.4)]);
+  assert.equal(m.valorUnitario, 410);
+  assert.equal(escolherMelhor(item, [c(3.89, 'BAMBOLÊ', 0.1)]), null);
+});
