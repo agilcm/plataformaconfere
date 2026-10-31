@@ -67,7 +67,6 @@ export default function EleicaoPage() {
   const [termo, setTermo] = useState('');
   const [selecionados, setSelecionados] = useState<{ ano: number; cargo: string; id: string; nome: string }[]>([]);
   const [gerando, setGerando] = useState('');
-  const [maxProp, setMaxProp] = useState(12);
 
   useEffect(() => {
     carregarDados(`${import.meta.env.BASE_URL}dados-eleicao/eleicoes-mg.dat`)
@@ -121,7 +120,8 @@ export default function EleicaoPage() {
     await downloadPdf(
       `eleicao-${slug(cidade)}-${anoPdf}.pdf`,
       `Eleição ${anoPdf}`,
-      blocosPdf(fx, { cidade, ano: anoPdf, dataText: dateText(), maxProporcionais: maxProp, filtrosTexto: anoPdf === ano ? filtrosTexto : '' }) as never,
+      blocosPdf(fx, { cidade, ano: anoPdf, dataText: dateText(), filtrosTexto: anoPdf === ano ? filtrosTexto : '' }) as never,
+      { paisagem: true },
     );
   };
   const pdfTodosAnos = async () => {
@@ -376,17 +376,10 @@ export default function EleicaoPage() {
             </div>
             <div className={card}>
               <p className="text-lg font-bold text-[#0F2053]">PDF do resultado</p>
-              <p className="mt-1 text-[15px] text-slate-600">Resumo, ranking de cada cargo e votos por local de votação, com texto pesquisável.</p>
-              <label className="mt-3 flex items-center gap-2 text-sm text-slate-700">
-                Cargos proporcionais (vereador, deputados): tabela por local com os
-                <select value={maxProp} onChange={(e) => setMaxProp(Number(e.target.value))} className="px-2 py-1 rounded-lg border border-slate-300">
-                  <option value={8}>8</option>
-                  <option value={12}>12</option>
-                  <option value={20}>20</option>
-                  <option value={0}>todos</option>
-                </select>
-                mais votados
-              </label>
+              <p className="mt-1 text-[15px] text-slate-600">
+                Página deitada, um cargo por página: candidatos em ordem alfabética, o número, os locais de votação nas colunas e o total. Cargos com muitos
+                candidatos (vereador, deputados) continuam nas páginas seguintes.
+              </p>
               <div className="mt-4 flex flex-wrap gap-2">
                 <button type="button" disabled={!!gerando} onClick={() => exportarPdf()} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#0478CA] hover:bg-[#03609F] text-white font-bold cursor-pointer disabled:opacity-50">
                   <Icon name="doc" className="w-5 h-5" /> PDF de {ano}

@@ -1,5 +1,5 @@
 // Relatórios do painel eleitoral: abas do Excel e blocos do PDF (layout Ágil CM, pdfReport.ts).
-import { cargosDe, comparecimento, dimensoesDe, matriz, perfil, porPartido, resultadoCargo, totaisComparecimento } from './eleicao.js';
+import { cargosDe, comparecimento, dimensoesDe, matriz, nomeLocal, perfil, porPartido, resultadoCargo, tipoVoto, totaisComparecimento } from './eleicao.js';
 
 const pct = (v) => `${(v * 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
 const num = (v) => Number(v || 0).toLocaleString('pt-BR');
@@ -144,75 +144,110 @@ export function abasCandidatosPorSecao(dados, cidade, selecionados) {
     });
 }
 
+/** Nome curto do local para cabeçalho de coluna: "ESCOLA ESTADUAL PROFESSOR SOUZA PRIMO" -> "EE Prof. Souza Primo" */
+export function localCurto(nome) {
+  return nomeLocal(
+    String(nome || '')
+      .replace(/^\s*ESCOLA\s+ESTADUAL\s*[-–:]?\s*/i, 'EE ')
+      .replace(/^\s*ESCOLA\s+MUNICIPAL\s*[-–:]?\s*/i, 'EM ')
+      .replace(/\bCENTRO MUNICIPAL DE EDUCAÇÃO INFANTIL\b/gi, 'CMEI')
+      .replace(/\bCENTRO DE REFERÊNCIA (DE )?ASSISTÊNCIA SOCIAL\b/gi, '')
+      .replace(/\bPROFESSORA\b/gi, 'Profa.')
+      .replace(/\bPROFESSOR\b/gi, 'Prof.')
+      .replace(/\bDOUTORA\b/gi, 'Dra.')
+      .replace(/\bDOUTOR\b/gi, 'Dr.')
+      .replace(/\s*-\s*$/, '')
+      .replace(/\s+/g, ' ')
+      .trim(),
+  )
+    .replace(/^Ee /, 'EE ')
+    .replace(/^Em /, 'EM ')
+    .replace(/^Cras\b/, 'CRAS');
+}
+
 /**
- * PDF de uma cidade e eleição: resumo, resultado de cada cargo e votos por local de votação.
- * Nos cargos proporcionais, a tabela por local mostra os `maxProporcionais` mais votados (todos se 0).
+ * PDF de uma cidade e eleição no modelo "resultado por local de votação" (página deitada):
+ * um cargo por página (quebra de página a cada cargo), candidatos em ordem alfabética, a coluna do número,
+ * os locais de votação nas colunas e o total. Cargos com muitos candidatos seguem em várias páginas.
+ * Com mais de `locaisPorPagina` locais, as colunas se dividem em blocos.
  */
-export function blocosPdf(f, { cidade, ano, dataText, maxProporcionais = 12, filtrosTexto = '' }) {
+export function blocosPdf(f, { cidade, ano, dataText, filtrosTexto = '', locaisPorPagina = 8 }) {
   const t = totaisComparecimento(f.secoes);
   const b = [
     { type: 'date', text: dataText },
-    { type: 'title', text: `Resultado eleitoral · ${cidade} · ${ano}` },
+    { type: 'title', text: `Resultado por local de votação · ${cidade} · ${ano}` },
     {
       type: 'para',
       text: `1º turno · ${num(t.aptos)} eleitores aptos em ${num(t.secoes)} seções e ${num(t.locais)} locais · comparecimento de ${pct(t.pctComparecimento)} (${num(t.comparecimento)}) · abstenção de ${pct(t.pctAbstencao)}.${filtrosTexto ? ` Filtros: ${filtrosTexto}.` : ''}`,
-      gapAfter: 8,
+      size: 9.5,
+      color: 'muted',
+      gapAfter: 4,
     },
   ];
+  let primeiro = true;
   for (const c of cargosDe(f.votos)) {
     const r = resultadoCargo(f.votos, c);
-    b.push({ type: 'heading', text: c });
-    b.push({
-      type: 'para',
-      text: `Votos válidos: ${num(r.validos)}${r.legenda ? ` (${num(r.legenda)} de legenda)` : ''} · brancos: ${num(r.brancos)} · nulos: ${num(r.nulos)}`,
-      size: 9,
-      color: 'muted',
-    });
-    const lista = r.proporcional && maxProporcionais ? r.candidatos.slice(0, Math.max(maxProporcionais, 20)) : r.candidatos;
-    b.push({
-      type: 'table',
-      widths: [0.08, 0.44, 0.1, 0.14, 0.12, 0.12],
-      header: ['Pos.', 'Candidato', 'Número', 'Partido', 'Votos', '% válidos'],
-      headerAlign: ['center', 'left', 'center', 'left', 'right', 'right'],
-      rows: lista.map((x) => [
-        { text: `${x.posicao}º`, align: 'center' },
-        x.nome,
-        { text: x.numero, align: 'center' },
-        x.partido,
-        { text: num(x.votos), align: 'right' },
-        { text: pct(x.pctValidos), align: 'right' },
-      ]),
-    });
-    if (lista.length < r.candidatos.length) b.push({ type: 'note', text: `Mostrando os ${lista.length} mais votados de ${r.candidatos.length} candidatos. O Excel traz todos.` });
-
-    // votos por local: locais nas linhas, até 4 candidatos por tabela
     const m = matriz(f.votos, c, 'local');
-    const cands = r.proporcional && maxProporcionais ? m.linhas.slice(0, maxProporcionais) : m.linhas;
-    for (let i = 0; i < cands.length; i += 4) {
-      const grupo = cands.slice(i, i + 4);
-      const ultimo = i + 4 >= cands.length;
-      b.push({ type: 'para', text: `${c} · votos por local de votação${cands.length > 4 ? ` (${i + 1}–${i + grupo.length} de ${cands.length})` : ''}`, size: 9, color: 'muted', gapAfter: 2 });
+    if (!m.linhas.length) continue;
+    // brancos, nulos e legenda por local
+    const extra = { legenda: new Map(), branco: new Map(), nulo: new Map() };
+    for (const v of f.votos) {
+      if (v.cargo !== c) continue;
+      const tipo = tipoVoto(v);
+      if (tipo === 'nominal') continue;
+      const k = `${v.localCode}|${v.localName}`;
+      extra[tipo].set(k, (extra[tipo].get(k) || 0) + v.votes);
+    }
+    const alfabetica = [...m.linhas].sort((a, b2) => a.nome.localeCompare(b2.nome, 'pt-BR'));
+    const grupos = [];
+    for (let i = 0; i < m.colunas.length; i += locaisPorPagina) grupos.push([i, Math.min(i + locaisPorPagina, m.colunas.length)]);
+    grupos.forEach(([ini, fim], gi) => {
+      if (!primeiro) b.push({ type: 'pagebreak' });
+      primeiro = false;
+      const cols = m.colunas.slice(ini, fim);
+      const ultimo = gi === grupos.length - 1;
+      b.push({
+        type: 'heading',
+        text: `${c.toUpperCase()} · ${cidade} · ${ano}${grupos.length > 1 ? ` · locais ${ini + 1} a ${fim} de ${m.colunas.length}` : ''}`,
+      });
+      b.push({
+        type: 'para',
+        text: `${alfabetica.length} candidatos em ordem alfabética · votos válidos: ${num(r.validos)}${r.legenda ? ` (${num(r.legenda)} de legenda)` : ''} · brancos: ${num(r.brancos)} · nulos: ${num(r.nulos)}`,
+        size: 8.5,
+        color: 'muted',
+        gapAfter: 2,
+      });
+      const somaCol = (mapa) => cols.map((k) => mapa.get(k.id) || 0);
+      const linhaTotal = (rotulo, valores, total) => [
+        { text: rotulo, bold: true },
+        '',
+        ...valores.map((v) => ({ text: num(v), align: 'center', bold: true })),
+        ...(ultimo ? [{ text: num(total), align: 'center', bold: true }] : []),
+      ];
+      const nominaisCol = cols.map((_, ci) => alfabetica.reduce((s2, l) => s2 + l.votosCol[ini + ci], 0));
+      const totais = [linhaTotal('Total dos candidatos', nominaisCol, alfabetica.reduce((s2, l) => s2 + l.votos, 0))];
+      if (r.legenda) totais.push(linhaTotal('Votos de legenda', somaCol(extra.legenda), r.legenda));
+      totais.push(linhaTotal('Brancos', somaCol(extra.branco), r.brancos), linhaTotal('Nulos', somaCol(extra.nulo), r.nulos));
+      const larguraLocais = 0.56 + (ultimo ? 0 : 0.1);
       b.push({
         type: 'table',
-        widths: [0.36, ...grupo.map(() => 0.64 / (grupo.length + (ultimo ? 1 : 0))), ...(ultimo ? [0.64 / (grupo.length + 1)] : [])],
-        header: ['Local de votação', ...grupo.map((g) => `${g.nome} (${g.numero})`), ...(ultimo ? ['Válidos no local'] : [])],
-        headerAlign: ['left', ...grupo.map(() => 'right'), ...(ultimo ? ['right'] : [])],
+        size: 7.8,
+        widths: [0.3, 0.06, ...cols.map(() => larguraLocais / cols.length), ...(ultimo ? [0.08] : [])],
+        header: ['Candidato (partido)', 'Nº', ...cols.map((k) => localCurto(k.nome)), ...(ultimo ? ['Total'] : [])],
+        headerAlign: ['left', 'center', ...cols.map(() => 'center'), ...(ultimo ? ['center'] : [])],
         rows: [
-          ...m.colunas.map((k, ci) => [
-            k.nome,
-            ...grupo.map((g) => ({ text: num(g.votosCol[ci]), align: 'right' })),
-            ...(ultimo ? [{ text: num(m.validosCol[ci]), align: 'right' }] : []),
+          ...alfabetica.map((l) => [
+            `${l.nome} (${l.partido})`,
+            { text: String(l.numero), align: 'center' },
+            ...cols.map((_, ci) => ({ text: num(l.votosCol[ini + ci]), align: 'center' })),
+            ...(ultimo ? [{ text: num(l.votos), align: 'center', bold: true }] : []),
           ]),
-          [
-            { text: 'Total', bold: true },
-            ...grupo.map((g) => ({ text: num(g.votos), align: 'right', bold: true })),
-            ...(ultimo ? [{ text: num(m.resultado.validos), align: 'right', bold: true }] : []),
-          ],
+          ...totais,
         ],
-        totalRows: 1,
+        totalRows: totais.length,
       });
-    }
+    });
   }
-  b.push({ type: 'note', text: 'Fonte: Tribunal Superior Eleitoral (TSE), dados abertos por seção eleitoral. Seções agregadas não entram nos totais de comparecimento.' });
+  b.push({ type: 'note', text: 'Fonte: Tribunal Superior Eleitoral (TSE), dados abertos por seção eleitoral, 1º turno. Votos nominais por local de votação.' });
   return b;
 }

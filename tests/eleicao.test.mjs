@@ -93,6 +93,12 @@ test('relatórios: Excel completo, Excel por seção e PDF', () => {
   const sec = abasCandidatosPorSecao(dados, 'X', [{ ano: 2024, cargo: 'Prefeito', id: 'Prefeito|15|MARIA' }]);
   assert.deepEqual(sec[0].linhas, [['MARIA', '15', 'MDB', 50, 20, 70]]);
   const b = blocosPdf(f, { cidade: 'X', ano: 2024, dataText: 'X, hoje' });
-  assert.ok(b.some((x) => x.type === 'heading' && x.text === 'Vereador'));
-  assert.ok(b.filter((x) => x.type === 'table').length >= 4);
+  // um cargo por página, candidatos em ordem alfabética, número logo depois e locais nas colunas
+  assert.ok(b.some((x) => x.type === 'heading' && x.text === 'VEREADOR · X · 2024'));
+  assert.equal(b.filter((x) => x.type === 'pagebreak').length, b.filter((x) => x.type === 'table').length - 1);
+  const pref = b.find((x) => x.type === 'table');
+  assert.deepEqual(pref.header.slice(0, 2), ['Candidato (partido)', 'Nº']);
+  assert.equal(pref.header.at(-1), 'Total');
+  const nomes = pref.rows.slice(0, pref.rows.length - pref.totalRows).map((r) => r[0]);
+  assert.deepEqual(nomes, [...nomes].sort((x, y) => x.localeCompare(y, 'pt-BR')));
 });

@@ -16,14 +16,24 @@ const TEXT = hex('1F2933');
 const MUTED = hex('5B6B7F');
 const WHITE = rgb(1, 1, 1);
 
-const W = 595.28;
-const H = 841.89;
-const M = 56; // margem lateral
+// Tamanho da página: A4 em pé (padrão) ou deitada (tabelas largas). Definido em buildPdf.
+let W = 595.28;
+let H = 841.89;
+let M = 56; // margem lateral
 const HEADER_H = 70;
 const FOOTER_H = 78;
-const TOP = H - HEADER_H - 26;
-const BOTTOM = FOOTER_H + 24;
-const CW = W - M * 2;
+let TOP = H - HEADER_H - 26;
+let BOTTOM = FOOTER_H + 24;
+let CW = W - M * 2;
+
+function pagina(paisagem: boolean) {
+  W = paisagem ? 841.89 : 595.28;
+  H = paisagem ? 595.28 : 841.89;
+  M = paisagem ? 40 : 56;
+  TOP = H - HEADER_H - (paisagem ? 18 : 26);
+  BOTTOM = FOOTER_H + (paisagem ? 14 : 24);
+  CW = W - M * 2;
+}
 
 // Fontes padrão do PDF usam WinAnsi: remove caracteres fora dessa tabela
 const ALLOWED = /[\x20-\x7E -ÿ–—‘’“”•…€]/;
@@ -159,8 +169,8 @@ function drawParagraph(c: Ctx, s: string, o: { size?: number; font?: PDFFont; co
 }
 
 function drawTable(c: Ctx, b: Extract<Block, { type: 'table' }>) {
-  const size = 8.8;
-  const pad = 5;
+  const size = b.size ?? 8.8;
+  const pad = size < 8.5 ? 4 : 5;
   const lh = size * 1.35;
   const totalW = b.widths.reduce((a, x) => a + x, 0);
   const cols = b.widths.map((w) => (w / totalW) * CW);
@@ -214,7 +224,8 @@ function drawTable(c: Ctx, b: Extract<Block, { type: 'table' }>) {
   c.y -= 14;
 }
 
-export async function buildPdf(docTitle: string, blocks: Block[]): Promise<Uint8Array> {
+export async function buildPdf(docTitle: string, blocks: Block[], { paisagem = false } = {}): Promise<Uint8Array> {
+  pagina(paisagem);
   const doc = await PDFDocument.create();
   doc.setTitle(`${docTitle} - Ágil CM Soluções Integradas`);
   doc.setAuthor('Ágil CM Soluções Integradas');
@@ -295,6 +306,9 @@ export async function buildPdf(docTitle: string, blocks: Block[]): Promise<Uint8
         break;
       case 'space':
         c.y -= b.h;
+        break;
+      case 'pagebreak':
+        if (c.y < TOP) newPage(c);
         break;
       case 'signature':
         ensure(c, 110);

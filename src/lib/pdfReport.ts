@@ -16,15 +16,16 @@ export type Block =
   | { type: 'rich'; parts: { text: string; bold?: boolean }[]; gapAfter?: number }
   | { type: 'bullets'; items: string[] }
   | { type: 'note'; text: string }
-  | { type: 'table'; widths: number[]; header?: string[]; headerAlign?: Align[]; rows: (string | Cell)[][]; totalRows?: number }
+  | { type: 'table'; widths: number[]; header?: string[]; headerAlign?: Align[]; rows: (string | Cell)[][]; totalRows?: number; size?: number }
+  | { type: 'pagebreak' }
   | { type: 'space'; h: number }
   | { type: 'signature'; name: string; role: string };
 
 type SaveResult = 'saved' | 'declined';
 
-export async function downloadPdf(fileName: string, docTitle: string, blocks: Block[]): Promise<SaveResult> {
+export async function downloadPdf(fileName: string, docTitle: string, blocks: Block[], opts: { paisagem?: boolean } = {}): Promise<SaveResult> {
   const { buildPdf } = await import('./pdfBuild.ts');
-  const bytes = await buildPdf(docTitle, blocks);
+  const bytes = await buildPdf(docTitle, blocks, opts);
   const blob = new Blob([bytes as BlobPart], { type: 'application/pdf' });
 
   // Dentro do visualizador do Claude o download passa pela confirmação da plataforma
