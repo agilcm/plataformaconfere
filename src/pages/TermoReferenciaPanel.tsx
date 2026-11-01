@@ -7,6 +7,7 @@ import { dateText, downloadPdf, slug } from '../lib/pdfReport.ts';
 import { lerPlanilha } from '../lib/planilhaLeitura.js';
 import { abasExcelTermo, blocosPdfTermo, detectarColunas, itensDoTermo, pesquisarTermo, totaisTermo } from '../lib/termoReferencia.js';
 import { baixarXlsx } from '../lib/xlsx.js';
+import CotacaoFluxo from './CotacaoFluxo.tsx';
 
 type Campo = 'numero' | 'produto' | 'especificacao' | 'unidade' | 'quantidade' | 'valor';
 interface Mapa {
@@ -169,10 +170,10 @@ export default function TermoReferenciaPanel() {
   return (
     <div className="space-y-6">
       <div className="p-4 sm:p-6 rounded-2xl bg-white border border-slate-200 shadow-sm">
-        <p className="text-lg font-bold text-[#0F2053]">Importe o termo de referência</p>
+        <p className="text-lg font-bold text-[#0F2053]">1. Importe o termo de referência</p>
         <p className="mt-1 text-[15px] text-slate-600">
-          Planilha em Excel (.xlsx) ou CSV com o produto, a especificação e o valor unitário. Para cada item, buscamos onde ele foi ganho em Minas Gerais, por
-          quanto, quem venceu e a marca, e escolhemos o menor preço que encaixa na especificação.
+          Planilha em Excel (.xlsx) ou CSV com o produto, a especificação e o valor unitário, como vem da plataforma. Depois: procurar nas planilhas de custo,
+          buscar em contratos (opcional) e gerar a planilha de custos.
         </p>
         <div className="mt-4 flex flex-col sm:flex-row gap-3">
           <button
@@ -259,7 +260,8 @@ export default function TermoReferenciaPanel() {
               </div>
             )}
 
-            <div className="mt-5 pt-5 border-t border-slate-100 flex flex-col lg:flex-row lg:items-center gap-4">
+            <p className="mt-5 pt-5 border-t border-slate-100 text-sm font-semibold text-slate-600">Opções da busca em contratos (PNCP)</p>
+            <div className="mt-2 flex flex-col lg:flex-row lg:items-center gap-4">
               <div role="group" aria-label="Período" className="grid grid-cols-3 p-1 rounded-xl bg-slate-100 shrink-0">
                 {[3, 6, 12].map((m) => (
                   <button
@@ -282,228 +284,227 @@ export default function TermoReferenciaPanel() {
                 Pesquisa completa (mais editais, mais lenta)
               </label>
             </div>
-            <div className="mt-4 flex flex-col sm:flex-row gap-3">
-              <button
-                type="button"
-                disabled={!itens.length || pesquisando}
-                onClick={pesquisar}
-                className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-[#0E7A40] hover:bg-[#0B6535] disabled:opacity-50 text-white text-base font-bold cursor-pointer"
-              >
-                <Icon name="search" className="w-5 h-5" /> Pesquisar preços ganhos de {itens.length} {itens.length === 1 ? 'item' : 'itens'}
-              </button>
-              {pesquisando && (
-                <button
-                  type="button"
-                  onClick={() => (parar.current = true)}
-                  className="px-5 py-3 rounded-xl border-2 border-slate-200 hover:border-red-400 text-slate-700 font-bold cursor-pointer"
-                >
-                  Parar
-                </button>
-              )}
-            </div>
           </>
         )}
       </div>
 
-      {progresso && (
-        <div className="p-5 rounded-2xl bg-white border border-slate-200" role="status" aria-live="polite">
-          <p className="font-semibold text-[#0F2053]">
-            {progresso.fase}… {progresso.total ? `${progresso.feito} de ${progresso.total}` : ''}
-          </p>
-          <div className="mt-3 h-2.5 rounded-full bg-slate-100 overflow-hidden">
-            <div
-              className="h-full bg-[#0478CA] transition-all"
-              style={{
-                width: `${progresso.total ? (100 * progresso.feito) / progresso.total : 5}%`,
-              }}
-            />
-          </div>
-          <p className="mt-2 text-sm text-slate-500">
-            Uma compra lida serve para todos os itens do termo que aparecem nela. Termos grandes levam alguns minutos.
-          </p>
-        </div>
-      )}
-      {erro && <p className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900">{erro}</p>}
-
-      {resultado && tot && (
-        <>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            {[
-              ['Itens com preço encontrado', `${tot.encontrados} de ${tot.total}`],
-              ['Pregões lidos', String(resultado.comprasLidas)],
-              ['Termo (itens comparados × qtd.)', tot.comparados ? formatBRL(tot.termo, 2) : '—'],
-              [
-                'Pelos menores preços ganhos',
-                tot.comparados ? `${formatBRL(tot.ganho, 2)} (${tot.ganho >= tot.termo ? '+' : ''}${pct(tot.termo ? tot.ganho / tot.termo - 1 : 0, 1)})` : '—',
-              ],
-            ].map(([k, v]) => (
-              <div key={k} className="p-4 rounded-2xl bg-white border border-slate-200">
-                <p className="text-sm text-slate-500">{k}</p>
-                <p className="mt-1 text-lg font-bold text-[#0F2053] tabular-nums">{v}</p>
+      {mapa && itens.length > 0 && (
+        <CotacaoFluxo
+          itens={itens as never}
+          contratos={resultado ? resultado.itens.map((i) => (i.melhor ? { ...i.melhor, valorUnitario: i.melhor.valorUnitario } : null)) : null}
+          buscandoContratos={pesquisando}
+          onBuscarContratos={pesquisar}
+        >
+          {progresso && (
+            <div className="p-5 rounded-2xl bg-white border border-slate-200" role="status" aria-live="polite">
+              <p className="font-semibold text-[#0F2053]">
+                {progresso.fase}… {progresso.total ? `${progresso.feito} de ${progresso.total}` : ''}
+              </p>
+              <div className="mt-3 h-2.5 rounded-full bg-slate-100 overflow-hidden">
+                <div
+                  className="h-full bg-[#0478CA] transition-all"
+                  style={{
+                    width: `${progresso.total ? (100 * progresso.feito) / progresso.total : 5}%`,
+                  }}
+                />
               </div>
-            ))}
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <div role="group" aria-label="Mostrar" className="flex p-1 rounded-xl bg-slate-100 mr-auto">
-              {(
-                [
-                  ['todos', 'Todos'],
-                  ['achados', 'Com preço'],
-                  ['faltando', 'Sem preço'],
-                ] as const
-              ).map(([v, l]) => (
-                <button
-                  key={v}
-                  type="button"
-                  aria-pressed={filtro === v}
-                  onClick={() => setFiltro(v)}
-                  className={`px-3.5 py-2 rounded-lg text-sm font-bold cursor-pointer ${filtro === v ? 'bg-white text-[#0F2053] shadow-sm' : 'text-slate-600'}`}
-                >
-                  {l}
-                </button>
-              ))}
+              <p className="mt-2 text-sm text-slate-500">
+                Uma compra lida serve para todos os itens do termo que aparecem nela. Termos grandes levam alguns minutos.
+              </p>
+              <button
+                type="button"
+                onClick={() => (parar.current = true)}
+                className="mt-3 px-5 py-2.5 rounded-xl border-2 border-slate-200 hover:border-red-400 text-slate-700 font-bold cursor-pointer"
+              >
+                Parar
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={exportarExcel}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#1D6F42] hover:bg-[#185C37] text-white font-bold cursor-pointer"
-            >
-              <Icon name="sheet" className="w-5 h-5" /> Exportar Excel
-            </button>
-            <button
-              type="button"
-              onClick={exportarPdf}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#0F2053] hover:bg-[#0478CA] text-white font-bold cursor-pointer"
-            >
-              <Icon name="doc" className="w-5 h-5" /> Baixar PDF
-            </button>
-          </div>
+          )}
+          {erro && <p className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900">{erro}</p>}
 
-          <ol className="space-y-3">
-            {lista.map((i) => {
-              const m = i.melhor;
-              const k = `${i.numero}|${i.descricao}`;
-              return (
-                <li key={k} className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200">
-                  <div className="flex flex-col lg:flex-row gap-4">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-slate-500">
-                        Item {i.numero}
-                        {i.unidade ? ` · ${i.unidade}` : ''}
-                        {i.quantidade ? ` · ${i.quantidade.toLocaleString('pt-BR')}` : ''} · termo: {brl(i.valorTermo)}
-                      </p>
-                      <p className="mt-1 text-[15px] text-slate-800 line-clamp-3">{i.descricao}</p>
-                      {m ? (
-                        <div className="mt-3 text-[15px] text-slate-700 space-y-0.5">
-                          <p>
-                            <strong className="text-[#0F2053]">{m.municipio}</strong> · {m.orgao} · {dataBR(m.data)}
+          {resultado && tot && (
+            <>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                {[
+                  ['Itens com preço encontrado', `${tot.encontrados} de ${tot.total}`],
+                  ['Pregões lidos', String(resultado.comprasLidas)],
+                  ['Termo (itens comparados × qtd.)', tot.comparados ? formatBRL(tot.termo, 2) : '—'],
+                  [
+                    'Pelos menores preços ganhos',
+                    tot.comparados
+                      ? `${formatBRL(tot.ganho, 2)} (${tot.ganho >= tot.termo ? '+' : ''}${pct(tot.termo ? tot.ganho / tot.termo - 1 : 0, 1)})`
+                      : '—',
+                  ],
+                ].map(([k, v]) => (
+                  <div key={k} className="p-4 rounded-2xl bg-white border border-slate-200">
+                    <p className="text-sm text-slate-500">{k}</p>
+                    <p className="mt-1 text-lg font-bold text-[#0F2053] tabular-nums">{v}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <div role="group" aria-label="Mostrar" className="flex p-1 rounded-xl bg-slate-100 mr-auto">
+                  {(
+                    [
+                      ['todos', 'Todos'],
+                      ['achados', 'Com preço'],
+                      ['faltando', 'Sem preço'],
+                    ] as const
+                  ).map(([v, l]) => (
+                    <button
+                      key={v}
+                      type="button"
+                      aria-pressed={filtro === v}
+                      onClick={() => setFiltro(v)}
+                      className={`px-3.5 py-2 rounded-lg text-sm font-bold cursor-pointer ${filtro === v ? 'bg-white text-[#0F2053] shadow-sm' : 'text-slate-600'}`}
+                    >
+                      {l}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={exportarExcel}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#1D6F42] hover:bg-[#185C37] text-white font-bold cursor-pointer"
+                >
+                  <Icon name="sheet" className="w-5 h-5" /> Exportar Excel
+                </button>
+                <button
+                  type="button"
+                  onClick={exportarPdf}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#0F2053] hover:bg-[#0478CA] text-white font-bold cursor-pointer"
+                >
+                  <Icon name="doc" className="w-5 h-5" /> Baixar PDF
+                </button>
+              </div>
+
+              <ol className="space-y-3">
+                {lista.map((i) => {
+                  const m = i.melhor;
+                  const k = `${i.numero}|${i.descricao}`;
+                  return (
+                    <li key={k} className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200">
+                      <div className="flex flex-col lg:flex-row gap-4">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-slate-500">
+                            Item {i.numero}
+                            {i.unidade ? ` · ${i.unidade}` : ''}
+                            {i.quantidade ? ` · ${i.quantidade.toLocaleString('pt-BR')}` : ''} · termo: {brl(i.valorTermo)}
                           </p>
-                          <p>
-                            Vencedor: <strong>{m.fornecedor}</strong> · Marca: <strong>{m.marca || 'não informada no PNCP'}</strong>
-                          </p>
-                          <p className="text-sm text-slate-500 line-clamp-2">Item ganho: {m.descricao}</p>
+                          <p className="mt-1 text-[15px] text-slate-800 line-clamp-3">{i.descricao}</p>
+                          {m ? (
+                            <div className="mt-3 text-[15px] text-slate-700 space-y-0.5">
+                              <p>
+                                <strong className="text-[#0F2053]">{m.municipio}</strong> · {m.orgao} · {dataBR(m.data)}
+                              </p>
+                              <p>
+                                Vencedor: <strong>{m.fornecedor}</strong> · Marca: <strong>{m.marca || 'não informada no PNCP'}</strong>
+                              </p>
+                              <p className="text-sm text-slate-500 line-clamp-2">Item ganho: {m.descricao}</p>
+                            </div>
+                          ) : (
+                            <p className="mt-3 text-[15px] text-amber-800">
+                              Nenhum preço ganho encontrado nos últimos {meses} meses
+                              {i.palavrasChave ? ` para “${i.palavrasChave}”` : ''}. Tente a pesquisa completa ou 12 meses.
+                            </p>
+                          )}
                         </div>
-                      ) : (
-                        <p className="mt-3 text-[15px] text-amber-800">
-                          Nenhum preço ganho encontrado nos últimos {meses} meses
-                          {i.palavrasChave ? ` para “${i.palavrasChave}”` : ''}. Tente a pesquisa completa ou 12 meses.
-                        </p>
-                      )}
-                    </div>
-                    {m && (
-                      <div className="lg:w-56 shrink-0 p-4 rounded-xl bg-[#F7FAFD] border border-slate-200">
-                        <p className="text-sm text-slate-500">Menor preço ganho</p>
-                        <p className="text-2xl font-bold text-[#0E7A40] tabular-nums">{brl(m.valorUnitario)}</p>
-                        {i.diferenca != null && (
-                          <p className={`text-sm font-semibold ${i.diferenca > 0 ? 'text-red-700' : 'text-emerald-700'}`}>
-                            {i.diferenca > 0 ? '+' : ''}
-                            {pct(i.diferenca, 1)} em relação ao termo
-                          </p>
+                        {m && (
+                          <div className="lg:w-56 shrink-0 p-4 rounded-xl bg-[#F7FAFD] border border-slate-200">
+                            <p className="text-sm text-slate-500">Menor preço ganho</p>
+                            <p className="text-2xl font-bold text-[#0E7A40] tabular-nums">{brl(m.valorUnitario)}</p>
+                            {i.diferenca != null && (
+                              <p className={`text-sm font-semibold ${i.diferenca > 0 ? 'text-red-700' : 'text-emerald-700'}`}>
+                                {i.diferenca > 0 ? '+' : ''}
+                                {pct(i.diferenca, 1)} em relação ao termo
+                              </p>
+                            )}
+                            <p className="mt-1 text-sm text-slate-500">
+                              {m.unidade ? `Unidade: ${m.unidade} · ` : ''}aderência {pct(m.aderencia)}
+                            </p>
+                            <p className={`mt-1 text-sm ${/confira|nenhum/.test(m.criterio || '') ? 'text-amber-800 font-semibold' : 'text-slate-500'}`}>
+                              {m.criterio}
+                            </p>
+                          </div>
                         )}
-                        <p className="mt-1 text-sm text-slate-500">
-                          {m.unidade ? `Unidade: ${m.unidade} · ` : ''}aderência {pct(m.aderencia)}
-                        </p>
-                        <p className={`mt-1 text-sm ${/confira|nenhum/.test(m.criterio || '') ? 'text-amber-800 font-semibold' : 'text-slate-500'}`}>
-                          {m.criterio}
-                        </p>
                       </div>
-                    )}
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {m && (
-                      <a
-                        href={m.link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#0478CA] hover:bg-[#03609F] text-white text-sm font-bold"
-                      >
-                        Ver o pregão no PNCP <Icon name="arrow" className="w-4 h-4" />
-                      </a>
-                    )}
-                    {i.ocorrencias.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setAberto(aberto === k ? null : k)}
-                        className="px-3.5 py-2 rounded-xl border-2 border-slate-200 hover:border-[#0478CA] text-[#0F2053] text-sm font-bold cursor-pointer"
-                      >
-                        {aberto === k ? 'Esconder' : `Ver todos os ${i.ocorrencias.length} preços encontrados`}
-                      </button>
-                    )}
-                  </div>
-                  {aberto === k && (
-                    <div className="mt-3 overflow-x-auto">
-                      <table className="w-full min-w-[56rem] text-sm">
-                        <thead>
-                          <tr className="text-left text-slate-500 border-b border-slate-200">
-                            {['Preço', 'Município · órgão', 'Data', 'Fornecedor', 'Marca', 'Item ganho', 'Aderência', ''].map((h) => (
-                              <th key={h} className="py-2 pr-3 font-semibold whitespace-nowrap">
-                                {h}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {i.ocorrencias.map((o, n) => (
-                            <tr key={n} className={`border-b border-slate-100 align-top ${o.suspeito ? 'text-slate-400' : ''}`}>
-                              <td className="py-2 pr-3 font-bold tabular-nums whitespace-nowrap">
-                                {brl(o.valorUnitario)}
-                                {o.suspeito && <span className="block text-xs font-semibold text-amber-700">fora da curva</span>}
-                              </td>
-                              <td className="py-2 pr-3">
-                                {o.municipio}
-                                <span className="block text-slate-500">{o.orgao}</span>
-                              </td>
-                              <td className="py-2 pr-3 whitespace-nowrap">{dataBR(o.data)}</td>
-                              <td className="py-2 pr-3">{o.fornecedor}</td>
-                              <td className="py-2 pr-3">{o.marca || '—'}</td>
-                              <td className="py-2 pr-3 max-w-md">
-                                <span className="line-clamp-3">{o.descricao}</span>
-                                {o.unidade && <span className="text-slate-500">Unidade: {o.unidade}</span>}
-                              </td>
-                              <td className="py-2 pr-3 tabular-nums">{pct(o.aderencia)}</td>
-                              <td className="py-2 pr-3">
-                                <a href={o.link} target="_blank" rel="noopener noreferrer" className="text-[#0478CA] font-bold underline whitespace-nowrap">
-                                  PNCP
-                                </a>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </li>
-              );
-            })}
-          </ol>
-          <p className="text-sm text-slate-500">
-            Fonte: PNCP, valores unitários homologados de pregões e dispensas de Minas Gerais{interior ? ' (sem Belo Horizonte)' : ''} nos últimos {meses}{' '}
-            meses. O PNCP não publica a marca do vencedor: ela aparece quando o órgão a escreveu na descrição do item; nos demais casos, está na ata, no link do
-            pregão. Ficam fora da escolha os preços muito abaixo dos demais (menos de 35% da mediana) e os muito distantes do valor do termo (menos de 20% ou
-            mais de 5 vezes).
-          </p>
-        </>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {m && (
+                          <a
+                            href={m.link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#0478CA] hover:bg-[#03609F] text-white text-sm font-bold"
+                          >
+                            Ver o pregão no PNCP <Icon name="arrow" className="w-4 h-4" />
+                          </a>
+                        )}
+                        {i.ocorrencias.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setAberto(aberto === k ? null : k)}
+                            className="px-3.5 py-2 rounded-xl border-2 border-slate-200 hover:border-[#0478CA] text-[#0F2053] text-sm font-bold cursor-pointer"
+                          >
+                            {aberto === k ? 'Esconder' : `Ver todos os ${i.ocorrencias.length} preços encontrados`}
+                          </button>
+                        )}
+                      </div>
+                      {aberto === k && (
+                        <div className="mt-3 overflow-x-auto">
+                          <table className="w-full min-w-[56rem] text-sm">
+                            <thead>
+                              <tr className="text-left text-slate-500 border-b border-slate-200">
+                                {['Preço', 'Município · órgão', 'Data', 'Fornecedor', 'Marca', 'Item ganho', 'Aderência', ''].map((h) => (
+                                  <th key={h} className="py-2 pr-3 font-semibold whitespace-nowrap">
+                                    {h}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {i.ocorrencias.map((o, n) => (
+                                <tr key={n} className={`border-b border-slate-100 align-top ${o.suspeito ? 'text-slate-400' : ''}`}>
+                                  <td className="py-2 pr-3 font-bold tabular-nums whitespace-nowrap">
+                                    {brl(o.valorUnitario)}
+                                    {o.suspeito && <span className="block text-xs font-semibold text-amber-700">fora da curva</span>}
+                                  </td>
+                                  <td className="py-2 pr-3">
+                                    {o.municipio}
+                                    <span className="block text-slate-500">{o.orgao}</span>
+                                  </td>
+                                  <td className="py-2 pr-3 whitespace-nowrap">{dataBR(o.data)}</td>
+                                  <td className="py-2 pr-3">{o.fornecedor}</td>
+                                  <td className="py-2 pr-3">{o.marca || '—'}</td>
+                                  <td className="py-2 pr-3 max-w-md">
+                                    <span className="line-clamp-3">{o.descricao}</span>
+                                    {o.unidade && <span className="text-slate-500">Unidade: {o.unidade}</span>}
+                                  </td>
+                                  <td className="py-2 pr-3 tabular-nums">{pct(o.aderencia)}</td>
+                                  <td className="py-2 pr-3">
+                                    <a href={o.link} target="_blank" rel="noopener noreferrer" className="text-[#0478CA] font-bold underline whitespace-nowrap">
+                                      PNCP
+                                    </a>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ol>
+              <p className="text-sm text-slate-500">
+                Fonte: PNCP, valores unitários homologados de pregões e dispensas de Minas Gerais{interior ? ' (sem Belo Horizonte)' : ''} nos últimos {meses}{' '}
+                meses. O PNCP não publica a marca do vencedor: ela aparece quando o órgão a escreveu na descrição do item; nos demais casos, está na ata, no
+                link do pregão. Ficam fora da escolha os preços muito abaixo dos demais (menos de 35% da mediana) e os muito distantes do valor do termo (menos
+                de 20% ou mais de 5 vezes).
+              </p>
+            </>
+          )}
+        </CotacaoFluxo>
       )}
     </div>
   );
