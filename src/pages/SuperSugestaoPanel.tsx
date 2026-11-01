@@ -1,8 +1,8 @@
 // Super Sugestão (aba AGIL CNAE): editais abertos onde a AGIL já ganhou o mesmo produto ou a mesma categoria.
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../components/ui.tsx';
 import { formatBRL } from '../data/servicesData.ts';
-import { baixarHistorico, importarHistorico, lerHistorico } from '../lib/historicoVitorias.js';
+import { baixarHistorico, gravarFonte, historicoPadrao, importarHistorico, lerFonte, lerHistorico } from '../lib/historicoVitorias.js';
 import { fetchItensCompra } from '../lib/pncp.js';
 import { callApi } from '../lib/pncpClient.ts';
 import { ROUTES } from '../lib/routes.ts';
@@ -32,18 +32,33 @@ function motivoTexto(m: any) {
 }
 
 export default function SuperSugestaoPanel({ obterEditais, onClose }: { obterEditais: (p: Progresso) => Promise<any[]>; onClose: () => void }) {
-  const [historico, setHistorico] = useState(() => lerHistorico());
+  // padrão do sistema (arquivo do site) ou o existente neste navegador (importado ou vindo do Privado)
+  const [fonte, setFonte] = useState<'padrao' | 'local'>(() => (lerFonte() === 'local' && lerHistorico() ? 'local' : 'padrao'));
+  const [local, setLocal] = useState(() => lerHistorico());
+  const [padrao, setPadrao] = useState<any>(null);
+  const historico = fonte === 'local' ? local : padrao;
   const [erroCache, setErroCache] = useState('');
   const arquivo = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (fonte !== 'padrao' || padrao) return;
+    historicoPadrao()
+      .then(setPadrao)
+      .catch(() => setErroCache('Não consegui abrir o histórico padrão do sistema.'));
+  }, [fonte, padrao]);
+  const usar = (f: 'padrao' | 'local') => {
+    setFonte(f);
+    gravarFonte(f);
+    setRes([]);
+    setEstado('idle');
+  };
 
   // cache baixado na área Privado: dispensa fazer login de novo neste navegador
   const importar = async (f: File | undefined) => {
     if (!f) return;
     setErroCache('');
     try {
-      setHistorico(importarHistorico(await f.text()));
-      setRes([]);
-      setEstado('idle');
+      setLocal(importarHistorico(await f.text()));
+      usar('local');
     } catch (e) {
       setErroCache((e as Error).message);
     } finally {
@@ -63,7 +78,9 @@ export default function SuperSugestaoPanel({ obterEditais, onClose }: { obterEdi
     try {
       const editais = await obterEditais((etapa, feito, total) => setProg({ etapa, feito, total }));
       // nas cidades onde já ganhamos, os itens do edital também contam (o objeto às vezes é genérico)
-      const alvo = editaisNasCidades(historico, editais).filter((e: any) => e.compra).slice(0, 400);
+      const alvo = editaisNasCidades(historico, editais)
+        .filter((e: any) => e.compra)
+        .slice(0, 400);
       const itens = new Map<string, any[]>();
       let i = 0;
       let feitos = 0;
@@ -116,22 +133,22 @@ export default function SuperSugestaoPanel({ obterEditais, onClose }: { obterEdi
           r.motivos
             .filter((m: any) => !aqui || m.nivel !== 'fraca')
             .map((m: any) => [
-            NIVEIS[m.nivel as Nivel].titulo,
-            r.edital.orgao,
-            r.edital.municipio,
-            r.edital.objeto,
-            r.edital.valor ?? null,
-            r.edital.propostasAte,
-            r.edital.local || '',
-            m.nivel === 'media' ? `Categoria: ${m.porque}` : `Produto: ${m.porque}`,
-            m.orgao,
-            m.processo,
-            SIT[m.situacao] || '',
-            m.exemplos.map((x: any) => x.descricao).join(' | '),
-            r.edital.link,
-            r.edital.linkLocal || '',
-          ]),
-      );
+              NIVEIS[m.nivel as Nivel].titulo,
+              r.edital.orgao,
+              r.edital.municipio,
+              r.edital.objeto,
+              r.edital.valor ?? null,
+              r.edital.propostasAte,
+              r.edital.local || '',
+              m.nivel === 'media' ? `Categoria: ${m.porque}` : `Produto: ${m.porque}`,
+              m.orgao,
+              m.processo,
+              SIT[m.situacao] || '',
+              m.exemplos.map((x: any) => x.descricao).join(' | '),
+              r.edital.link,
+              r.edital.linkLocal || '',
+            ]),
+        );
     baixarXlsx(`super-sugestao-agil-${new Date().toISOString().slice(0, 10)}.xlsx`, [
       { nome: 'Mesma cidade', colunas, linhas: linhas(true) },
       { nome: 'Outras cidades', colunas, linhas: linhas(false) },
@@ -146,8 +163,8 @@ export default function SuperSugestaoPanel({ obterEditais, onClose }: { obterEdi
         <div>
           <p className="text-xl font-bold font-display text-[#0F2053]">Super Sugestão</p>
           <p className="mt-1 text-[15px] text-slate-600 max-w-3xl">
-            Procura editais abertos em Minas Gerais nas cidades onde a AGIL já ganhou: o mesmo produto (ex.: toner onde já vendemos toner) ou a mesma
-            categoria (ex.: brinquedos onde já vendemos carrinho).
+            Procura editais abertos em Minas Gerais nas cidades onde a AGIL já ganhou: o mesmo produto (ex.: toner onde já vendemos toner) ou a mesma categoria
+            (ex.: brinquedos onde já vendemos carrinho).
           </p>
         </div>
         <button type="button" onClick={onClose} className="text-sm font-bold text-slate-600 underline cursor-pointer">
@@ -161,11 +178,45 @@ export default function SuperSugestaoPanel({ obterEditais, onClose }: { obterEdi
           {erroCache}
         </p>
       )}
-      {!historico ? (
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <span className="text-sm font-semibold text-slate-600">Histórico de vitórias:</span>
+        {(
+          [
+            ['padrao', 'Usar o padrão do sistema', true],
+            ['local', 'Usar o existente neste navegador', !!local],
+          ] as const
+        ).map(([v, l, ok]) => (
+          <button
+            key={v}
+            type="button"
+            disabled={!ok}
+            aria-pressed={fonte === v}
+            onClick={() => usar(v)}
+            className={`px-3.5 py-2 rounded-xl text-sm font-bold border-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+              fonte === v ? 'bg-[#0F2053] border-[#0F2053] text-white' : 'border-slate-200 text-[#0F2053] hover:border-[#0478CA]'
+            }`}
+          >
+            {l}
+          </button>
+        ))}
+        <button
+          type="button"
+          onClick={() => arquivo.current?.click()}
+          className="px-3.5 py-2 rounded-xl text-sm font-bold border-2 border-slate-200 text-[#0F2053] hover:border-[#0478CA] cursor-pointer"
+        >
+          Importar cache
+        </button>
+        <a href={ROUTES.privado} className="px-3.5 py-2 rounded-xl text-sm font-bold border-2 border-slate-200 text-[#0F2053] hover:border-[#0478CA]">
+          Entrar no Privado
+        </a>
+      </div>
+      {!historico && fonte === 'padrao' && !erroCache ? (
+        <p className="mt-4 text-[15px] text-slate-600">Carregando o histórico padrão do sistema…</p>
+      ) : !historico ? (
         <div className="mt-4 p-4 rounded-xl bg-amber-50 border border-amber-200 text-[15px] text-amber-900">
           <p>
-            <strong>Falta o histórico do que a AGIL já ganhou.</strong> Importe o cache baixado na área Privado (botão "Baixar cache") ou entre na área
-            Privado e conecte o Google Drive.
+            <strong>Falta o histórico do que a AGIL já ganhou.</strong> Importe o cache baixado na área Privado (botão "Baixar cache") ou entre na área Privado
+            e conecte o Google Drive.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             <button
@@ -192,18 +243,18 @@ export default function SuperSugestaoPanel({ obterEditais, onClose }: { obterEdi
             {estado === 'ok' ? 'Procurar de novo' : 'Procurar oportunidades'}
           </button>
           <span className="text-sm text-slate-500">
-            Histórico: {historico.processos.length} processos, {historico.processos.reduce((s: number, p: any) => s + p.itens.length, 0)} itens · atualizado em{' '}
-            {dataBR(historico.atualizadoEm)} ·{' '}
-            <button type="button" onClick={() => arquivo.current?.click()} className="font-bold text-[#0478CA] underline cursor-pointer">
-              importar outro cache
-            </button>{' '}
-            ·{' '}
-            <button type="button" onClick={() => baixarHistorico()} className="font-bold text-[#0478CA] underline cursor-pointer">
+            {fonte === 'padrao' ? 'Padrão do sistema' : 'Deste navegador'}: {historico.processos.length} processos,{' '}
+            {historico.processos.reduce((s: number, p: any) => s + p.itens.length, 0)} itens · atualizado em {dataBR(historico.atualizadoEm)} ·{' '}
+            <button type="button" onClick={() => baixarHistorico(historico)} className="font-bold text-[#0478CA] underline cursor-pointer">
               baixar cache
             </button>
           </span>
           {estado === 'ok' && res.length > 0 && (
-            <button type="button" onClick={exportar} className="ml-auto inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#1D6F42] hover:bg-[#185C37] text-white text-[15px] font-bold cursor-pointer">
+            <button
+              type="button"
+              onClick={exportar}
+              className="ml-auto inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#1D6F42] hover:bg-[#185C37] text-white text-[15px] font-bold cursor-pointer"
+            >
               <Icon name="sheet" className="w-5 h-5" /> Exportar Excel
             </button>
           )}
@@ -271,7 +322,12 @@ export default function SuperSugestaoPanel({ obterEditais, onClose }: { obterEdi
                         ))}
                         {r.motivos.length > 4 && <li className="text-slate-600">e mais {r.motivos.length - 4} motivo(s)</li>}
                       </ul>
-                      <a href={r.edital.link} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-1 text-sm font-bold text-[#0478CA] underline">
+                      <a
+                        href={r.edital.link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-2 inline-flex items-center gap-1 text-sm font-bold text-[#0478CA] underline"
+                      >
                         Ver edital no PNCP <Icon name="arrow" className="w-4 h-4" />
                       </a>
                     </li>

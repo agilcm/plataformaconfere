@@ -1,12 +1,14 @@
 // Histórico do que a AGIL já ganhou (vem da área Privado) guardado neste navegador.
-// A Super Sugestão da aba AGIL CNAE usa esse histórico; os dados nunca vão para o código do site.
+// A Super Sugestão da aba AGIL CNAE usa esse histórico. Há também um histórico padrão do sistema
+// (src/data/historicoPadrao.json, exportado do Privado), carregado só quando a Super Sugestão abre.
 
 const CHAVE = 'agilcm:historico-vitorias';
 
 /** "Prefeitura Municipal de Astolfo Dutra" -> "Astolfo Dutra" */
 export function cidadeDoOrgao(orgao) {
   const s = String(orgao || '').trim();
-  const m = s.match(/(?:municipal|munic[ií]pio|saaed?|esgoto|autarquia|cons[oó]rcio|fundo|instituto)\b.*?\s+d[eoa]s?\s+(.+)$/i) || s.match(/\s+d[eoa]s?\s+([^,]+)$/i);
+  const m =
+    s.match(/(?:municipal|munic[ií]pio|saaed?|esgoto|autarquia|cons[oó]rcio|fundo|instituto)\b.*?\s+d[eoa]s?\s+(.+)$/i) || s.match(/\s+d[eoa]s?\s+([^,]+)$/i);
   return (m ? m[1] : s).replace(/\s*[-/]\s*MG$/i, '').trim();
 }
 
@@ -61,8 +63,18 @@ export function importarHistorico(conteudo) {
   } catch {
     throw new Error('O arquivo não é um cache da área Privado (JSON inválido).');
   }
+  const dados = normalizarHistorico(d);
+  try {
+    localStorage.setItem(CHAVE, JSON.stringify(dados));
+  } catch {
+    throw new Error('O navegador não deixou guardar o cache (armazenamento cheio ou bloqueado).');
+  }
+  return dados;
+}
+
+/** Confere o formato do cache e fica só com os campos conhecidos, com o tipo certo. */
+export function normalizarHistorico(d) {
   if (!d || d.formato !== FORMATO || !Array.isArray(d.processos)) throw new Error('O arquivo não é um cache da área Privado.');
-  // só os campos conhecidos, com o tipo certo
   const dados = {
     atualizadoEm: texto(d.atualizadoEm, 40) || new Date().toISOString(),
     processos: d.processos.slice(0, 5000).map((p) => ({
@@ -80,17 +92,35 @@ export function importarHistorico(conteudo) {
     })),
   };
   if (!dados.processos.length) throw new Error('O cache não tem nenhum processo.');
-  try {
-    localStorage.setItem(CHAVE, JSON.stringify(dados));
-  } catch {
-    throw new Error('O navegador não deixou guardar o cache (armazenamento cheio ou bloqueado).');
-  }
   return dados;
 }
 
+/** Histórico padrão do sistema (arquivo do site, carregado sob demanda). */
+export async function historicoPadrao() {
+  const m = await import('../data/historicoPadrao.json');
+  return normalizarHistorico(m.default);
+}
+
+const CHAVE_FONTE = 'agilcm:historico-fonte';
+/** Qual histórico a Super Sugestão usa: o padrão do sistema (padrão) ou o existente neste navegador. */
+export function lerFonte() {
+  try {
+    return localStorage.getItem(CHAVE_FONTE) === 'local' ? 'local' : 'padrao';
+  } catch {
+    return 'padrao';
+  }
+}
+export function gravarFonte(fonte) {
+  try {
+    localStorage.setItem(CHAVE_FONTE, fonte);
+  } catch {
+    /* sem armazenamento: volta ao padrão na próxima visita */
+  }
+}
+
 /** Baixa o cache como arquivo .json */
-export function baixarHistorico() {
-  const conteudo = exportarHistorico();
+export function baixarHistorico(dados = lerHistorico()) {
+  const conteudo = exportarHistorico(dados);
   if (!conteudo) return false;
   const url = URL.createObjectURL(new Blob([conteudo], { type: 'application/json' }));
   const a = document.createElement('a');
