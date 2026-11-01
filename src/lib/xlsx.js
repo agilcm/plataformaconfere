@@ -70,7 +70,7 @@ export function zipar(arquivos) {
   return out;
 }
 
-const esc = (s) =>
+export const esc = (s) =>
   String(s)
     // caracteres de controle não são permitidos no XML
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
@@ -79,7 +79,7 @@ const esc = (s) =>
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 
-const letra = (i) => {
+export const letra = (i) => {
   let s = '';
   for (let n = i + 1; n > 0; n = Math.floor((n - 1) / 26)) s = String.fromCharCode(65 + ((n - 1) % 26)) + s;
   return s;
@@ -125,7 +125,7 @@ function planilha(aba) {
   );
 }
 
-const ESTILOS =
+export const ESTILOS =
   '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
   '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
   '<numFmts count="3"><numFmt numFmtId="164" formatCode="&quot;R$&quot; #,##0.00"/><numFmt numFmtId="165" formatCode="dd/mm/yyyy"/>' +

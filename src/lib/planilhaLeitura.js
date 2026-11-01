@@ -59,31 +59,25 @@ const colNum = (ref) => {
 
 const textos = (xml) => [...xml.matchAll(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g)].map((m) => dec(m[1])).join('');
 
-/** Primeira aba de um .xlsx como matriz. */
-export async function lerXlsx(buf) {
-  const td = new TextDecoder();
-  const arq = await lerZip(buf, (n) => /^xl\/(workbook\.xml|_rels\/workbook\.xml\.rels|sharedStrings\.xml|worksheets\/[^/]+\.xml)$/.test(n));
-  const txt = (n) => (arq[n] ? td.decode(arq[n]) : '');
-  // primeira aba visível, na ordem do workbook
-  let caminho = '';
-  const wb = txt('xl/workbook.xml');
-  const rels = txt('xl/_rels/workbook.xml.rels');
-  const sheet = wb.match(/<sheet\b[^>]*r:id="([^"]+)"/);
-  if (sheet) {
-    const rel = [...rels.matchAll(/<Relationship\b[^>]*>/g)].map((m) => m[0]).find((r) => r.includes(`Id="${sheet[1]}"`));
-    const alvo = rel?.match(/Target="([^"]+)"/)?.[1];
-    if (alvo) caminho = alvo.startsWith('/') ? alvo.slice(1) : `xl/${alvo.replace(/^\.\//, '')}`;
+const caminhoAlvo = (alvo, base = 'xl/') => (alvo.startsWith('/') ? alvo.slice(1) : `${base}${alvo.replace(/^\.\//, '')}`);
+const relacoes = (xml) => {
+  const m = new Map();
+  for (const r of xml.matchAll(/<Relationship\b[^>]*>/g)) {
+    const id = r[0].match(/\bId="([^"]+)"/)?.[1];
+    const alvo = r[0].match(/\bTarget="([^"]+)"/)?.[1];
+    if (id && alvo) m.set(id, dec(alvo));
   }
-  if (!arq[caminho])
-    caminho = Object.keys(arq)
-      .filter((n) => n.startsWith('xl/worksheets/'))
-      .sort()[0];
-  if (!caminho) throw new Error('A planilha está vazia');
-  const compart = [...txt('xl/sharedStrings.xml').matchAll(/<si>([\s\S]*?)<\/si>/g)].map((m) => textos(m[1]));
+  return m;
+};
+
+/** Uma aba: linhas na posição real da planilha (linha 1 = índice 0) e os links das células ("K3" → url). */
+function lerAba(xml, relsXml, compart) {
   const linhas = [];
-  for (const m of txt(caminho).matchAll(/<row\b[^>]*>([\s\S]*?)<\/row>/g)) {
+  const links = {};
+  for (const m of xml.matchAll(/<row\b([^>]*)>([\s\S]*?)<\/row>/g)) {
+    const r = Number(m[1].match(/\br="(\d+)"/)?.[1]) || linhas.length + 1;
     const linha = [];
-    for (const c of m[1].matchAll(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
+    for (const c of m[2].matchAll(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
       const attrs = c[1];
       const corpo = c[2] || '';
       const ref = attrs.match(/\br="([A-Z]+\d+)"/)?.[1];
@@ -95,11 +89,59 @@ export async function lerXlsx(buf) {
       else if (tipo === 'str' || tipo === 'e') valor = dec(v ?? '');
       else if (tipo === 'b') valor = v === '1' ? 'VERDADEIRO' : 'FALSO';
       else if (v != null && v !== '') valor = Number(v);
-      linha[ref ? colNum(ref) : linha.length] = valor;
+      const col = ref ? colNum(ref) : linha.length;
+      linha[col] = valor;
+      // =HYPERLINK("url"; "texto")
+      const f = corpo.match(/<f>([\s\S]*?)<\/f>/)?.[1];
+      const url = f && dec(f).match(/HYPERLINK\(\s*"([^"]+)"/i)?.[1];
+      if (url) links[ref || `${String.fromCharCode(65 + col)}${r}`] = url;
     }
-    linhas.push(Array.from(linha, (x) => (x === undefined ? '' : x)));
+    linhas[r - 1] = Array.from(linha, (x) => (x === undefined ? '' : x));
   }
-  return linhas;
+  const rels = relacoes(relsXml);
+  for (const h of xml.matchAll(/<hyperlink\b([^>]*)\/?>/g)) {
+    const ref = h[1].match(/\bref="([A-Z]+\d+)/)?.[1];
+    const id = h[1].match(/\br:id="([^"]+)"/)?.[1];
+    if (ref && id && rels.get(id)) links[ref] = rels.get(id);
+  }
+  return { linhas: Array.from(linhas, (l) => l || []), links };
+}
+
+/**
+ * Todas as abas de um .xlsx, na ordem do arquivo.
+ * @returns {Promise<{ nome: string, linhas: any[][], links: Record<string, string> }[]>}
+ */
+export async function lerXlsxAbas(buf) {
+  const td = new TextDecoder();
+  const arq = await lerZip(buf, (n) =>
+    /^xl\/(workbook\.xml|_rels\/workbook\.xml\.rels|sharedStrings\.xml|worksheets\/[^/]+\.xml|worksheets\/_rels\/[^/]+\.rels)$/.test(n),
+  );
+  const txt = (n) => (arq[n] ? td.decode(arq[n]) : '');
+  const compart = [...txt('xl/sharedStrings.xml').matchAll(/<si>([\s\S]*?)<\/si>/g)].map((m) => textos(m[1]));
+  const rels = relacoes(txt('xl/_rels/workbook.xml.rels'));
+  const abas = [];
+  for (const s of txt('xl/workbook.xml').matchAll(/<sheet\b([^>]*)\/?>/g)) {
+    const nome = dec(s[1].match(/\bname="([^"]*)"/)?.[1] || `Aba ${abas.length + 1}`);
+    const alvo = rels.get(s[1].match(/\br:id="([^"]+)"/)?.[1] || '');
+    const caminho = alvo ? caminhoAlvo(alvo) : '';
+    if (!arq[caminho]) continue;
+    const relsAba = caminho.replace(/worksheets\/([^/]+)$/, 'worksheets/_rels/$1.rels');
+    abas.push({ nome, ...lerAba(txt(caminho), txt(relsAba), compart) });
+  }
+  if (!abas.length) {
+    const caminho = Object.keys(arq)
+      .filter((n) => /^xl\/worksheets\/[^/]+\.xml$/.test(n))
+      .sort()[0];
+    if (caminho) abas.push({ nome: 'Planilha', ...lerAba(txt(caminho), '', compart) });
+  }
+  return abas;
+}
+
+/** Primeira aba de um .xlsx como matriz. */
+export async function lerXlsx(buf) {
+  const abas = await lerXlsxAbas(buf);
+  if (!abas.length) throw new Error('A planilha está vazia');
+  return abas[0].linhas;
 }
 
 /** CSV (vírgula, ponto e vírgula ou tab; UTF-8 ou Windows-1252, como o Excel brasileiro salva). */

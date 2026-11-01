@@ -7,6 +7,10 @@ export const GOOGLE_CLIENT_ID = '';
 /** Pasta "Meu Drive / AGIL CM PRODUTOS ALIMENTICIOS LTDA / Licitacoes - Agil" */
 export const PASTA_LICITACOES_ID = '1GZGf7vTgQtPFCb0KO5TFGQ3iapXDKfFB';
 
+/** Pasta "PLANILHAS PARA LICITAÇÕES" (planilhas de custo de cada cidade); as cotações novas vão para a subpasta "cloud". */
+export const PASTA_PLANILHAS_ID = '1ccwlgxoOBYmatae2rEH9gocOpCkheDj_';
+export const PASTA_COTACOES_NOME = 'cloud';
+
 /** Login da tela: guardamos só o PBKDF2-SHA256 de "email\nsenha" (210 mil iterações), nunca a senha. */
 export const LOGIN = {
   salt: '0ced92103846f03ee294cbf600b4829a',

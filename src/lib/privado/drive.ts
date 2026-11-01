@@ -196,3 +196,36 @@ export function idDoLink(s: string): string {
 export async function lixeira(id: string): Promise<void> {
   await chamar(`${API}/files/${id}?supportsAllDrives=true`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trashed: true }) });
 }
+
+/** Exporta um arquivo do Google (Planilha, Documento) no formato pedido, ex.: Planilha Google como .xlsx. */
+export async function exportar(id: string, mimeType: string): Promise<Uint8Array> {
+  const r = await chamar(`${API}/files/${id}/export?mimeType=${encodeURIComponent(mimeType)}`);
+  return new Uint8Array(await r.arrayBuffer());
+}
+
+/** Pasta filha com esse nome (cria se não existir). */
+export async function pastaFilha(nome: string, pai: string): Promise<ArquivoDrive> {
+  const existente = (await listarFilhos(pai)).find((f) => f.mimeType === PASTA && f.name.trim().toLowerCase() === nome.toLowerCase());
+  if (existente) return existente;
+  return criarPasta(nome, pai, {});
+}
+
+export const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+export const PLANILHA_GOOGLE = 'application/vnd.google-apps.spreadsheet';
+
+/** Envia um .xlsx e o Drive converte em Planilha Google (fórmulas e links mantidos). */
+export async function enviarComoPlanilhaGoogle({ nome, pai, bytes }: { nome: string; pai: string; bytes: Uint8Array }): Promise<ArquivoDrive> {
+  const limite = `agilcm${Math.random().toString(36).slice(2)}`;
+  const meta = JSON.stringify({ name: nome, mimeType: PLANILHA_GOOGLE, parents: [pai] });
+  const corpo = new Blob([
+    `--${limite}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n--${limite}\r\nContent-Type: ${XLSX}\r\n\r\n`,
+    bytes as BlobPart,
+    `\r\n--${limite}--`,
+  ]);
+  const r = await chamar(`${UPLOAD}/files?uploadType=multipart&fields=${CAMPOS}&supportsAllDrives=true`, {
+    method: 'POST',
+    headers: { 'Content-Type': `multipart/related; boundary=${limite}` },
+    body: corpo,
+  });
+  return r.json();
+}
