@@ -7,19 +7,21 @@ import { ROUTES } from '../lib/routes.ts';
 import EditaisTab from './EditaisTab.tsx';
 import ContratosTab from './ContratosTab.tsx';
 import MeusEditaisTab from './MeusEditaisTab.tsx';
+import RaioXTab from './RaioXTab.tsx';
 import { useMeusEditais } from '../lib/meusEditais.ts';
 
-type Aba = 'editais' | 'contratos' | 'agil' | 'meus';
+type Aba = 'editais' | 'contratos' | 'agil' | 'raiox' | 'meus';
 
 const ABAS: { id: Aba; label: string; desc: string; icon: string }[] = [
   { id: 'editais', label: 'Editais abertos', desc: 'Licitações recebendo propostas agora', icon: 'doc' },
   { id: 'contratos', label: 'CONTRATOS', desc: 'Quem comprou, o quê e por quanto', icon: 'receipt' },
   { id: 'agil', label: 'AGIL CNAE', desc: 'Editais abertos ligados aos CNAEs da Ágil CM', icon: 'building' },
+  { id: 'raiox', label: 'RAIO-X', desc: 'Analise qualquer edital pelo link do PNCP', icon: 'doc' },
   { id: 'meus', label: 'MEUS EDITAIS', desc: 'Salvos, etapas e prazos na agenda', icon: 'star' },
 ];
 
-const HASH_ABA: Record<string, Aba> = { '#contratos': 'contratos', '#agil-cnae': 'agil', '#meus-editais': 'meus' };
-const ABA_HASH: Record<Aba, string> = { editais: '', contratos: '#contratos', agil: '#agil-cnae', meus: '#meus-editais' };
+const HASH_ABA: Record<string, Aba> = { '#contratos': 'contratos', '#agil-cnae': 'agil', '#raio-x': 'raiox', '#meus-editais': 'meus' };
+const ABA_HASH: Record<Aba, string> = { editais: '', contratos: '#contratos', agil: '#agil-cnae', raiox: '#raio-x', meus: '#meus-editais' };
 
 export default function LicitacoesPage() {
   const [aba, setAba] = useState<Aba>('editais');
@@ -84,7 +86,7 @@ export default function LicitacoesPage() {
             </a>
 
             {/* Abas */}
-            <div role="tablist" aria-label="O que você quer ver" className="mt-10 grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 max-w-5xl">
+            <div role="tablist" aria-label="O que você quer ver" className="mt-10 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3">
               {ABAS.map((t) => (
                 <button
                   key={t.id}
@@ -113,7 +115,15 @@ export default function LicitacoesPage() {
         </section>
 
         <div id="painel" role="tabpanel" aria-labelledby={`aba-${aba}`}>
-          {aba === 'contratos' ? <ContratosTab /> : aba === 'meus' ? <MeusEditaisTab /> : <EditaisTab key={aba} agil={aba === 'agil'} />}
+          {aba === 'contratos' ? (
+            <ContratosTab />
+          ) : aba === 'meus' ? (
+            <MeusEditaisTab />
+          ) : aba === 'raiox' ? (
+            <RaioXTab />
+          ) : (
+            <EditaisTab key={aba} agil={aba === 'agil'} />
+          )}
         </div>
       </main>
       <Footer page="licitacoes" />

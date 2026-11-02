@@ -402,6 +402,75 @@ export async function fetchArquivosCompra({ cnpj, ano, seq }, fetchImpl = fetch)
     .map((a) => ({ titulo: fixText(a.titulo), tipo: a.tipoDocumentoNome || 'Documento', url: a.url || a.uri }));
 }
 
+/**
+ * Encontra a compra num texto colado: link do PNCP (…/app/editais/CNPJ/ANO/SEQ) ou número de controle
+ * (CNPJ-1-SEQ/ANO). Devolve { cnpj, ano, seq } ou null.
+ */
+export function refDoTexto(texto) {
+  const t = String(texto || '').trim();
+  let m = t.match(/(?:editais|compras)\/(\d{14})\/(\d{4})\/(\d+)/);
+  if (m) return { cnpj: m[1], ano: m[2], seq: String(Number(m[3])) };
+  // CNPJ com pontuação (17.710.096/0001-84) vira só números
+  m = t.replace(/(\d{2})\.(\d{3})\.(\d{3})\/(\d{4})-(\d{2})/g, '$1$2$3$4$5').match(/(\d{14})-\d-0*(\d+)\/(\d{4})/);
+  if (m) return { cnpj: m[1], ano: m[3], seq: m[2] };
+  return null;
+}
+
+/** Dados de uma compra (edital) pelo CNPJ/ano/sequencial, no mesmo formato da busca (mapItem) */
+export async function fetchCompra({ cnpj, ano, seq }, fetchImpl = fetch) {
+  const c = await fetchJson(`${API}/orgaos/${cnpj}/compras/${ano}/${seq}`, { fetchImpl, retries: 3, timeout: 30000 });
+  if (!c || typeof c !== 'object') throw new PncpError('Edital não encontrado no PNCP', { status: 404, retryable: false });
+  const u = c.unidadeOrgao || {};
+  const busca = { link_sistema_origem: c.linkSistemaOrigem, modalidade_licitacao_nome: c.modalidadeNome, usuario_nome: c.usuarioNome };
+  const local = localDoPregao(busca);
+  return {
+    id: c.numeroControlePNCP || `${cnpj}-1-${seq}/${ano}`,
+    titulo: `${fixText(c.tipoInstrumentoConvocatorioNome) || 'Edital'} nº ${c.numeroCompra || seq}/${c.anoCompra || ano}`,
+    objeto: fixText(c.objetoCompra),
+    orgao: fixText(c.orgaoEntidade?.razaoSocial),
+    unidade: fixText(u.nomeUnidade),
+    municipio: fixText(u.municipioNome),
+    uf: u.ufSigla || '',
+    microrregiao: u.ufSigla && u.ufSigla !== 'MG' ? null : microrregiaoDe(u.municipioNome),
+    modalidade: c.modalidadeNome || '',
+    valor: num(c.valorTotalEstimado),
+    publicadoEm: c.dataPublicacaoPncp || '',
+    atualizadoEm: c.dataAtualizacao || c.dataPublicacaoPncp || '',
+    propostasAte: c.dataEncerramentoProposta || null,
+    propostasDe: c.dataAberturaProposta || null,
+    srp: c.srp === true,
+    esfera: c.orgaoEntidade?.esferaId || '',
+    modoDisputa: fixText(c.modoDisputaNome),
+    amparo: fixText(c.amparoLegal?.nome || ''),
+    ibge: u.codigoIbge || '',
+    situacao: fixText(c.situacaoCompraNome),
+    processo: fixText(c.processo),
+    informacao: fixText(c.informacaoComplementar),
+    link: `https://pncp.gov.br/app/editais/${cnpj}/${ano}/${seq}`,
+    linkOrigem: c.linkSistemaOrigem || null,
+    fonte: fonteDe(busca),
+    local: local.nome,
+    linkLocal: local.link,
+    compra: { cnpj, ano, seq },
+  };
+}
+
+/**
+ * Edital pelo link/número: primeiro pela busca do PNCP (mais estável), depois pela consulta da compra.
+ * Mesmo formato de mapItem, com situação, processo e informação complementar quando vierem.
+ */
+export async function fetchEditalPorRef(ref, fetchImpl = fetch) {
+  const controle = `${ref.cnpj}-1-${String(ref.seq).padStart(6, '0')}/${ref.ano}`;
+  try {
+    const data = await fetchJson(buildSearchUrl({ q: controle, tamanho: 5, status: 'todos', uf: '' }), { fetchImpl, retries: 3 });
+    const it = (Array.isArray(data?.items) ? data.items : []).find((i) => i.numero_controle_pncp === controle);
+    if (it) return { ...mapItem(it), uf: it.uf || '', situacao: fixText(it.situacao_nome), processo: '', informacao: '' };
+  } catch {
+    /* busca fora do ar: tenta a consulta da compra */
+  }
+  return fetchCompra(ref, fetchImpl);
+}
+
 /** Itens + documentos de uma compra. Se uma das partes falhar, a outra ainda é entregue. */
 export async function fetchDetalheCompra(ref, fetchImpl = fetch) {
   const [itens, arquivos] = await Promise.allSettled([fetchItensCompra(ref, fetchImpl), fetchArquivosCompra(ref, fetchImpl)]);
