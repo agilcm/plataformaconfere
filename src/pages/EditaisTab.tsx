@@ -5,8 +5,9 @@ import { MICRORREGIOES } from '../data/zonaDaMata.js';
 import { AGIL_CNAES } from '../data/agilCnaes.js';
 import { filtrarPorCnaes, filtrarPorRegras, filtrarPorSegmento } from '../lib/agilCnae.js';
 import { buscarCnae, CATALOGO_POR_ID, regrasDoCatalogo } from '../lib/catalogoCnae.js';
-import { contarFontes, contarLocais, fetchAllMG, fetchDetalheCompra, fetchItensCompra, fetchMunicipios, fetchPage, filterEditais, sortByUpdate } from '../lib/pncp.js';
-import { PNCP_MUNICIPIOS_ZM } from '../data/pncpMunicipiosZM.js';
+import { contarFontes, contarLocais, fetchDetalheCompra, fetchItensCompra, fetchPage, filterEditais, sortByUpdate } from '../lib/pncp.js';
+import { descartarListas, listaDe, preCarregar } from '../lib/listasEditais.ts';
+import { guardarItens, itensGuardados } from '../lib/itensCache.ts';
 import { SEGMENTOS, SEGMENTO_POR_ID } from '../data/segmentos.js';
 import { abasEditais } from '../lib/exportarEditais.js';
 import { baixarXlsx } from '../lib/xlsx.js';
@@ -98,8 +99,8 @@ declare global {
 
 // agil: aba AGIL CNAE, mesma lista restrita aos editais ligados aos CNAEs da Ágil CM
 export default function EditaisTab({ agil = false }: { agil?: boolean }) {
-  // Editais abertos começa na Zona da Mata (carrega bem mais rápido); AGIL CNAE em Minas Gerais
-  const [regiao, setRegiao] = useState<Regiao>(agil ? 'mg' : 'zona-da-mata');
+  // as duas abas começam na Zona da Mata: a lista é lida uma vez só e serve às duas (e à Super Sugestão)
+  const [regiao, setRegiao] = useState<Regiao>('zona-da-mata');
   const [segmento, setSegmento] = useState(''); // AGIL CNAE: '' = CNAEs da Ágil; senão, o id do segmento
   const [micro, setMicro] = useState('');
   const [busca, setBusca] = useState('');
@@ -131,18 +132,10 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
   const [exportando, setExportando] = useState<{ etapa: string; feito: number; total: number } | null>(null);
   const [exportErro, setExportErro] = useState('');
   const cancelarExport = useRef(false);
-  const allMG = useRef<Edital[] | null>(null); // cache do modo direto
-  const allZM = useRef<Edital[] | null>(null); // Zona da Mata, pelo filtro de municípios do PNCP
-  const ZM_IDS = Object.values(PNCP_MUNICIPIOS_ZM) as string[];
-  // Lista completa da região (modo direto). Brasil não tem lista completa: são dezenas de milhares de editais.
-  const listaDaRegiao = async (reg: Regiao, onProgress: (loaded: number, total: number) => void): Promise<Edital[]> => {
-    if (reg === 'zona-da-mata' && ZM_IDS.length) {
-      if (!allZM.current) allZM.current = (await fetchMunicipios(ZM_IDS, { onProgress })).items as Edital[];
-      return allZM.current;
-    }
-    if (!allMG.current) allMG.current = (await fetchAllMG({ onProgress })).items as Edital[];
-    return allMG.current;
-  };
+  // Lista completa da região (modo direto), compartilhada entre as abas (lib/listasEditais.ts).
+  // Brasil não tem lista completa: são dezenas de milhares de editais.
+  const listaDaRegiao = async (reg: Regiao, onProgress: (loaded: number, total: number) => void): Promise<Edital[]> =>
+    (await listaDe(reg === 'zona-da-mata' ? 'zm' : 'mg', onProgress)).items as Edital[];
   const reqId = useRef(0);
 
   // Busca com pequeno atraso enquanto a pessoa digita
@@ -232,10 +225,15 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
         saveLocal(key, out);
         return { ...out, fonte: 'direto' };
       }
-      const lista = await listaDaRegiao(regiao, (loaded, t) => setProgresso({ loaded, total: t }));
+      const l = await listaDe(regiao === 'zona-da-mata' ? 'zm' : 'mg', (loaded, t) => setProgresso({ loaded, total: t }));
       setProgresso(null);
-      const f = aplicar(lista, { regiao, micro, q, fontes: fontesKey, locais: locaisKey });
-      const out = { items: f.slice((pag - 1) * PAGE_SIZE, pag * PAGE_SIZE), total: f.length, atualizadoEm: new Date().toISOString() };
+      const f = aplicar(l.items as Edital[], { regiao, micro, q, fontes: fontesKey, locais: locaisKey });
+      const out = {
+        items: f.slice((pag - 1) * PAGE_SIZE, pag * PAGE_SIZE),
+        total: f.length,
+        atualizadoEm: new Date(l.at).toISOString(),
+        incompleto: l.incompleto,
+      };
       saveLocal(key, out);
       return { ...out, fonte: 'direto' };
     } catch {
@@ -278,6 +276,12 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
       .catch(() => id === reqId.current && setErro('O PNCP está fora do ar ou muito lento neste momento. Isso acontece com frequência e costuma voltar em poucos minutos.'))
       .finally(() => id === reqId.current && setLoading(false));
   }, [carregar, pagina, tentativa]);
+
+  // AGIL CNAE: com a Zona da Mata na tela, Minas Gerais vai sendo lida por trás
+  // (o botão Minas Gerais e a Super Sugestão encontram a lista pronta)
+  useEffect(() => {
+    if (agil && !loading && import.meta.env.VITE_STATIC_HOST === 'true') preCarregar('mg');
+  }, [agil, loading]);
 
   // Quantos editais há em cada fonte e em cada local do pregão (com os mesmos filtros de região e busca)
   useEffect(() => {
@@ -360,17 +364,22 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
       const lista = await listarTodos();
       const comCompra = lista.filter((e) => e.compra);
       const itens = new Map<string, { itens: unknown[] | null; erro?: string }>();
-      let feitos = 0;
+      // itens já lidos (Super Sugestão ou outra exportação) vêm do navegador
+      for (const [id, v] of await itensGuardados(comCompra.map((e) => e.id))) itens.set(id, { itens: v });
+      let feitos = itens.size;
       setExportando({ etapa: 'Buscando os itens de cada edital no PNCP', feito: 0, total: comCompra.length });
       let i = 0;
       await Promise.all(
         Array.from({ length: Math.min(6, comCompra.length) }, async () => {
           while (i < comCompra.length && !cancelarExport.current) {
             const e = comCompra[i++];
+            if (itens.has(e.id)) continue;
             const ref = e.compra!;
             try {
-              const viaApi = await callApi<{ itens: unknown[] | null }>('compra', { cnpj: ref.cnpj, ano: ref.ano, seq: ref.seq });
-              itens.set(e.id, { itens: viaApi?.itens ?? (await fetchItensCompra(ref)) });
+              const viaApi = await callApi<{ itens: any[] | null }>('compra', { cnpj: ref.cnpj, ano: ref.ano, seq: ref.seq });
+              const lidos = viaApi?.itens ?? (await fetchItensCompra(ref));
+              itens.set(e.id, { itens: lidos });
+              guardarItens(e.id, lidos);
             } catch {
               itens.set(e.id, { itens: null, erro: 'PNCP' });
             }
@@ -409,8 +418,8 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
                 <div role="group" aria-label="Região" className={`grid ${agil ? 'grid-cols-2' : 'grid-cols-3'} p-1 rounded-xl bg-slate-100 shrink-0`}>
                   {(agil
                     ? ([
-                        ['mg', 'Minas Gerais'],
                         ['zona-da-mata', 'Zona da Mata mineira'],
+                        ['mg', 'Minas Gerais'],
                       ] as const)
                     : ([
                         ['zona-da-mata', 'Zona da Mata'],
@@ -817,6 +826,22 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
                 <p className="text-sm text-slate-500">
                   Ordenados pela última atualização
                   {atualizadoEm && !loading ? ` · consulta em ${formatHora(atualizadoEm)}` : ''}
+                  {atualizadoEm && !loading && fonte === 'direto' && regiao !== 'brasil' && (
+                    <>
+                      {' · '}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          descartarListas();
+                          setTentativa((t) => t + 1);
+                        }}
+                        title="Lê a lista de novo no PNCP (normalmente ela fica guardada por 30 minutos)"
+                        className="font-bold text-[#0478CA] underline cursor-pointer"
+                      >
+                        atualizar
+                      </button>
+                    </>
+                  )}
                 </p>
                 <button
                   type="button"
@@ -875,7 +900,8 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
             {progresso && (
               <div className="mt-4 p-4 rounded-xl bg-white border border-slate-200">
                 <p className="text-[15px] text-slate-700">
-                  Lendo editais de Minas Gerais para filtrar {agil ? 'pelos CNAEs da Ágil CM' : 'a Zona da Mata'}: {progresso.loaded.toLocaleString('pt-BR')} de{' '}
+                  Lendo os editais {regiao === 'zona-da-mata' ? 'da Zona da Mata' : 'de Minas Gerais'}
+                  {agil ? ' para filtrar pelos CNAEs da Ágil CM' : ''}: {progresso.loaded.toLocaleString('pt-BR')} de{' '}
                   {progresso.total.toLocaleString('pt-BR')}
                 </p>
                 <div className="mt-2 h-2 rounded-full bg-slate-100 overflow-hidden">
