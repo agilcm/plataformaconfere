@@ -7,7 +7,7 @@ name: Alerta diário de editais
 #   Variables: ALERTA_SEGMENTOS (opcional, ex.: "uniformes,eventos")
 on:
   schedule:
-    - cron: '17 10 * * *' # 7h17 em Brasília
+    - cron: '45 10 * * *' # 7h45 em Brasília: a busca leva uns minutos e a mensagem chega por volta das 8h
   workflow_dispatch:
     inputs:
       teste:
