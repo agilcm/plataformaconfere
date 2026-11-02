@@ -1,6 +1,7 @@
 name: Alerta diário de editais
 
-# Toda manhã: editais abertos novos na Zona da Mata ligados aos CNAEs da Ágil, pelo Telegram (scripts/alerta-diario.mjs).
+# Toda manhã, pelo Telegram (scripts/alerta-diario.mjs): editais abertos da Zona da Mata ligados aos CNAEs da Ágil
+# (repetidos até o dia do pregão) e os novos do resto de Minas Gerais.
 # Usa os mesmos segredos do monitor de pregões (Settings → Secrets and variables → Actions):
 #   Secrets:   TELEGRAM_BOT_TOKEN e TELEGRAM_CHAT_ID
 #   Variables: ALERTA_SEGMENTOS (opcional, ex.: "uniformes,eventos")
@@ -24,7 +25,7 @@ concurrency:
 jobs:
   alertar:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

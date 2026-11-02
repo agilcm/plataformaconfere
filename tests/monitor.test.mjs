@@ -31,13 +31,22 @@ test('monitor: avisa mudança de situação, resultado (destacando a AGIL) e doc
   assert.match(primeira[0], /Começando a monitorar/);
 });
 
-test('alerta diário: mensagem por cidade, com prazo, motivo e link', async () => {
+test('alerta diário: Zona da Mata repete até o pregão (🆕 nos novos) e Minas mostra só os novos', async () => {
   const { mensagem } = await import('../scripts/alerta-diario.mjs');
-  const e = { id: '1', municipio: 'Rodeiro', orgao: 'PREFEITURA DE RODEIRO', objeto: 'Aquisição de gêneros alimentícios', valor: 1000, propostasAte: '2026-11-12T09:00:00', link: 'https://pncp.gov.br/app/editais/1/2026/2', motivos: ['generos alimenticios'] };
-  const m = mensagem([e], { hoje: new Date('2026-11-03T10:00:00Z') });
-  assert.ok(m.includes('1 edital novo ligado'));
-  assert.ok(m.includes('📍 <b>Rodeiro</b>'));
-  assert.ok(m.includes('propostas até 12/11 às 09:00'));
-  assert.ok(m.includes('<a href="https://pncp.gov.br/app/editais/1/2026/2">ver edital</a>'));
-  assert.ok(mensagem([]).includes('Nenhum edital novo'));
+  const ed = (id, municipio, propostasAte) => ({ id, municipio, orgao: 'PREFEITURA', objeto: `Gêneros alimentícios ${id}`, valor: 1000, propostasAte, link: `https://pncp.gov.br/app/editais/${id}`, motivos: ['generos alimenticios'] });
+  const hoje = new Date('2026-11-03T10:00:00Z'); // 7h em Brasília
+  const m = mensagem({
+    zm: [ed('a', 'Rodeiro', '2026-11-10T09:00:00'), ed('b', 'Ubá', '2026-11-04T09:00:00'), ed('c', 'Cataguases', '2026-11-01T09:00:00')],
+    novosZm: new Set(['a']),
+    mg: [ed('d', 'Varginha', '2026-11-20T09:00:00')],
+    hoje,
+  });
+  const zm = m.slice(0, m.indexOf('MINAS GERAIS'));
+  assert.ok(zm.includes('ZONA DA MATA</b> · 2 editais abertos (1 novo 🆕)'));
+  assert.ok(zm.indexOf('Ubá') < zm.indexOf('Rodeiro'), 'prazo mais próximo primeiro');
+  assert.ok(zm.includes('🆕 <b>Rodeiro</b>'));
+  assert.ok(zm.includes('⏰ <b>amanhã</b>'));
+  assert.ok(!zm.includes('Cataguases'), 'pregão que já passou sai da lista');
+  assert.ok(m.slice(m.indexOf('MINAS GERAIS')).includes('<b>Varginha</b>'));
+  assert.ok(mensagem({ zm: [], mg: null, hoje }).includes('O PNCP não respondeu para Minas Gerais'));
 });
