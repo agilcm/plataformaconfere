@@ -178,7 +178,9 @@ export default function CotacaoFluxo({
   const ocupado = !!prog || buscandoContratos;
   useEffect(() => onOcupado?.(!!prog), [prog]); // eslint-disable-line react-hooks/exhaustive-deps
   const formOk = form.orgao.trim() && form.processo.trim() && form.data;
-  const mostrarForm = etapaBase !== 'inicio' && (etapaContratos === 'nao' || (etapaContratos === 'sim' && !!contratos && !buscandoContratos));
+  // "Criar planilha Google" aparece logo depois da leitura das planilhas (ou, só com editais, quando a busca terminar)
+  const mostrarForm =
+    !prog && !buscandoContratos && (etapaBase === 'feito' || (etapaBase === 'pulado' && etapaContratos === 'sim' && !!contratos));
 
   return (
     <>
@@ -298,7 +300,8 @@ export default function CotacaoFluxo({
         <div className={`${card} border-2 border-[#0478CA]/40`}>
           <p className="text-lg font-bold text-[#0F2053]">Deseja buscar em contratos?</p>
           <p className="mt-1 text-[15px] text-slate-600">
-            Procura os mesmos itens nos pregões homologados (PNCP), com o período e a região escolhidos acima: menor preço ganho, onde e quem venceu.
+            Opcional: procura os mesmos itens nos pregões homologados (PNCP), com o período e a região escolhidos acima, e acrescenta na planilha o menor
+            preço ganho, onde e quem venceu.
           </p>
           <div className="mt-4 flex gap-3">
             <button
@@ -331,9 +334,10 @@ export default function CotacaoFluxo({
       {/* 4. planilha */}
       {mostrarForm && (
         <div className={card}>
-          <p className="text-lg font-bold text-[#0F2053]">Gerar a planilha de custos</p>
+          <p className="text-lg font-bold text-[#0F2053]">Criar planilha Google (custos + referência)</p>
           <p className="mt-1 text-[15px] text-slate-600">
-            No molde da Ágil (uma aba), com as fórmulas de custo, como Planilha Google na pasta "{PASTA_COTACOES_NOME}" dentro de "PLANILHAS PARA LICITAÇÕES".
+            No molde da sua planilha de custos (uma aba): itens do termo, marca, link de referência e valor de compra das planilhas, com as fórmulas de custo.
+            Fica na pasta "{PASTA_COTACOES_NOME}" dentro de "PLANILHAS PARA LICITAÇÕES", com o nome "Órgão - Processo - Data".
           </p>
           <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
             <label className="block">
@@ -371,7 +375,7 @@ export default function CotacaoFluxo({
           )}
           <div className="mt-4 flex flex-wrap gap-3">
             <button type="button" disabled={!formOk || ocupado} onClick={gerar} className={`${botao} bg-[#0E7A40] hover:bg-[#0B6535] text-white`}>
-              <Icon name="sheet" className="w-5 h-5" /> Gerar Planilha Google
+              <Icon name="sheet" className="w-5 h-5" /> Criar planilha Google
             </button>
             <button
               type="button"
