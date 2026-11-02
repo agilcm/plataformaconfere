@@ -3,6 +3,7 @@
 //  - media: mesma cidade e mesma categoria (ganhamos carrinho; abriu brinquedo de outro tipo na cidade)
 //  - fraca: mesmo produto em outra cidade
 import { CATEGORIAS } from '../data/categoriasProdutos.js';
+import { semLugares } from './sugestoes.js';
 
 export const norm = (s) =>
   String(s || '')
@@ -81,7 +82,7 @@ export function superSugestao(historico, editais, itensPorEdital = new Map()) {
   const out = [];
   for (const e of editais) {
     const itens = itensPorEdital.get(e.id) || [];
-    const texto = norm(`${e.titulo} ${e.objeto} ${itens.map((i) => i.descricao).join(' ')}`);
+    const texto = semLugares(norm(`${e.titulo} ${e.objeto} ${itens.map((i) => i.descricao).join(' ')}`));
     const cidade = chaveCidade(e.municipio);
     const mesmaCidade = cidadesGanhas.has(cidade);
     const catsEdital = mesmaCidade ? new Set(categoriasDe(texto)) : null;

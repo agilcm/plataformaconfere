@@ -185,3 +185,17 @@ test('filtro por qualquer CNAE: busca no catálogo por código ou atividade e fi
   assert.deepEqual(r.map((e) => e.id), [1]);
   assert.equal(CATALOGO_POR_ID.get(r[0].cnaes[0]).descricao, 'Combustíveis e lubrificantes');
 });
+
+test('AGIL CNAE: nome de lugar não vira produto e obra não entra em CNAE de comércio', async () => {
+  const { filtrarPorCnaes } = await import('../src/lib/agilCnae.js');
+  const ed = (objeto) => ({ titulo: '', objeto, modalidade: 'Pregão Eletrônico' });
+  const r = filtrarPorCnaes([
+    ed('Contratação de empresa especializada no ramo de obras e serviços de engenharia para construção de 03 novas salas na Escola Municipal Agenor Bibiano do Carmo, localizada no Córrego do Café'),
+    ed('Aquisição de café e açúcar para as secretarias'),
+    ed('Reforma do prédio com instalação elétrica'),
+  ]);
+  assert.deepEqual(
+    r.map((e) => e.cnaes.join(',')),
+    ['47.29-6-99', '43.21-5-00'],
+  );
+});

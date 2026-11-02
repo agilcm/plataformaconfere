@@ -10,6 +10,16 @@ export const norm = (s) =>
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
 
+// Nomes de lugares não são produtos: "Córrego do Café", "Rua do Comércio", "Escola Municipal Agenor do Carmo".
+// Tira do texto (já normalizado) o lugar e as até 4 palavras do nome dele antes de procurar os termos.
+const LUGAR =
+  /\b(?:corregos?|ribeirao|rua|avenida|av|travessa|bairro|fazenda|comunidade|distrito|localidade|povoado|sitio|estrada|rodovia|vila|praca|morro|serra|escola (?:municipal|estadual)|e m|e e|creche|unidade basica de saude|ubs|zona rural de)(?: (?:d[aeo]s?|de)\b)?(?: (?!e\b|para\b|com\b|no\b|na\b|em\b)[a-z0-9]+){1,4}/g;
+export const semLugares = (texto) => texto.replace(LUGAR, ' ').replace(/\s+/g, ' ').trim();
+
+/** Obra ou serviço de engenharia: não é compra de produto (CNAEs de comércio não valem). */
+export const ehObra = (texto) =>
+  /\b(obras?|servicos? de engenharia|construcao|reforma|ampliacao|pavimentacao|recapeamento|drenagem|edificacao|terraplanagem|calcamento)\b/.test(texto);
+
 /* ------------------------------------------------------------------ */
 /* 1. Leitura do CSV (exportação "Cadastro geral" do Alterdata)         */
 /* ------------------------------------------------------------------ */
