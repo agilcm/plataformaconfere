@@ -7,10 +7,13 @@ permissions:
 jobs:
   teste:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - run: node scripts/drive-publico.mjs 1GZGf7vTgQtPFCb0KO5TFGQ3iapXDKfFB
+          cache: npm
+      - run: npm ci
+      - run: node scripts/privado-dados.mjs
+      - run: node -e "const d=require('./public/privado/leitura.json');const p=d.resultado.processos;console.log('PROCESSOS',p.length,'PENDENCIAS',d.resultado.pendencias.length,'AVISOS',d.resultado.avisos.length);for(const x of p.slice(0,6))console.log(' -',x.orgao,'|',x.processo&&x.processo.numero+'/'+x.processo.ano,'|',x.valorAgil,'|',x.itens.length,'itens')"

@@ -1,11 +1,17 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import Header from '../components/Header.tsx';
 import { Container, Icon } from '../components/ui.tsx';
-import { GOOGLE_CLIENT_ID, PASTA_LICITACOES_ID } from '../data/privadoConfig.ts';
 import { dateText, downloadPdf } from '../lib/pdfReport.ts';
 import { conferirLogin, sair, sessaoAtiva } from '../lib/privado/auth.ts';
-import { conectado, conectar, desconectar, idDoLink, usuario } from '../lib/privado/drive.ts';
-import { desfazer, executar, lerPasta, type Leitura } from '../lib/privado/organizar.ts';
+
+/** Leitura da pasta "Licitacoes - Agil" feita pelo GitHub (scripts/privado-dados.mjs), publicada com o site */
+interface Leitura {
+  atualizadoEm: string;
+  arquivos: number;
+  raiz: { id: string; name: string; webViewLink: string };
+  resultado: { processos: any[]; pendencias: any[]; avisos: any[] };
+}
+const RELER_AGORA = 'https://github.com/agilcm/plataformaconfere/actions/workflows/pages.yml';
 import {
   blocosRelatorio,
   consolidarProdutos,
@@ -53,24 +59,6 @@ function TextoCurto({ texto }: { texto: string }) {
   );
 }
 
-const CHAVE_CLIENT = 'agilcm:privado:clientId';
-const CHAVE_PASTA = 'agilcm:privado:pasta';
-const ler = (k: string) => {
-  try {
-    return localStorage.getItem(k) || '';
-  } catch {
-    return '';
-  }
-};
-const gravar = (k: string, v: string) => {
-  try {
-    if (v) localStorage.setItem(k, v);
-    else localStorage.removeItem(k);
-  } catch {
-    /* sem armazenamento: vale só nesta visita */
-  }
-};
-
 const moeda = (v: number | null | undefined) => (v == null ? '—' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }));
 const qtd = (v: number | null | undefined) => (v == null ? '' : v.toLocaleString('pt-BR', { maximumFractionDigits: 4 }));
 
@@ -85,7 +73,8 @@ function baixarTexto(nome: string, conteudo: string) {
   setTimeout(() => URL.revokeObjectURL(url), 4000);
 }
 
-const botao = 'inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-[15px] font-bold transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed';
+const botao =
+  'inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-[15px] font-bold transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed';
 
 export default function PrivadoPage() {
   const [logado, setLogado] = useState(false);
@@ -100,7 +89,6 @@ export default function PrivadoPage() {
             <Painel
               onSair={() => {
                 sair();
-                desconectar();
                 setLogado(false);
               }}
             />
@@ -173,68 +161,32 @@ function Login({ onEntrar }: { onEntrar: () => void }) {
 type Prog = { etapa: string; feito?: number; total?: number } | null;
 
 function Painel({ onSair }: { onSair: () => void }) {
-  const [clientId, setClientId] = useState(GOOGLE_CLIENT_ID);
-  const [pastaId, setPastaId] = useState(PASTA_LICITACOES_ID);
-  const [conta, setConta] = useState<{ nome: string; email: string } | null>(null);
   const [leitura, setLeitura] = useState<Leitura | null>(null);
   const [prog, setProg] = useState<Prog>(null);
   const [erro, setErro] = useState('');
-  const [aviso, setAviso] = useState('');
-  const [confirmar, setConfirmar] = useState<'organizar' | 'desfazer' | null>(null);
   const [aba, setAba] = useState<'processos' | 'produtos'>('processos');
   const [busca, setBusca] = useState('');
   const [filtroVig, setFiltroVig] = useState<'todos' | Situacao>('todos');
-  const [config, setConfig] = useState(false);
 
-  useEffect(() => {
-    setClientId(GOOGLE_CLIENT_ID || ler(CHAVE_CLIENT));
-    setPastaId(ler(CHAVE_PASTA) || PASTA_LICITACOES_ID);
-  }, []);
-
-  const ocupado = !!prog;
-  const progresso = (etapa: string, feito?: number, total?: number) => setProg({ etapa, feito, total });
-
+  // sem login do Google: a pasta é lida pelo link público no GitHub e o resultado vem publicado com o site
   const lerTudo = async () => {
     setErro('');
+    setProg({ etapa: 'Carregando as licitações' });
     try {
-      const l = await lerPasta(pastaId, progresso);
+      const r = await fetch(`${import.meta.env.BASE_URL}privado/leitura.json?t=${Date.now()}`, { cache: 'no-store' });
+      if (!r.ok) throw new Error(String(r.status));
+      const l = (await r.json()) as Leitura;
       setLeitura(l);
       salvarHistorico(l.resultado.processos, (p: any) => vigencia(p).situacao);
-    } catch (e) {
-      setErro((e as Error).message);
+    } catch {
+      setErro('A leitura da pasta ainda não foi publicada. Ela é feita pelo GitHub a cada 3 horas; para fazer agora, use o link "Reler a pasta agora".');
     } finally {
       setProg(null);
     }
   };
-
-  const entrarGoogle = async () => {
-    setErro('');
-    try {
-      await conectar(clientId.trim());
-      setConta(await usuario());
-      await lerTudo();
-    } catch (e) {
-      setErro((e as Error).message);
-    }
-  };
-
-  const rodar = async (qual: 'organizar' | 'desfazer') => {
-    if (!leitura) return;
-    setConfirmar(null);
-    setErro('');
-    setAviso('');
-    try {
-      const r = qual === 'organizar' ? await executar(leitura, progresso) : await desfazer(leitura, progresso);
-      setAviso(
-        `${qual === 'organizar' ? 'Organização concluída' : 'Organização desfeita'}: ${r.feitas} ${r.feitas === 1 ? 'alteração' : 'alterações'} no Drive.` +
-          (r.erros.length ? ` ${r.erros.length} não puderam ser feitas: ${r.erros.slice(0, 3).join(' · ')}` : ''),
-      );
-      await lerTudo();
-    } catch (e) {
-      setErro((e as Error).message);
-      setProg(null);
-    }
-  };
+  useEffect(() => {
+    lerTudo();
+  }, []);
 
   const res = leitura?.resultado;
   const processos = (res?.processos || []) as any[];
@@ -256,29 +208,15 @@ function Painel({ onSair }: { onSair: () => void }) {
 
   const baixarPdf = async () => {
     try {
-      await downloadPdf('relatorio-licitacoes-agil.pdf', 'Relatório de licitações', blocosRelatorio(filtrados, res?.pendencias || [], { dataText: dateText() }) as never);
+      await downloadPdf(
+        'relatorio-licitacoes-agil.pdf',
+        'Relatório de licitações',
+        blocosRelatorio(filtrados, res?.pendencias || [], { dataText: dateText() }) as never,
+      );
     } catch (e) {
       setErro(`Não consegui gerar o PDF: ${(e as Error).message}`);
     }
   };
-
-  if (!clientId || config) {
-    return (
-      <Configuracao
-        clientId={clientId}
-        pastaId={pastaId}
-        onSalvar={(c, p) => {
-          setClientId(c);
-          setPastaId(p);
-          if (!GOOGLE_CLIENT_ID) gravar(CHAVE_CLIENT, c);
-          gravar(CHAVE_PASTA, p === PASTA_LICITACOES_ID ? '' : p);
-          setConfig(false);
-        }}
-        onCancelar={clientId ? () => setConfig(false) : undefined}
-        onSair={onSair}
-      />
-    );
-  }
 
   return (
     <div>
@@ -286,59 +224,39 @@ function Painel({ onSair }: { onSair: () => void }) {
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold font-display text-[#0F2053]">Licitações ganhas · Privado</h1>
           <p className="mt-1 text-[15px] text-slate-600">
-            {conta ? (
+            {leitura ? (
               <>
-                Google: <strong>{conta.email}</strong>
-                {leitura && (
-                  <>
-                    {' '}
-                    · pasta{' '}
-                    <a href={leitura.raiz.webViewLink} target="_blank" rel="noopener noreferrer" className="font-semibold text-[#0478CA] underline">
-                      {leitura.raiz.name}
-                    </a>
-                  </>
-                )}
+                Pasta{' '}
+                <a href={leitura.raiz.webViewLink} target="_blank" rel="noopener noreferrer" className="font-semibold text-[#0478CA] underline">
+                  {leitura.raiz.name}
+                </a>{' '}
+                · lida em {dataBR(leitura.atualizadoEm, true)} ({leitura.arquivos} arquivos) · o GitHub relê a pasta a cada 3 horas
               </>
             ) : (
-              'Conecte a conta do Google que tem a pasta "Licitacoes - Agil".'
+              'Pasta "Licitacoes - Agil", lida pelo link compartilhado.'
             )}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={() => setConfig(true)} className={`${botao} border-2 border-slate-200 text-slate-700 hover:border-[#0478CA]`}>
-            Configurações
-          </button>
+          <a
+            href={RELER_AGORA}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`${botao} border-2 border-slate-200 text-slate-700 hover:border-[#0478CA]`}
+          >
+            Reler a pasta agora
+          </a>
           <button type="button" onClick={onSair} className={`${botao} border-2 border-slate-200 text-slate-700 hover:border-red-300`}>
             Sair
           </button>
         </div>
       </div>
 
-      {(!conta || !conectado()) && (
-        <div className="mt-6 p-6 rounded-2xl bg-white border border-slate-200">
-          <p className="text-lg font-bold text-[#0F2053]">Conectar ao Google Drive</p>
-          <p className="mt-1 text-[15px] text-slate-600">
-            O Google vai pedir permissão para ver e organizar os arquivos do Drive. Nada é enviado para outro servidor: a leitura dos PDFs acontece neste
-            navegador.
-          </p>
-          <button type="button" disabled={ocupado} onClick={entrarGoogle} className={`${botao} mt-4 bg-[#0478CA] hover:bg-[#03609F] text-white`}>
-            <Icon name="shield" className="w-5 h-5" />
-            Conectar ao Google Drive
-          </button>
-        </div>
-      )}
-
       {erro && (
         <p role="alert" className="mt-6 p-4 rounded-xl bg-red-50 border border-red-200 text-red-800 text-[15px]">
           {erro}
         </p>
       )}
-      {aviso && (
-        <p role="status" className="mt-6 p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-[15px]">
-          {aviso}
-        </p>
-      )}
-
       {prog && (
         <div className="mt-6 p-5 rounded-2xl bg-white border border-slate-200" aria-live="polite">
           <p className="text-[15px] font-semibold text-slate-700">
@@ -351,64 +269,20 @@ function Painel({ onSair }: { onSair: () => void }) {
               style={prog.total ? { width: `${Math.min(100, ((prog.feito || 0) / prog.total) * 100)}%` } : undefined}
             />
           </div>
-          <p className="mt-2 text-sm text-slate-500">Na primeira vez cada PDF é baixado e lido; depois a leitura fica guardada e é rápida.</p>
         </div>
       )}
 
       {leitura && res && !prog && (
         <>
-          {/* Ações */}
           <div className="mt-6 p-4 sm:p-5 rounded-2xl bg-white border border-slate-200 shadow-sm flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              disabled={!res.ops.length}
-              onClick={() => setConfirmar('organizar')}
-              className={`${botao} px-5 py-3 bg-[#F5A623] hover:bg-[#E0951A] text-[#0F2053] font-extrabold`}
-            >
-              <Icon name="box" className="w-5 h-5" />
-              Organizar pastas
-            </button>
             <button type="button" onClick={lerTudo} className={`${botao} border-2 border-slate-200 text-[#0F2053] hover:border-[#0478CA]`}>
-              Ler de novo
+              Atualizar
             </button>
             <span className="text-[15px] text-slate-600">
-              {res.ops.length
-                ? `${res.ops.filter((o: any) => o.op === 'mover').length} arquivos e pastas para organizar`
-                : 'Tudo organizado.'}
+              Arquivo novo na pasta aparece aqui em até 3 horas. Para ler agora: <strong>Reler a pasta agora</strong> → <strong>Run workflow</strong> (leva uns
+              3 minutos) e depois <strong>Atualizar</strong>.
             </span>
-            {leitura.dados.historico && (
-              <button type="button" onClick={() => setConfirmar('desfazer')} className="ml-auto text-sm font-bold text-slate-600 underline cursor-pointer">
-                Desfazer a última organização ({dataBR(leitura.dados.historico.quando, true)})
-              </button>
-            )}
           </div>
-
-          {confirmar && (
-            <div role="dialog" aria-label="Confirmar" className="mt-4 p-5 rounded-2xl bg-amber-50 border-2 border-amber-300">
-              {confirmar === 'organizar' ? (
-                <>
-                  <p className="text-lg font-bold text-[#0F2053]">Organizar a pasta no Google Drive?</p>
-                  <ul className="mt-2 text-[15px] text-slate-700 list-disc pl-5 space-y-1">
-                    <li>Cria uma pasta por órgão e, dentro, uma por processo.</li>
-                    <li>Renomeia os termos de homologação e adjudicação (ex.: "Processo 028-2025 - Termo de Homologação.pdf").</li>
-                    <li>Os demais arquivos de cada processo ficam juntos numa pasta "Outros" dentro do processo. Nada é apagado.</li>
-                    <li>Pastas sem termo ({res.pendencias.length}) não são mexidas.</li>
-                  </ul>
-                  <PreviaOps ops={res.ops} />
-                </>
-              ) : (
-                <p className="text-lg font-bold text-[#0F2053]">Voltar todos os arquivos para onde estavam antes da última organização?</p>
-              )}
-              <div className="mt-4 flex flex-wrap gap-2">
-                <button type="button" onClick={() => rodar(confirmar)} className={`${botao} bg-[#0F2053] text-white hover:bg-[#13306f]`}>
-                  {confirmar === 'organizar' ? 'Sim, organizar' : 'Sim, desfazer'}
-                </button>
-                <button type="button" onClick={() => setConfirmar(null)} className={`${botao} border-2 border-slate-300 text-slate-700`}>
-                  Cancelar
-                </button>
-              </div>
-            </div>
-          )}
 
           {/* Números */}
           <div className="mt-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -427,7 +301,11 @@ function Painel({ onSair }: { onSair: () => void }) {
                 className={`p-4 rounded-2xl border ${cor === 'red' ? 'bg-red-50 border-red-200' : cor === 'amber' ? 'bg-amber-50 border-amber-200' : 'bg-white border-slate-200'}`}
               >
                 <p className={`text-sm ${cor === 'red' ? 'text-red-700' : cor === 'amber' ? 'text-amber-800' : 'text-slate-500'}`}>{k}</p>
-                <p className={`mt-1 text-lg sm:text-xl xl:text-2xl font-bold tabular-nums break-words ${cor === 'red' ? 'text-red-700' : cor === 'amber' ? 'text-amber-900' : 'text-[#0F2053]'}`}>{v}</p>
+                <p
+                  className={`mt-1 text-lg sm:text-xl xl:text-2xl font-bold tabular-nums break-words ${cor === 'red' ? 'text-red-700' : cor === 'amber' ? 'text-amber-900' : 'text-[#0F2053]'}`}
+                >
+                  {v}
+                </p>
               </div>
             ))}
           </div>
@@ -500,17 +378,33 @@ function Painel({ onSair }: { onSair: () => void }) {
               <button type="button" onClick={baixarPdf} className={`${botao} bg-[#0478CA] hover:bg-[#03609F] text-white`}>
                 <Icon name="doc" className="w-5 h-5" /> PDF consolidado
               </button>
-              <button type="button" onClick={() => baixarTexto('processos-agil.csv', csvProcessos(filtrados))} className={`${botao} border-2 border-slate-200 text-[#0F2053] hover:border-[#0478CA]`}>
+              <button
+                type="button"
+                onClick={() => baixarTexto('processos-agil.csv', csvProcessos(filtrados))}
+                className={`${botao} border-2 border-slate-200 text-[#0F2053] hover:border-[#0478CA]`}
+              >
                 <Icon name="sheet" className="w-5 h-5" /> Processos (Excel)
               </button>
-              <button type="button" onClick={() => baixarTexto('itens-ganhos-agil.csv', csvItens(filtrados))} className={`${botao} border-2 border-slate-200 text-[#0F2053] hover:border-[#0478CA]`}>
+              <button
+                type="button"
+                onClick={() => baixarTexto('itens-ganhos-agil.csv', csvItens(filtrados))}
+                className={`${botao} border-2 border-slate-200 text-[#0F2053] hover:border-[#0478CA]`}
+              >
                 <Icon name="sheet" className="w-5 h-5" /> Itens ganhos (Excel)
               </button>
-              <button type="button" onClick={() => baixarTexto('produtos-agil.csv', csvProdutos(filtrados))} className={`${botao} border-2 border-slate-200 text-[#0F2053] hover:border-[#0478CA]`}>
+              <button
+                type="button"
+                onClick={() => baixarTexto('produtos-agil.csv', csvProdutos(filtrados))}
+                className={`${botao} border-2 border-slate-200 text-[#0F2053] hover:border-[#0478CA]`}
+              >
                 <Icon name="sheet" className="w-5 h-5" /> Produtos somados (Excel)
               </button>
               {(res.pendencias.length > 0 || res.avisos.length > 0) && (
-                <button type="button" onClick={() => baixarTexto('pendencias-agil.csv', csvPendencias(res.pendencias, res.avisos))} className={`${botao} border-2 border-red-200 text-red-800 hover:border-red-400`}>
+                <button
+                  type="button"
+                  onClick={() => baixarTexto('pendencias-agil.csv', csvPendencias(res.pendencias, res.avisos))}
+                  className={`${botao} border-2 border-red-200 text-red-800 hover:border-red-400`}
+                >
                   Pendências (Excel)
                 </button>
               )}
@@ -524,8 +418,8 @@ function Painel({ onSair }: { onSair: () => void }) {
               </button>
             </div>
             <p className="mt-2 text-sm text-slate-500">
-              O cache tem os processos e itens ganhos. Em outro computador, importe-o na Super Sugestão (aba AGIL CNAE) sem precisar fazer login. Guarde-o
-              com cuidado: é o histórico comercial da AGIL.
+              O cache tem os processos e itens ganhos. Em outro computador, importe-o na Super Sugestão (aba AGIL CNAE) sem precisar fazer login. Guarde-o com
+              cuidado: é o histórico comercial da AGIL.
             </p>
           </div>
 
@@ -610,30 +504,6 @@ function Painel({ onSair }: { onSair: () => void }) {
   );
 }
 
-function PreviaOps({ ops }: { ops: any[] }) {
-  const moves = ops.filter((o) => o.op === 'mover');
-  return (
-    <details className="mt-3 text-sm text-slate-700">
-      <summary className="font-bold cursor-pointer">Ver as {moves.length} mudanças</summary>
-      <ul className="mt-2 max-h-72 overflow-auto space-y-1 pr-2">
-        {moves.map((o) => (
-          <li key={o.id}>
-            {o.nomeAntes}
-            {o.nome && o.nome !== o.nomeAntes ? (
-              <>
-                {' '}
-                → <strong>{o.nome}</strong>
-              </>
-            ) : (
-              ' → Outros'
-            )}
-          </li>
-        ))}
-      </ul>
-    </details>
-  );
-}
-
 function Processo({ p }: { p: any }) {
   const [aberto, setAberto] = useState(false);
   const v = vigencia(p);
@@ -648,8 +518,13 @@ function Processo({ p }: { p: any }) {
               {p.modalidade} {String(Number(p.edital.numero)).padStart(3, '0')}/{p.edital.ano}
             </span>
           )}
-          <span className={`px-2.5 py-1 rounded-full font-semibold ${p.termoUsado === 'homologacao' ? 'bg-emerald-50 text-emerald-800' : 'bg-violet-50 text-violet-800'}`}>
-            {p.termos.map((t: any) => (t.tipo === 'homologacao' ? 'Homologação' : 'Adjudicação')).filter((x: string, i: number, a: string[]) => a.indexOf(x) === i).join(' + ')}
+          <span
+            className={`px-2.5 py-1 rounded-full font-semibold ${p.termoUsado === 'homologacao' ? 'bg-emerald-50 text-emerald-800' : 'bg-violet-50 text-violet-800'}`}
+          >
+            {p.termos
+              .map((t: any) => (t.tipo === 'homologacao' ? 'Homologação' : 'Adjudicação'))
+              .filter((x: string, i: number, a: string[]) => a.indexOf(x) === i)
+              .join(' + ')}
           </span>
           <span className={`px-2.5 py-1 rounded-full font-bold ${COR_SITUACAO[v.situacao as Situacao]}`}>{textoVigencia(v)}</span>
           {p.conferido === false && <span className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-900 font-bold">Soma dos itens diferente do total</span>}
@@ -698,7 +573,11 @@ function Processo({ p }: { p: any }) {
                         <TextoCurto texto={it.descricao} />
                         {(it.marca || it.modelo) && (
                           <span className="block text-slate-500">
-                            {[it.marca && `Marca: ${it.marca}`, it.fabricante && it.fabricante !== it.marca && `Fabricante: ${it.fabricante}`, it.modelo && `Modelo: ${it.modelo}`]
+                            {[
+                              it.marca && `Marca: ${it.marca}`,
+                              it.fabricante && it.fabricante !== it.marca && `Fabricante: ${it.fabricante}`,
+                              it.modelo && `Modelo: ${it.modelo}`,
+                            ]
                               .filter(Boolean)
                               .join(' · ')}
                           </span>
@@ -772,80 +651,6 @@ function Produtos({ processos }: { processos: any[] }) {
         </tbody>
       </table>
       {!lista.length && <p className="p-6 text-center text-slate-600">Nenhum produto.</p>}
-    </div>
-  );
-}
-
-function Configuracao({
-  clientId,
-  pastaId,
-  onSalvar,
-  onCancelar,
-  onSair,
-}: {
-  clientId: string;
-  pastaId: string;
-  onSalvar: (c: string, p: string) => void;
-  onCancelar?: () => void;
-  onSair: () => void;
-}) {
-  const [c, setC] = useState(clientId);
-  const [p, setP] = useState(pastaId);
-  const origem = typeof window !== 'undefined' ? window.location.origin : '';
-  return (
-    <div className="max-w-3xl p-6 sm:p-8 rounded-2xl bg-white border border-slate-200">
-      <h1 className="text-2xl font-bold font-display text-[#0F2053]">Configurar o acesso ao Google Drive</h1>
-      <p className="mt-2 text-[15px] text-slate-600">
-        Feito uma vez só. O Google exige um "Client ID" que autorize este site a pedir acesso ao Drive de quem fizer login.
-      </p>
-      <ol className="mt-4 text-[15px] text-slate-700 list-decimal pl-5 space-y-2">
-        <li>
-          Abra{' '}
-          <a href="https://console.cloud.google.com/apis/library/drive.googleapis.com" target="_blank" rel="noopener noreferrer" className="font-semibold text-[#0478CA] underline">
-            console.cloud.google.com
-          </a>{' '}
-          com a conta dona da pasta, crie um projeto e ative a <strong>Google Drive API</strong>.
-        </li>
-        <li>
-          Em <strong>Tela de permissão OAuth</strong>: tipo "Externo", status "Em teste", e adicione o seu e-mail em <strong>Usuários de teste</strong>.
-        </li>
-        <li>
-          Em <strong>Credenciais → Criar credenciais → ID do cliente OAuth</strong>: tipo "Aplicativo da Web" e, em <strong>Origens JavaScript autorizadas</strong>,
-          coloque <code className="px-1.5 py-0.5 rounded bg-slate-100">{origem}</code>.
-        </li>
-        <li>Copie o ID do cliente (termina em .apps.googleusercontent.com) e cole abaixo.</li>
-      </ol>
-      <label className="block mt-6">
-        <span className="text-sm font-semibold text-slate-700">Client ID do Google</span>
-        <input
-          value={c}
-          onChange={(e) => setC(e.target.value)}
-          placeholder="123456789-xxxx.apps.googleusercontent.com"
-          className="mt-1 w-full px-4 py-3 rounded-xl border border-slate-300 text-base focus:outline-none focus:border-[#0478CA]"
-        />
-      </label>
-      <label className="block mt-4">
-        <span className="text-sm font-semibold text-slate-700">Pasta das licitações (link ou ID)</span>
-        <input value={p} onChange={(e) => setP(e.target.value)} className="mt-1 w-full px-4 py-3 rounded-xl border border-slate-300 text-base focus:outline-none focus:border-[#0478CA]" />
-      </label>
-      <div className="mt-6 flex flex-wrap gap-2">
-        <button
-          type="button"
-          disabled={!/\.apps\.googleusercontent\.com$/.test(c.trim())}
-          onClick={() => onSalvar(c.trim(), idDoLink(p) || PASTA_LICITACOES_ID)}
-          className={`${botao} bg-[#0478CA] hover:bg-[#03609F] text-white`}
-        >
-          Salvar
-        </button>
-        {onCancelar && (
-          <button type="button" onClick={onCancelar} className={`${botao} border-2 border-slate-300 text-slate-700`}>
-            Cancelar
-          </button>
-        )}
-        <button type="button" onClick={onSair} className={`${botao} ml-auto border-2 border-slate-200 text-slate-700`}>
-          Sair
-        </button>
-      </div>
     </div>
   );
 }

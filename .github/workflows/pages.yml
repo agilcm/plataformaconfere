@@ -3,6 +3,9 @@ name: Publicar site no GitHub Pages
 on:
   push:
     branches: [main]
+  # relê a pasta "Licitacoes - Agil" (área Privado) a cada 3 horas
+  schedule:
+    - cron: '23 */3 * * *'
   workflow_dispatch:
 
 permissions:
@@ -26,6 +29,27 @@ jobs:
         id: pages
         uses: actions/configure-pages@v5
       - run: npm ci
+      - name: Recuperar a última leitura da pasta do Privado
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            privado-cache.json
+            public/privado/leitura.json
+          key: privado-${{ github.run_id }}
+          restore-keys: privado-
+      - name: Ler a pasta "Licitacoes - Agil" pelo link compartilhado
+        # se o Drive falhar, publica com a última leitura guardada
+        continue-on-error: true
+        timeout-minutes: 20
+        run: node scripts/privado-dados.mjs
+      - name: Guardar a leitura da pasta
+        if: always() && hashFiles('privado-cache.json') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            privado-cache.json
+            public/privado/leitura.json
+          key: privado-${{ github.run_id }}
       - run: npm test
       - run: npm run lint
       - name: Compilar para o endereço do Pages
