@@ -6,11 +6,12 @@
 // O acesso às planilhas é pelo login Google de quem tem permissão na pasta: o site não guarda nenhum dado delas.
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Icon } from '../components/ui.tsx';
-import { GOOGLE_CLIENT_ID, PASTA_COTACOES_NOME, PASTA_PLANILHAS_ID } from '../data/privadoConfig.ts';
+import { PASTA_COTACOES_NOME, PASTA_PLANILHAS_ID } from '../data/privadoConfig.ts';
 import { ROUTES } from '../lib/routes.ts';
 import { buscarNaBase, indexar } from '../lib/privado/baseCustos.js';
 import { carregarBase, type Cotacao } from '../lib/privado/cotacao.ts';
-import { conectado, conectar, enviarComoPlanilhaGoogle, pastaFilha, usuario } from '../lib/privado/drive.ts';
+import { enviarComoPlanilhaGoogle, pastaFilha } from '../lib/privado/drive.ts';
+import { garantirGoogle as entrarGoogle, lerClientId } from '../lib/privado/googleLogin.ts';
 import { criarPlanilhaCustos, nomePlanilha } from '../lib/privado/planilhaCustos.js';
 
 export interface ItemCotacao {
@@ -36,16 +37,6 @@ interface Busca {
   confiavel: boolean;
   alternativas: Achado[];
 }
-
-const CHAVE_CLIENT = 'agilcm:privado:clientId'; // o mesmo Client ID configurado na área Privado
-const lerClientId = () => {
-  if (GOOGLE_CLIENT_ID) return GOOGLE_CLIENT_ID;
-  try {
-    return localStorage.getItem(CHAVE_CLIENT) || '';
-  } catch {
-    return '';
-  }
-};
 
 const moeda = (v: number | null | undefined) => (v == null ? '—' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }));
 const pct = (v: number) => `${Math.round(v * 100)}%`;
@@ -97,15 +88,7 @@ export default function CotacaoFluxo({
     setErro('');
   }, [assinatura]);
 
-  const entrarGoogle = async () => {
-    const clientId = lerClientId();
-    if (!clientId) throw new Error('Falta configurar o login do Google: entre na área Privado, abra "Configurações" e informe o Client ID.');
-    await conectar(clientId);
-    setConta((await usuario()).email);
-  };
-  const garantirGoogle = async () => {
-    if (!conectado()) await entrarGoogle();
-  };
+  const garantirGoogle = async () => setConta(await entrarGoogle());
 
   const procurarNasPlanilhas = async (): Promise<boolean> => {
     setErro('');

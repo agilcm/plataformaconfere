@@ -58,3 +58,26 @@ test('planilha de custos: nome, molde, fórmulas e link', async () => {
   assert.deepEqual([aba.linhas[2][7], aba.linhas[2][13]], ['LG', 50]);
   assert.equal(aba.links.K3, 'https://ml.com/ar');
 });
+
+test('Super Sugestão Google: itens do edital com valor estimado e preço de compra (CSV)', async () => {
+  const { linhasSuperGoogle, csvSuperGoogle } = await import('../src/lib/superSugestaoGoogle.js');
+  const base = indexar([{ descricao: 'VENTILADOR DE PAREDE 60 CM OSCILANTE', marca: 'WAP', compra: 189.9, link: 'https://ml.com/v', referencia: '', arquivo: 'UBÁ.xlsx', aba: 'P1', linha: 3 }]);
+  const sug = [{ nivel: 'forte', edital: { id: 'e1', orgao: 'Prefeitura de Ubá', municipio: 'Ubá', objeto: 'Eletros', propostasAte: '2026-11-20T09:00', link: 'https://pncp.gov.br/app/editais/1/2026/2' } }];
+  const itens = new Map([
+    [
+      'e1',
+      [
+        { numero: 1, descricao: 'Ventilador de parede 60 cm oscilante', quantidade: 10, unidade: 'UN', valorUnitarioEstimado: 280 },
+        { numero: 2, descricao: 'Cafeteira elétrica 30 xícaras', quantidade: 2, unidade: 'UN', valorUnitarioEstimado: 150 },
+      ],
+    ],
+  ]);
+  const linhas = linhasSuperGoogle(sug, itens, base);
+  assert.equal(linhas.length, 2);
+  assert.equal(linhas[0].achado.compra, 189.9);
+  assert.equal(linhas[1].achado, null);
+  const csv = csvSuperGoogle(linhas).split('\r\n');
+  assert.ok(csv[0].startsWith('﻿Alerta;'));
+  assert.ok(csv[1].includes(';280;2800;Sim;189,9;WAP;https://ml.com/v;UBÁ.xlsx › P1;'));
+  assert.ok(csv[2].includes(';Não;'));
+});

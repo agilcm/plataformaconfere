@@ -7,6 +7,11 @@ import { fetchItensCompra } from '../lib/pncp.js';
 import { callApi } from '../lib/pncpClient.ts';
 import { ROUTES } from '../lib/routes.ts';
 import { editaisNasCidades, superSugestao } from '../lib/superSugestao.js';
+import { csvSuperGoogle, linhasSuperGoogle } from '../lib/superSugestaoGoogle.js';
+import { PASTA_PLANILHAS_ID } from '../data/privadoConfig.ts';
+import { indexar } from '../lib/privado/baseCustos.js';
+import { carregarBase } from '../lib/privado/cotacao.ts';
+import { garantirGoogle, lerClientId } from '../lib/privado/googleLogin.ts';
 import { baixarXlsx } from '../lib/xlsx.js';
 
 type Progresso = (etapa: string, feito: number, total: number) => void;
@@ -68,6 +73,8 @@ export default function SuperSugestaoPanel({ obterEditais, onClose }: { obterEdi
   const [estado, setEstado] = useState<'idle' | 'loading' | 'ok' | 'erro'>('idle');
   const [prog, setProg] = useState<{ etapa: string; feito: number; total: number } | null>(null);
   const [res, setRes] = useState<any[]>([]);
+  const itensRef = useRef<Map<string, any[]>>(new Map());
+  const [google, setGoogle] = useState<{ ocupado: boolean; msg: string; erro?: boolean }>({ ocupado: false, msg: '' });
   const [verFracas, setVerFracas] = useState(false);
   const cancelar = useRef(false);
 
@@ -99,12 +106,51 @@ export default function SuperSugestaoPanel({ obterEditais, onClose }: { obterEdi
           }
         }),
       );
+      itensRef.current = itens;
       setRes(superSugestao(historico, editais, itens));
       setEstado('ok');
     } catch {
       setEstado('erro');
     } finally {
       setProg(null);
+    }
+  };
+
+  // Super Sugestão Google: itens dos editais sugeridos × preço de compra nas planilhas de custo (CSV)
+  const superGoogle = async () => {
+    setGoogle({ ocupado: true, msg: 'Entrando no Google…' });
+    try {
+      const conta = await garantirGoogle();
+      const b = await carregarBase(PASTA_PLANILHAS_ID, (etapa, feito, total) => setGoogle({ ocupado: true, msg: `${etapa}${total ? `: ${feito} de ${total}` : ''}…` }));
+      const base = indexar(b.itens);
+      // editais de outras cidades (alerta "fraca") ainda não tiveram os itens lidos
+      const itens = itensRef.current;
+      const faltam = res.filter((r) => r.edital.compra && !itens.has(r.edital.id)).slice(0, 150);
+      let feitos = 0;
+      for (const r of faltam) {
+        setGoogle({ ocupado: true, msg: `Lendo os itens dos editais: ${++feitos} de ${faltam.length}…` });
+        try {
+          itens.set(r.edital.id, await fetchItensCompra(r.edital.compra));
+        } catch {
+          /* sem itens: o edital sai com uma linha só */
+        }
+      }
+      const linhas = linhasSuperGoogle(res, itens, base);
+      const url = URL.createObjectURL(new Blob([csvSuperGoogle(linhas)], { type: 'text/csv;charset=utf-8' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `super-sugestao-google-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      const comPreco = linhas.filter((l: any) => l.achado && l.confiavel).length;
+      setGoogle({
+        ocupado: false,
+        msg: `CSV baixado (${conta}): ${linhas.length} itens de ${res.length} editais, ${comPreco} com preço de compra nas planilhas (${b.planilhas} planilhas lidas).`,
+      });
+    } catch (e) {
+      setGoogle({ ocupado: false, msg: (e as Error).message, erro: true });
     }
   };
 
@@ -252,13 +298,33 @@ export default function SuperSugestaoPanel({ obterEditais, onClose }: { obterEdi
           {estado === 'ok' && res.length > 0 && (
             <button
               type="button"
+              onClick={superGoogle}
+              disabled={google.ocupado}
+              title="Procura os itens dos editais sugeridos nas planilhas de custo do Google Drive e baixa um CSV com valor do edital e preço de compra"
+              className="ml-auto inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#0478CA] hover:bg-[#03609F] text-white text-[15px] font-bold cursor-pointer disabled:opacity-50"
+            >
+              <Icon name="sheet" className="w-5 h-5" /> Super Sugestão Google (CSV)
+            </button>
+          )}
+          {estado === 'ok' && res.length > 0 && (
+            <button
+              type="button"
               onClick={exportar}
-              className="ml-auto inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#1D6F42] hover:bg-[#185C37] text-white text-[15px] font-bold cursor-pointer"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#1D6F42] hover:bg-[#185C37] text-white text-[15px] font-bold cursor-pointer"
             >
               <Icon name="sheet" className="w-5 h-5" /> Exportar Excel
             </button>
           )}
         </div>
+      )}
+      {historico && (google.msg || (estado === 'ok' && res.length > 0 && !lerClientId())) && (
+        <p
+          role="status"
+          className={`mt-3 p-3 rounded-xl text-sm ${google.erro ? 'bg-red-50 border border-red-200 text-red-800' : 'bg-[#F2F7FC] border border-slate-200 text-slate-700'}`}
+        >
+          {google.msg ||
+            'A Super Sugestão Google precisa do login do Google com a conta que tem as planilhas de custo. Configure o Client ID uma vez na área Privado (botão "Configurações").'}
+        </p>
       )}
 
       {prog && (
