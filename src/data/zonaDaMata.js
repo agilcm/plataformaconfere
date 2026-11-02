@@ -50,8 +50,11 @@ const INDEX = new Map();
 for (const [micro, cidades] of Object.entries(MICRORREGIOES)) {
   for (const c of cidades) INDEX.set(normalizeName(c), micro);
 }
+// grafias usadas pelo PNCP para os mesmos municípios
+const OUTRAS_GRAFIAS = { 'Santa Rita de Jacutinga': 'Santa Rita do Jacutinga', 'Santa Rita de Ibitipoca': 'Santa Rita do Ibitipoca', 'Amparo do Serra': 'Amparo da Serra' };
+for (const [outra, oficial] of Object.entries(OUTRAS_GRAFIAS)) INDEX.set(normalizeName(outra), INDEX.get(normalizeName(oficial)));
 
 /** Microrregião da Zona da Mata do município, ou null se não pertencer */
 export const microrregiaoDe = (municipio) => INDEX.get(normalizeName(municipio)) ?? null;
 
-export const TOTAL_MUNICIPIOS_ZM = INDEX.size;
+export const TOTAL_MUNICIPIOS_ZM = INDEX.size - Object.keys(OUTRAS_GRAFIAS).length;

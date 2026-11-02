@@ -307,19 +307,21 @@ export async function fetchMunicipios(municipios, { onProgress } = {}, fetchImpl
   const all = [...first.items];
   onProgress?.(all.length, first.total);
   const pages = Math.min(40, Math.ceil(first.total / tamanho));
-  let failed = 0;
-  await mapLimit(
-    Array.from({ length: Math.max(0, pages - 1) }, (_, i) => i + 2),
-    4,
-    async (n) => {
+  // o PNCP derruba parte das páginas quando recebe muitas de uma vez: as que falharem são pedidas de novo, uma a uma
+  let pendentes = Array.from({ length: Math.max(0, pages - 1) }, (_, i) => i + 2);
+  for (let rodada = 0; rodada < 3 && pendentes.length; rodada++) {
+    const falharam = [];
+    await mapLimit(pendentes, rodada ? 1 : 3, async (n) => {
       try {
         all.push(...(await fetchPage({ pagina: n, tamanho, municipios }, fetchImpl)).items);
         onProgress?.(all.length, first.total);
       } catch {
-        failed++;
+        falharam.push(n);
       }
-    },
-  );
+    });
+    pendentes = falharam;
+  }
+  const failed = pendentes.length;
   const seen = new Set();
   return { items: sortByUpdate(all.filter((e) => (seen.has(e.id) ? false : seen.add(e.id)))), total: first.total, paginasComErro: failed };
 }
