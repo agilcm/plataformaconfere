@@ -2,15 +2,16 @@
 // - "tudo": planilhas de custo da Ágil no Google Drive + editais (PNCP);
 // - "editais": só o PNCP (a busca e o resultado são os do painel do termo, passados em `children`);
 // - "planilhas": só as planilhas de custo (link de referência, marca e valor de compra), e depois pergunta se quer buscar em contratos.
-// No fim, pede órgão, processo e data e gera a planilha de custos no molde da Ágil, como Planilha Google na pasta "cloud".
+// A planilha de custos (molde da Ágil, Planilha Google na pasta "cloud", nome "Órgão - Processo - Data") pode ser criada logo
+// depois de importar o termo (comando "planilha") e é atualizada sozinha, no mesmo link, quando cada pesquisa termina.
 // O acesso às planilhas é pelo login Google de quem tem permissão na pasta: o site não guarda nenhum dado delas.
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Icon } from '../components/ui.tsx';
 import { PASTA_COTACOES_NOME, PASTA_PLANILHAS_ID } from '../data/privadoConfig.ts';
 import { ROUTES } from '../lib/routes.ts';
 import { buscarNaBase, indexar } from '../lib/privado/baseCustos.js';
 import { carregarBase, type Cotacao } from '../lib/privado/cotacao.ts';
-import { enviarComoPlanilhaGoogle, pastaFilha } from '../lib/privado/drive.ts';
+import { atualizar, atualizarPlanilhaGoogle, enviarComoPlanilhaGoogle, lixeira, pastaFilha } from '../lib/privado/drive.ts';
 import { garantirGoogle as entrarGoogle, lerClientId } from '../lib/privado/googleLogin.ts';
 import { criarPlanilhaCustos, nomePlanilha } from '../lib/privado/planilhaCustos.js';
 
@@ -23,6 +24,14 @@ export interface ItemCotacao {
   quantidade: number | null;
   valorTermo: number | null;
 }
+export interface DadosPlanilha {
+  orgao: string;
+  processo: string;
+  data: string;
+}
+export const dadosOk = (d: DadosPlanilha) => !!(d.orgao.trim() && d.processo.trim() && d.data);
+export const hojeIso = () => new Date().toISOString().slice(0, 10);
+
 export interface ContratoItem {
   valorUnitario: number;
   municipio: string;
@@ -43,7 +52,6 @@ const pct = (v: number) => `${Math.round(v * 100)}%`;
 const botao = 'inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-bold cursor-pointer disabled:opacity-50';
 const card = 'p-4 sm:p-6 rounded-2xl bg-white border border-slate-200 shadow-sm';
 const chave = (c: Cotacao) => `${c.arquivoId || c.arquivo}#${c.aba}#${c.linha}`;
-const hoje = () => new Date().toISOString().slice(0, 10);
 
 export default function CotacaoFluxo({
   itens,
@@ -52,6 +60,8 @@ export default function CotacaoFluxo({
   onBuscarContratos,
   comando,
   onOcupado,
+  dados,
+  setDados,
   children,
 }: {
   itens: ItemCotacao[];
@@ -60,8 +70,11 @@ export default function CotacaoFluxo({
   buscandoContratos: boolean;
   onBuscarContratos: () => void;
   /** pesquisa pedida pelos botões do painel; `n` muda a cada clique */
-  comando: { tipo: 'tudo' | 'editais' | 'planilhas'; n: number } | null;
+  comando: { tipo: 'tudo' | 'editais' | 'planilhas' | 'planilha'; n: number } | null;
   onOcupado?: (ocupado: boolean) => void;
+  /** órgão, processo e data da planilha (os campos ficam no painel do termo e aqui embaixo) */
+  dados: DadosPlanilha;
+  setDados: (d: DadosPlanilha) => void;
   /** progresso e resultado da busca em contratos (painel do termo) */
   children?: ReactNode;
 }) {
@@ -73,8 +86,13 @@ export default function CotacaoFluxo({
   const [base, setBase] = useState<{ total: number; planilhas: number; comErro: string[] } | null>(null);
   const [buscas, setBuscas] = useState<Busca[] | null>(null);
   const [escolhas, setEscolhas] = useState<(Achado | null)[]>([]);
-  const [form, setForm] = useState({ orgao: '', processo: '', data: hoje() });
-  const [criado, setCriado] = useState<{ nome: string; link: string } | null>(null);
+  const form = dados;
+  const setForm = setDados;
+  // planilha já criada no Drive: as próximas gerações atualizam o mesmo arquivo (mesmo link)
+  const [criado, setCriado] = useState<{ id: string; nome: string; link: string; quando: string } | null>(null);
+  const [aviso, setAviso] = useState('');
+  // geração automática quando a pesquisa terminar ('editais'/'tudo' esperam a busca do PNCP começar e acabar)
+  const auto = useRef<{ tipo: string; viuBusca: boolean } | null>(null);
   const progresso = (etapa: string, feito?: number, total?: number) => setProg({ etapa, feito, total });
 
   // termo novo: recomeça o fluxo
@@ -86,6 +104,8 @@ export default function CotacaoFluxo({
     setEscolhas([]);
     setCriado(null);
     setErro('');
+    setAviso('');
+    auto.current = null;
   }, [assinatura]);
 
   const garantirGoogle = async () => setConta(await entrarGoogle());
@@ -114,7 +134,12 @@ export default function CotacaoFluxo({
   // botões do painel: planilhas + editais, só editais ou só planilhas
   useEffect(() => {
     if (!comando) return;
-    setCriado(null);
+    setAviso('');
+    if (comando.tipo === 'planilha') {
+      gerar();
+      return;
+    }
+    auto.current = { tipo: comando.tipo, viuBusca: false };
     if (comando.tipo === 'editais') {
       setEtapaBase('pulado');
       setBuscas(null);
@@ -138,21 +163,58 @@ export default function CotacaoFluxo({
 
   const gerar = async () => {
     setErro('');
+    if (!dadosOk(form)) {
+      setAviso('Preencha órgão, processo e data da planilha (no quadro 1, lá em cima) para eu criar a planilha Google.');
+      return;
+    }
+    setAviso('');
     const nome = nomePlanilha(form);
     try {
       await garantirGoogle();
+      const bytes = criarPlanilhaCustos({ ...form, itens: linhasPlanilha(), comContratos }) as Uint8Array;
+      const quando = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      if (criado) {
+        progresso('Atualizando a planilha no Google Drive');
+        try {
+          const f = await atualizarPlanilhaGoogle(criado.id, bytes);
+          // mudou órgão, processo ou data: renomeia
+          if (criado.nome !== nome) await atualizar(criado.id, { nome });
+          setCriado({ ...criado, nome, link: f.webViewLink || criado.link, quando });
+          return;
+        } catch {
+          // não deu para atualizar (apagada ou sem permissão): cria outra e manda a antiga para a lixeira
+          lixeira(criado.id).catch(() => {});
+        }
+      }
       progresso(`Abrindo a pasta "${PASTA_COTACOES_NOME}"`);
       const pasta = await pastaFilha(PASTA_COTACOES_NOME, PASTA_PLANILHAS_ID);
-      progresso('Gerando a planilha no Google Drive');
-      const bytes = criarPlanilhaCustos({ ...form, itens: linhasPlanilha(), comContratos }) as Uint8Array;
+      progresso('Criando a planilha no Google Drive');
       const f = await enviarComoPlanilhaGoogle({ nome, pai: pasta.id, bytes });
-      setCriado({ nome, link: f.webViewLink || `https://docs.google.com/spreadsheets/d/${f.id}/edit` });
+      setCriado({ id: f.id, nome, link: f.webViewLink || `https://docs.google.com/spreadsheets/d/${f.id}/edit`, quando });
     } catch (e) {
       setErro(`Não consegui criar a planilha no Drive: ${(e as Error).message}`);
     } finally {
       setProg(null);
     }
   };
+
+  // terminou a pesquisa: gera (ou atualiza) a planilha sozinho
+  useEffect(() => {
+    const a = auto.current;
+    if (!a || prog) return;
+    if (a.tipo === 'planilhas') {
+      if (etapaBase === 'inicio') return;
+    } else {
+      if (buscandoContratos) {
+        a.viuBusca = true;
+        return;
+      }
+      if (!a.viuBusca || !contratos) return;
+    }
+    auto.current = null;
+    if (etapaBase === 'feito' || contratos) gerar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prog, etapaBase, buscandoContratos, contratos]);
 
   const baixarXlsx = () => {
     const bytes = criarPlanilhaCustos({ ...form, itens: linhasPlanilha(), comContratos }) as Uint8Array;
@@ -179,8 +241,7 @@ export default function CotacaoFluxo({
   useEffect(() => onOcupado?.(!!prog), [prog]); // eslint-disable-line react-hooks/exhaustive-deps
   const formOk = form.orgao.trim() && form.processo.trim() && form.data;
   // "Criar planilha Google" aparece logo depois da leitura das planilhas (ou, só com editais, quando a busca terminar)
-  const mostrarForm =
-    !prog && !buscandoContratos && (etapaBase === 'feito' || (etapaBase === 'pulado' && etapaContratos === 'sim' && !!contratos));
+  const mostrarForm = !prog && !buscandoContratos && (etapaBase === 'feito' || (etapaBase === 'pulado' && etapaContratos === 'sim' && !!contratos));
 
   return (
     <>
@@ -300,8 +361,8 @@ export default function CotacaoFluxo({
         <div className={`${card} border-2 border-[#0478CA]/40`}>
           <p className="text-lg font-bold text-[#0F2053]">Deseja buscar em contratos?</p>
           <p className="mt-1 text-[15px] text-slate-600">
-            Opcional: procura os mesmos itens nos pregões homologados (PNCP), com o período e a região escolhidos acima, e acrescenta na planilha o menor
-            preço ganho, onde e quem venceu.
+            Opcional: procura os mesmos itens nos pregões homologados (PNCP), com o período e a região escolhidos acima, e acrescenta na planilha o menor preço
+            ganho, onde e quem venceu.
           </p>
           <div className="mt-4 flex gap-3">
             <button
@@ -310,6 +371,7 @@ export default function CotacaoFluxo({
               aria-pressed={etapaContratos === 'sim'}
               onClick={() => {
                 setEtapaContratos('sim');
+                auto.current = { tipo: 'contratos', viuBusca: false };
                 onBuscarContratos();
               }}
               className={`${botao} min-w-28 ${etapaContratos === 'sim' ? 'bg-[#0F2053] text-white' : 'bg-[#0478CA] hover:bg-[#03609F] text-white'}`}
@@ -331,51 +393,45 @@ export default function CotacaoFluxo({
 
       {etapaContratos === 'sim' && children}
 
-      {/* 4. planilha */}
-      {mostrarForm && (
-        <div className={card}>
-          <p className="text-lg font-bold text-[#0F2053]">Criar planilha Google (custos + referência)</p>
-          <p className="mt-1 text-[15px] text-slate-600">
-            No molde da sua planilha de custos (uma aba): itens do termo, marca, link de referência e valor de compra das planilhas, com as fórmulas de custo.
-            Fica na pasta "{PASTA_COTACOES_NOME}" dentro de "PLANILHAS PARA LICITAÇÕES", com o nome "Órgão - Processo - Data".
-          </p>
-          <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <label className="block">
-              <span className="block text-sm font-semibold text-slate-700 mb-1">Qual órgão?</span>
-              <input
-                value={form.orgao}
-                onChange={(e) => setForm({ ...form, orgao: e.target.value })}
-                placeholder="Ex.: Prefeitura de Ubá"
-                className="w-full border border-slate-300 rounded-xl px-3 py-2.5"
-              />
-            </label>
-            <label className="block">
-              <span className="block text-sm font-semibold text-slate-700 mb-1">Qual processo?</span>
-              <input
-                value={form.processo}
-                onChange={(e) => setForm({ ...form, processo: e.target.value })}
-                placeholder="Ex.: PE 61-2025"
-                className="w-full border border-slate-300 rounded-xl px-3 py-2.5"
-              />
-            </label>
-            <label className="block">
-              <span className="block text-sm font-semibold text-slate-700 mb-1">Data do processo</span>
-              <input
-                type="date"
-                value={form.data}
-                onChange={(e) => setForm({ ...form, data: e.target.value })}
-                className="w-full border border-slate-300 rounded-xl px-3 py-2.5"
-              />
-            </label>
-          </div>
-          {formOk && (
-            <p className="mt-3 text-sm text-slate-600">
-              Nome da planilha: <strong>{nomePlanilha(form)}</strong>
+      {/* planilha Google: link sempre à vista depois de criada; botão também no fim */}
+      {aviso && <p className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900">{aviso}</p>}
+      {(mostrarForm || criado) && (
+        <div className={`${card} ${criado ? 'border-2 border-emerald-300' : ''}`}>
+          <p className="text-lg font-bold text-[#0F2053]">Planilha Google (custos + referência)</p>
+          {criado ? (
+            <a
+              href={criado.link}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-3 flex items-center justify-between gap-3 p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 hover:bg-emerald-100"
+            >
+              <span>
+                <span className="block font-bold text-[17px] underline">{criado.nome}</span>
+                <span className="block text-sm">
+                  Atualizada às {criado.quando} · pasta "{PASTA_COTACOES_NOME}" · {escolhas.filter(Boolean).length} itens com cotação
+                  {comContratos ? ' e preços de contratos' : ''}
+                </span>
+              </span>
+              <span className="shrink-0 font-bold">Abrir ↗</span>
+            </a>
+          ) : (
+            <p className="mt-1 text-[15px] text-slate-600">
+              No molde da sua planilha de custos (uma aba): itens do termo, marca, link de referência e valor de compra das planilhas, com as fórmulas de custo.
+              Fica na pasta "{PASTA_COTACOES_NOME}" dentro de "PLANILHAS PARA LICITAÇÕES".
             </p>
           )}
+          <p className="mt-3 text-sm text-slate-600">
+            {formOk ? (
+              <>
+                Nome: <strong>{nomePlanilha(form)}</strong> (órgão, processo e data no quadro 1, lá em cima)
+              </>
+            ) : (
+              'Preencha órgão, processo e data no quadro 1, lá em cima.'
+            )}
+          </p>
           <div className="mt-4 flex flex-wrap gap-3">
             <button type="button" disabled={!formOk || ocupado} onClick={gerar} className={`${botao} bg-[#0E7A40] hover:bg-[#0B6535] text-white`}>
-              <Icon name="sheet" className="w-5 h-5" /> Criar planilha Google
+              <Icon name="sheet" className="w-5 h-5" /> {criado ? 'Atualizar planilha Google' : 'Criar planilha Google'}
             </button>
             <button
               type="button"
@@ -386,14 +442,6 @@ export default function CotacaoFluxo({
               Baixar .xlsx
             </button>
           </div>
-          {criado && (
-            <p className="mt-4 p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900">
-              Planilha criada:{' '}
-              <a href={criado.link} target="_blank" rel="noopener noreferrer" className="font-bold underline">
-                {criado.nome}
-              </a>
-            </p>
-          )}
         </div>
       )}
     </>

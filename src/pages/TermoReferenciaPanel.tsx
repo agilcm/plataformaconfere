@@ -7,7 +7,8 @@ import { dateText, downloadPdf, slug } from '../lib/pdfReport.ts';
 import { lerPlanilha } from '../lib/planilhaLeitura.js';
 import { abasExcelTermo, blocosPdfTermo, detectarColunas, itensDoTermo, pesquisarTermo, totaisTermo } from '../lib/termoReferencia.js';
 import { baixarXlsx } from '../lib/xlsx.js';
-import CotacaoFluxo from './CotacaoFluxo.tsx';
+import CotacaoFluxo, { dadosOk, hojeIso, type DadosPlanilha } from './CotacaoFluxo.tsx';
+import { nomePlanilha } from '../lib/privado/planilhaCustos.js';
 
 type Campo = 'numero' | 'produto' | 'especificacao' | 'unidade' | 'quantidade' | 'valor';
 interface Mapa {
@@ -103,9 +104,10 @@ export default function TermoReferenciaPanel() {
   const [aberto, setAberto] = useState<string | null>(null);
   const [filtro, setFiltro] = useState<'todos' | 'achados' | 'faltando'>('todos');
   const parar = useRef(false);
-  const [comando, setComando] = useState<{ tipo: 'tudo' | 'editais' | 'planilhas'; n: number } | null>(null);
+  const [comando, setComando] = useState<{ tipo: 'tudo' | 'editais' | 'planilhas' | 'planilha'; n: number } | null>(null);
   const [lendoPlanilhas, setLendoPlanilhas] = useState(false);
-  const pesquisarPor = (tipo: 'tudo' | 'editais' | 'planilhas') => {
+  const [dados, setDados] = useState<DadosPlanilha>({ orgao: '', processo: '', data: hojeIso() });
+  const pesquisarPor = (tipo: 'tudo' | 'editais' | 'planilhas' | 'planilha') => {
     if (tipo === 'planilhas') setResultado(null);
     setComando((c) => ({ tipo, n: (c?.n || 0) + 1 }));
   };
@@ -290,7 +292,52 @@ export default function TermoReferenciaPanel() {
                 Pesquisa completa (mais editais, mais lenta)
               </label>
             </div>
-            <div className="mt-4 flex flex-col sm:flex-row flex-wrap gap-3">
+            <p className="mt-5 pt-5 border-t border-slate-100 text-sm font-semibold text-slate-600">
+              Planilha de custos no Google (nome "Órgão - Processo - Data")
+            </p>
+            <div className="mt-2 grid grid-cols-1 sm:grid-cols-[1fr_1fr_11rem_auto] gap-3 items-end">
+              <label className="block">
+                <span className="block text-sm text-slate-600 mb-1">Qual órgão?</span>
+                <input
+                  value={dados.orgao}
+                  onChange={(e) => setDados({ ...dados, orgao: e.target.value })}
+                  placeholder="Ex.: Prefeitura de Ubá"
+                  className="w-full border border-slate-300 rounded-xl px-3 py-2.5"
+                />
+              </label>
+              <label className="block">
+                <span className="block text-sm text-slate-600 mb-1">Qual processo?</span>
+                <input
+                  value={dados.processo}
+                  onChange={(e) => setDados({ ...dados, processo: e.target.value })}
+                  placeholder="Ex.: PE 61-2025"
+                  className="w-full border border-slate-300 rounded-xl px-3 py-2.5"
+                />
+              </label>
+              <label className="block">
+                <span className="block text-sm text-slate-600 mb-1">Data do processo</span>
+                <input
+                  type="date"
+                  value={dados.data}
+                  onChange={(e) => setDados({ ...dados, data: e.target.value })}
+                  className="w-full border border-slate-300 rounded-xl px-3 py-2.5"
+                />
+              </label>
+              <button
+                type="button"
+                disabled={!itens.length || !dadosOk(dados) || pesquisando || lendoPlanilhas}
+                onClick={() => pesquisarPor('planilha')}
+                title={dadosOk(dados) ? `Cria "${nomePlanilha(dados)}" na pasta cloud` : 'Preencha órgão, processo e data'}
+                className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#0E7A40] hover:bg-[#0B6535] text-white font-bold cursor-pointer disabled:opacity-50"
+              >
+                <Icon name="sheet" className="w-5 h-5" /> Criar planilha Google
+              </button>
+            </div>
+            <p className="mt-2 text-sm text-slate-500">
+              Com os campos preenchidos, a planilha é criada (ou atualizada, no mesmo link) sozinha quando cada pesquisa abaixo termina.
+            </p>
+            <p className="mt-5 pt-5 border-t border-slate-100 text-sm font-semibold text-slate-600">Pesquisar</p>
+            <div className="mt-2 flex flex-col sm:flex-row flex-wrap gap-3">
               {(
                 [
                   ['tudo', 'Pesquisar preços ganhos', 'Planilhas Google + editais', 'bg-[#0E7A40] hover:bg-[#0B6535] text-white'],
@@ -324,6 +371,8 @@ export default function TermoReferenciaPanel() {
           buscandoContratos={pesquisando}
           onBuscarContratos={pesquisar}
           comando={comando}
+          dados={dados}
+          setDados={setDados}
           onOcupado={setLendoPlanilhas}
         >
           {progresso && (

@@ -229,3 +229,13 @@ export async function enviarComoPlanilhaGoogle({ nome, pai, bytes }: { nome: str
   });
   return r.json();
 }
+
+/** Troca o conteúdo de uma Planilha Google já criada por um novo .xlsx (o Drive converte de novo; o link continua o mesmo). */
+export async function atualizarPlanilhaGoogle(id: string, bytes: Uint8Array): Promise<ArquivoDrive> {
+  const r = await chamar(`${UPLOAD}/files/${id}?uploadType=media&fields=${CAMPOS}&supportsAllDrives=true`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': XLSX },
+    body: new Blob([bytes as BlobPart]),
+  });
+  return r.json();
+}
