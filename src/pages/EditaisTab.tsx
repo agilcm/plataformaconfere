@@ -5,7 +5,7 @@ import { MICRORREGIOES, normalizeName } from '../data/zonaDaMata.js';
 import { AGIL_CNAES } from '../data/agilCnaes.js';
 import { filtrarPorCnaes, filtrarPorRegras, filtrarPorSegmento } from '../lib/agilCnae.js';
 import { buscarCnae, CATALOGO_POR_ID, regrasDoCatalogo } from '../lib/catalogoCnae.js';
-import { contarFontes, contarLocais, fetchItensCompra, fetchPage, filterEditais, sortByUpdate } from '../lib/pncp.js';
+import { contarLocais, fetchItensCompra, fetchPage, filterEditais, sortByUpdate } from '../lib/pncp.js';
 import { descartarListas, listaDe, listaPronta, preCarregar } from '../lib/listasEditais.ts';
 import { distanciaKm, filtrarAvancado, grupoModalidade, ibgeDe, ordenarEditais, resumoEditais } from '../lib/filtrosEditais.js';
 import { DetalheCompra } from './RaioXEdital.tsx';
@@ -69,15 +69,6 @@ interface Geo {
 const BASE_KEY = 'agilcm:editais:base';
 
 const PAGE_SIZE = 20;
-const FONTES_KEY = 'agilcm:fontes';
-const lerFontesSalvas = (): string[] => {
-  try {
-    const v = JSON.parse(localStorage.getItem(FONTES_KEY) || '[]');
-    return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : [];
-  } catch {
-    return [];
-  }
-};
 // "Por aqui por perto": microrregiões e, com o prefixo "cidade:", cidades onde a Ágil atua
 const PERTO = ['Juiz de Fora', 'Cataguases', 'Ubá', 'Muriaé', 'cidade:Rodeiro', 'cidade:Astolfo Dutra', 'cidade:Leopoldina'].filter(
   (m) => m.startsWith('cidade:') || m in MICRORREGIOES,
@@ -145,8 +136,6 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
   const [tentativa, setTentativa] = useState(0);
   const [sugestao, setSugestao] = useState(false);
   const [superSug, setSuperSug] = useState(false);
-  const [fontes, setFontes] = useState<string[]>([]);
-  const [painelFontes, setPainelFontes] = useState(false);
   const [locais, setLocais] = useState<string[]>([]);
   const [painelLocais, setPainelLocais] = useState(false);
   const [facetasLocais, setFacetasLocais] = useState<{ nome: string; total: number }[] | null>(null);
@@ -154,8 +143,6 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
   const [painelCnaes, setPainelCnaes] = useState(false);
   const [livres, setLivres] = useState<string[]>([]); // CNAEs escolhidos em Editais abertos
   const [buscaCnae, setBuscaCnae] = useState('');
-  const [todasFontes, setTodasFontes] = useState(false);
-  const [facetas, setFacetas] = useState<{ nome: string; total: number }[] | null>(null);
   const [facetasEstado, setFacetasEstado] = useState<'idle' | 'loading' | 'erro'>('idle');
   const [exportando, setExportando] = useState<{ etapa: string; feito: number; total: number } | null>(null);
   const [exportErro, setExportErro] = useState('');
@@ -206,18 +193,14 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
     return () => clearTimeout(t);
   }, [busca]);
 
-  // Fontes marcadas da última visita (só neste aparelho)
-  useEffect(() => {
-    const salvas = lerFontesSalvas();
-    if (salvas.length) setFontes(salvas);
-  }, []);
+  // o filtro Fonte saiu (é quase o mesmo que Local do pregão): esquece o que ficou marcado nas visitas antigas
   useEffect(() => {
     try {
-      localStorage.setItem(FONTES_KEY, JSON.stringify(fontes));
+      localStorage.removeItem('agilcm:fontes');
     } catch {
-      /* sem armazenamento: só não lembra na próxima visita */
+      /* sem armazenamento */
     }
-  }, [fontes]);
+  }, []);
   // CNAEs escolhidos da última visita (só neste aparelho)
   useEffect(() => {
     if (agil) return;
@@ -237,11 +220,10 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
     }
   }, [livres, agil]);
   const livresKey = agil ? '' : livres.slice().sort().join('|');
-  const fontesKey = fontes.slice().sort().join('|');
   const cnaesKey = cnaesSel.slice().sort().join('|');
   const locaisKey = locais.slice().sort().join('|');
 
-  useEffect(() => setPagina(1), [regiao, micro, q, fontesKey, cnaesKey, locaisKey, livresKey, segmento, extrasKey]);
+  useEffect(() => setPagina(1), [regiao, micro, q, cnaesKey, locaisKey, livresKey, segmento, extrasKey]);
 
   // Filtro local (modo direto e amostra), igual ao da função /api/editais; depois, os de "Mais filtros"
   const filtroBase = useCallback(
@@ -268,12 +250,11 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
   );
 
   const carregar = useCallback(async (pag: number): Promise<Resultado & { fonte: Fonte }> => {
-    const key = `${agil ? `agil:${segmento ? `seg-${segmento}` : cnaesKey}` : `editais:${livresKey}`}:${extrasKey}:${regiao}:${micro}:${q}:${fontesKey}:${locaisKey}:${pag}`;
+    const key = `${agil ? `agil:${segmento ? `seg-${segmento}` : cnaesKey}` : `editais:${livresKey}`}:${extrasKey}:${regiao}:${micro}:${q}:${locaisKey}:${pag}`;
     // 1) Função do servidor (site publicado na Vercel)
     const p: Record<string, string> = { regiao, pagina: String(pag), tamanho: String(PAGE_SIZE) };
     if (micro) p.micro = micro;
     if (q) p.q = q;
-    if (fontesKey) p.fontes = fontesKey;
     if (locaisKey) p.locais = locaisKey;
     if (agil) p.cnae = 'agil';
     if (agil && cnaesKey) p.cnaes = cnaesKey;
@@ -289,12 +270,12 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
       if (regiao === 'brasil') {
         // Brasil: página a página (o PNCP tem dezenas de milhares de editais abertos); a busca vai para o PNCP
         const r = await fetchPage({ pagina: pag, tamanho: PAGE_SIZE, q, uf: '' });
-        const f = aplicar(r.items as Edital[], { regiao, micro: '', q: '', fontes: fontesKey, locais: locaisKey });
+        const f = aplicar(r.items as Edital[], { regiao, micro: '', q: '', locais: locaisKey });
         const out = { items: extrasAtivos ? ordenar(f) : sortByUpdate(f), total: r.total, atualizadoEm: new Date().toISOString() };
         saveLocal(key, out);
         return { ...out, fonte: 'direto' };
       }
-      if (regiao === 'mg' && !micro && !q && !fontesKey && !locaisKey && !agil && !livresKey && !extrasAtivos) {
+      if (regiao === 'mg' && !micro && !q && !locaisKey && !agil && !livresKey && !extrasAtivos) {
         const r = await fetchPage({ pagina: pag, tamanho: PAGE_SIZE });
         const out = { items: sortByUpdate(r.items), total: r.total, atualizadoEm: new Date().toISOString() };
         saveLocal(key, out);
@@ -302,7 +283,7 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
       }
       const l = await listaDe(regiao === 'zona-da-mata' ? 'zm' : 'mg', (loaded, t) => setProgresso({ loaded, total: t }));
       setProgresso(null);
-      const f = ordenar(aplicar(l.items as Edital[], { regiao, micro, q, fontes: fontesKey, locais: locaisKey }));
+      const f = ordenar(aplicar(l.items as Edital[], { regiao, micro, q, locais: locaisKey }));
       const out = {
         items: f.slice((pag - 1) * PAGE_SIZE, pag * PAGE_SIZE),
         total: f.length,
@@ -321,11 +302,11 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
     // 4) Amostra embutida (apenas na visualização de demonstração)
     const sample = typeof window !== 'undefined' ? window.__PNCP_SAMPLE__ : undefined;
     if (sample) {
-      const f = sortByUpdate(aplicar(sample.items, { regiao, micro, q, fontes: fontesKey, locais: locaisKey }));
+      const f = sortByUpdate(aplicar(sample.items, { regiao, micro, q, locais: locaisKey }));
       return { items: f.slice((pag - 1) * PAGE_SIZE, pag * PAGE_SIZE), total: f.length, atualizadoEm: sample.capturadoEm, fonte: 'amostra' };
     }
     throw new Error('sem conexão');
-  }, [regiao, micro, q, fontesKey, locaisKey, agil, cnaesKey, livresKey, segmento, aplicar, ordenar, extrasKey, extrasAtivos]);
+  }, [regiao, micro, q, locaisKey, agil, cnaesKey, livresKey, segmento, aplicar, ordenar, extrasKey, extrasAtivos]);
 
   useEffect(() => {
     const id = ++reqId.current;
@@ -360,9 +341,9 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
     if (agil && !loading && import.meta.env.VITE_STATIC_HOST === 'true') preCarregar('mg');
   }, [agil, loading]);
 
-  // Quantos editais há em cada fonte e em cada local do pregão (com os mesmos filtros de região e busca)
+  // Quantos editais há em cada local do pregão (com os mesmos filtros de região e busca)
   useEffect(() => {
-    if (!painelFontes && !painelLocais) return;
+    if (!painelLocais) return;
     let vivo = true;
     (async () => {
       setFacetasEstado('loading');
@@ -372,29 +353,22 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
       if (agil) p.cnae = 'agil';
       if (agil && cnaesKey) p.cnaes = cnaesKey;
       if (livresKey) Object.assign(p, { cnae: 'lista', cnaes: livresKey });
-      if (fontesKey) p.fontes = fontesKey;
       if (locaisKey) p.locais = locaisKey;
-      const viaApi = await callApi<{ fontes: { nome: string; total: number }[]; locais?: { nome: string; total: number }[] }>('editais', p);
-      let lista: { nome: string; total: number }[] | null = viaApi?.fontes ?? null;
+      const viaApi = extrasAtivos ? null : await callApi<{ locais?: { nome: string; total: number }[] }>('editais', p);
       let listaLocais: { nome: string; total: number }[] | null = viaApi?.locais ?? null;
-      const contar = (base: Edital[]) => {
-        lista = contarFontes(locaisKey ? filterEditais(base, { locais: locaisKey }) : base);
-        listaLocais = contarLocais(fontesKey ? filterEditais(base, { fontes: fontesKey }) : base);
-      };
-      if (!lista) {
+      if (!listaLocais) {
         try {
           const lista = regiao === 'brasil' ? items : await listaDaRegiao(regiao, (loaded: number, t: number) => vivo && setProgresso({ loaded, total: t }));
-          contar(aplicar(lista, { regiao, micro, q }));
+          listaLocais = contarLocais(aplicar(lista, { regiao, micro, q }));
         } catch {
           const sample = typeof window !== 'undefined' ? window.__PNCP_SAMPLE__ : undefined;
-          if (sample) contar(aplicar(sample.items, { regiao, micro, q }));
+          if (sample) listaLocais = contarLocais(aplicar(sample.items, { regiao, micro, q }));
         } finally {
           if (vivo) setProgresso(null);
         }
       }
       if (!vivo) return;
-      if (lista) {
-        setFacetas(lista);
+      if (listaLocais) {
         setFacetasLocais(listaLocais);
         setFacetasEstado('idle');
       } else setFacetasEstado('erro');
@@ -402,15 +376,15 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
     return () => {
       vivo = false;
     };
-  }, [painelFontes, painelLocais, regiao, micro, q, fontesKey, locaisKey, tentativa, agil, cnaesKey, livresKey, aplicar]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [painelLocais, regiao, micro, q, locaisKey, tentativa, agil, cnaesKey, livresKey, aplicar]);
 
   // Todos os editais com os filtros atuais (não só as páginas já mostradas); tudo: MG inteira, sem filtros
   const listarTodos = async ({ tudo = false, onProgress }: { tudo?: boolean; onProgress?: (lidos: number, total: number) => void } = {}): Promise<Edital[]> => {
-    const f = tudo ? { regiao: 'mg' as Regiao, micro: '', q: '', fontes: '', locais: '' } : { regiao, micro, q, fontes: fontesKey, locais: locaisKey };
+    const f = tudo ? { regiao: 'mg' as Regiao, micro: '', q: '', locais: '' } : { regiao, micro, q, locais: locaisKey };
     const p: Record<string, string> = { regiao: f.regiao, todos: '1' };
     if (f.micro) p.micro = f.micro;
     if (f.q) p.q = f.q;
-    if (f.fontes) p.fontes = f.fontes;
     if (f.locais) p.locais = f.locais;
     if (agil && !tudo) p.cnae = 'agil';
     if (agil && !tudo && cnaesKey) p.cnaes = cnaesKey;
@@ -481,7 +455,6 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
   };
 
   const alternarCnae = (codigo: string) => setCnaesSel((c) => (c.includes(codigo) ? c.filter((x) => x !== codigo) : [...c, codigo]));
-  const alternarFonte = (nome: string) => setFontes((f) => (f.includes(nome) ? f.filter((x) => x !== nome) : [...f, nome]));
 
   const temMais = items.length < total;
   const nomeBase = geo?.cidades.find(([, ib]) => ib === avanc.base)?.[0] || 'Astolfo Dutra';
@@ -592,18 +565,6 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
                 )}
                 <button
                   type="button"
-                  aria-expanded={painelFontes}
-                  aria-controls="filtro-fontes"
-                  onClick={() => setPainelFontes((v) => !v)}
-                  className={`shrink-0 inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-base font-bold border-2 transition-colors cursor-pointer ${
-                    painelFontes || fontes.length ? 'border-[#0478CA] text-[#0478CA] bg-[#0478CA]/5' : 'border-slate-300 text-slate-700 hover:border-[#0478CA]'
-                  }`}
-                >
-                  <Icon name="box" className="w-5 h-5" />
-                  Fonte{fontes.length ? ` (${fontes.length})` : ''}
-                </button>
-                <button
-                  type="button"
                   aria-expanded={painelLocais}
                   aria-controls="filtro-locais"
                   onClick={() => setPainelLocais((v) => !v)}
@@ -629,22 +590,6 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
                     Mais filtros{contarAvancado(avanc) ? ` (${contarAvancado(avanc)})` : ''}
                   </button>
                 )}
-                <button
-                  type="button"
-                  aria-expanded={tendencia}
-                  aria-controls="tendencia"
-                  onClick={() => {
-                    setTendencia((v) => !v);
-                    setTimeout(() => document.getElementById('tendencia')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
-                  }}
-                  title="Como a procura por um produto muda mês a mês nas licitações"
-                  className={`shrink-0 inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-base font-bold border-2 transition-colors cursor-pointer ${
-                    tendencia ? 'border-[#0478CA] text-white bg-[#0478CA]' : 'border-[#0478CA] text-[#0478CA] hover:bg-[#0478CA]/5'
-                  }`}
-                >
-                  <Icon name="chart" className="w-5 h-5" />
-                  Tendência
-                </button>
                 {/* na aba AGIL CNAE fica só a Super Sugestão */}
                 {!agil && (
                   <button
@@ -870,61 +815,6 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
                   )}
                 </div>
               )}
-
-              {painelFontes && (
-                <div id="filtro-fontes" className="mt-4 pt-4 border-t border-slate-100">
-                  <div className="flex flex-wrap items-baseline justify-between gap-2 mb-2">
-                    <p className="text-sm font-semibold text-slate-600">
-                      Fonte · plataforma onde o edital foi publicado {fontes.length ? '' : '(nenhuma marcada = todas)'}
-                    </p>
-                    {fontes.length > 0 && (
-                      <button type="button" onClick={() => setFontes([])} className="text-sm font-bold text-[#0478CA] underline cursor-pointer">
-                        Limpar ({fontes.length})
-                      </button>
-                    )}
-                  </div>
-                  {facetasEstado === 'loading' && !facetas && <p className="text-[15px] text-slate-600">Contando editais por fonte…</p>}
-                  {facetasEstado === 'erro' && (
-                    <p className="text-[15px] text-amber-900">
-                      O PNCP não respondeu para listar as fontes.{' '}
-                      <button type="button" onClick={() => setTentativa((t) => t + 1)} className="font-bold underline cursor-pointer">
-                        Tentar de novo
-                      </button>
-                    </p>
-                  )}
-                  {facetas && (
-                    <div role="group" aria-label="Fontes" className={`flex flex-wrap gap-2 ${facetasEstado === 'loading' ? 'opacity-60' : ''}`}>
-                      {[...facetas, ...fontes.filter((f) => !facetas.some((x) => x.nome === f)).map((nome) => ({ nome, total: 0 }))]
-                        .filter((f, i) => todasFontes || i < 10 || fontes.includes(f.nome))
-                        .map((f) => {
-                        const on = fontes.includes(f.nome);
-                        return (
-                          <button
-                            key={f.nome}
-                            type="button"
-                            aria-pressed={on}
-                            onClick={() => alternarFonte(f.nome)}
-                            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-full text-sm font-semibold border transition-colors cursor-pointer ${
-                              on ? 'bg-[#0F2053] border-[#0F2053] text-white' : 'bg-white border-slate-300 text-slate-700 hover:border-[#0478CA]'
-                            }`}
-                          >
-                            <span aria-hidden="true" className={`w-4 h-4 rounded border flex items-center justify-center text-[11px] ${on ? 'bg-white text-[#0F2053] border-white' : 'border-slate-400'}`}>
-                              {on ? '✓' : ''}
-                            </span>
-                            {f.nome}
-                            <span className={`tabular-nums ${on ? 'text-white/75' : 'text-slate-400'}`}>{f.total.toLocaleString('pt-BR')}</span>
-                          </button>
-                        );
-                      })}
-                      {facetas.length > 10 && (
-                        <button type="button" onClick={() => setTodasFontes((v) => !v)} className="px-3.5 py-2 text-sm font-bold text-[#0478CA] underline cursor-pointer">
-                          {todasFontes ? 'Mostrar menos' : `Ver todas as ${facetas.length} fontes`}
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
 
             {tendencia && (
@@ -950,11 +840,25 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
                       agil && segmento ? ` do segmento ${SEGMENTO_POR_ID.get(segmento)?.nome}` : agil ? (cnaesSel.length === 1 ? ` do CNAE ${cnaesSel[0]}` : cnaesSel.length ? ` de ${cnaesSel.length} CNAEs da Ágil CM` : ` ${total === 1 ? 'ligado' : 'ligados'} aos CNAEs da Ágil CM`) : ''
                     }${
                       regiao === 'zona-da-mata' ? (micro.startsWith('cidade:') ? ` em ${rotuloPerto(micro)}` : micro ? ` na microrregião de ${micro}` : ' na Zona da Mata') : regiao === 'brasil' ? ' no Brasil' : ' em Minas Gerais'
-                    }${fontes.length ? ` · ${fontes.length === 1 ? `fonte ${fontes[0]}` : `${fontes.length} fontes`}` : ''}${
+                    }${
                       locais.length ? ` · ${locais.length === 1 ? `pregão em ${locais[0]}` : `${locais.length} locais`}` : ''
                     }`}
               </p>
               <div className="flex flex-wrap items-center gap-3">
+                {q.length >= 3 && !tendencia && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTendencia(true);
+                      setTimeout(() => document.getElementById('tendencia')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+                    }}
+                    title="Quantos editais com essa palavra saíram por mês: em alta ou em baixa, meses fortes e quem mais compra"
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border-2 border-[#0478CA]/40 text-[#0478CA] hover:bg-[#0478CA]/5 text-sm font-bold cursor-pointer"
+                  >
+                    <Icon name="chart" className="w-4 h-4" />
+                    Tendência de “{q.length > 24 ? `${q.slice(0, 22)}…` : q}”
+                  </button>
+                )}
                 <p className="text-sm text-slate-500">
                   {ordem === 'recentes'
                     ? 'Ordenados pela última atualização'
@@ -1279,7 +1183,7 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
                   <li className="p-8 rounded-2xl bg-white border border-slate-200 text-center">
                     <p className="text-lg font-bold text-[#0F2053]">Nenhum edital encontrado com esses filtros</p>
                     <p className="mt-1 text-base text-slate-600">
-                      Tente outra palavra, marque mais {agil ? 'CNAEs ou ' : ''}fontes ou volte para toda Minas Gerais.
+                      Tente outra palavra, marque mais {agil ? 'CNAEs ou ' : ''}locais do pregão ou volte para toda Minas Gerais.
                     </p>
                   </li>
                 )}

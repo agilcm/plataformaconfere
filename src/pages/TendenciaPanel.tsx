@@ -204,7 +204,8 @@ export default function TendenciaPanel({ termoInicial, regiaoInicial, onClose }:
               <Grafico meses={a.meses} />
               <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-sm text-slate-500">
                 <span>
-                  Editais publicados por mês com “{res.q}”. A última barra é o mês em andamento.
+                  Editais publicados por mês com “{res.q}” no objeto (a busca do PNCP traz também editais parecidos, que ficam de fora). A última barra é o mês
+                  em andamento.
                   {a.fortes.length > 0 && (
                     <>
                       {' '}
@@ -243,8 +244,8 @@ export default function TendenciaPanel({ termoInicial, regiaoInicial, onClose }:
               )}
               {!res.completo && (
                 <p className="mt-2 text-sm text-amber-900">
-                  Palavra muito comum: li os {res.itens.length.toLocaleString('pt-BR')} editais mais recentes de {res.total.toLocaleString('pt-BR')}. O gráfico
-                  começa no primeiro mês lido por inteiro.
+                  Palavra muito comum: li os {res.lidos.toLocaleString('pt-BR')} editais mais recentes de {res.total.toLocaleString('pt-BR')}. O gráfico começa
+                  no primeiro mês lido por inteiro.
                 </p>
               )}
 

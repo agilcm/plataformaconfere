@@ -17,6 +17,35 @@ function somarMeses(mes, n) {
   return d.toISOString().slice(0, 7);
 }
 
+// A busca do PNCP é ampla (para "material de limpeza" devolve até obra de calçada): aqui só contam os
+// editais cujo objeto tem todas as palavras pesquisadas, aceitando plural ("materiais de limpeza").
+const LIGACOES = new Set(['de', 'da', 'do', 'das', 'dos', 'e', 'para', 'com', 'em', 'a', 'o']);
+const semAcento = (s) =>
+  String(s || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ');
+const escapar = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function formas(p) {
+  const t = escapar(p);
+  if (p.endsWith('l')) return `(?:${t}|${escapar(p.slice(0, -1))}is)`;
+  if (p.endsWith('ao')) return `(?:${t}|${escapar(p.slice(0, -2))}oes|${escapar(p.slice(0, -2))}aes)`;
+  if (p.endsWith('s')) return `(?:${t}|${escapar(p.slice(0, -1))})`;
+  return `${t}(?:s|es)?`;
+}
+/** Testa se um texto fala do termo pesquisado (todas as palavras, inteiras, com plural) */
+export function casaTermo(q) {
+  const palavras = semAcento(q)
+    .split(' ')
+    .filter((p) => p.length >= 2 && !LIGACOES.has(p));
+  const res = palavras.map((p) => new RegExp(`(?:^| )${formas(p)}(?= |$)`));
+  return (texto) => {
+    const t = ` ${semAcento(texto)} `.replace(/\s+/g, ' ');
+    return res.every((r) => r.test(t));
+  };
+}
+
 /** O mínimo de cada edital que a tendência usa (a resposta do PNCP é grande) */
 function resumir(it) {
   return {
@@ -45,7 +74,9 @@ export async function buscarTendencia({ q, regiao, meses = 24, agora = new Date(
   const inicio = `${somarMeses(mesAtual(agora), -meses)}-01`;
   const limite = maxPaginas ?? (regiao === 'brasil' ? 12 : 24);
   const itens = [];
+  const casa = casaTermo(q);
   let total = 0;
+  let lidos = 0;
   let completo = false;
   let ultimaData = '';
   for (let pagina = 1; pagina <= limite; pagina++) {
@@ -60,9 +91,13 @@ export async function buscarTendencia({ q, regiao, meses = 24, agora = new Date(
     const data = await fetchJson(url, { fetchImpl, timeout: 60000, retries: 4 });
     total = Number(data?.total) || 0;
     const arr = Array.isArray(data?.items) ? data.items : [];
-    for (const it of arr) itens.push(resumir(it));
-    onProgress?.(itens.length, total);
-    if (!arr.length || arr.length < tamanho || itens.length >= total) {
+    for (const it of arr) {
+      const e = resumir(it);
+      if (casa(`${e.objeto} ${it.title || ''}`)) itens.push(e);
+    }
+    lidos += arr.length;
+    onProgress?.(lidos, total);
+    if (!arr.length || arr.length < tamanho || lidos >= total) {
       completo = true;
       break;
     }
@@ -76,7 +111,7 @@ export async function buscarTendencia({ q, regiao, meses = 24, agora = new Date(
   }
   // sem ler tudo (termo muito comum), só os meses inteiros já lidos valem
   const desde = completo || !ultimaData ? inicio : `${somarMeses(mesDe(ultimaData), 1)}-01`;
-  return { q, regiao, total, itens, completo, inicio, desde: desde > inicio ? desde : inicio };
+  return { q, regiao, total, lidos, itens, completo, inicio, desde: desde > inicio ? desde : inicio };
 }
 
 /**

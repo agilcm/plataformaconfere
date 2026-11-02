@@ -84,3 +84,14 @@ test('refDoTexto entende link e número de controle do PNCP', () => {
   assert.deepEqual(refDoTexto('17.710.096/0001-84-1-000128/2026'), { cnpj: '17710096000184', ano: '2026', seq: '128' });
   assert.equal(refDoTexto('edital de toner'), null);
 });
+
+test('casaTermo: só conta o objeto que fala do produto, com plural', async () => {
+  const { casaTermo } = await import('../src/lib/tendencia.js');
+  const c = casaTermo('material de limpeza');
+  assert.equal(c('Aquisição de MATERIAIS DE LIMPEZA e higiene'), true);
+  assert.equal(c('Construção de calçada'), false);
+  assert.equal(c('Limpeza urbana'), false);
+  assert.equal(casaTermo('toner')('Aquisição de toners e cartuchos'), true);
+  assert.equal(casaTermo('gêneros alimentícios')('aquisicao de genero alimenticio'), true); // singular também vale
+  assert.equal(casaTermo('gêneros alimentícios')('aquisição de gêneros alimentícios'), true);
+});
