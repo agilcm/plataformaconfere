@@ -1,8 +1,10 @@
 // Super Sugestão (aba AGIL CNAE): editais abertos onde a AGIL já ganhou o mesmo produto ou a mesma categoria.
-import { useEffect, useRef, useState } from 'react';
+// Abre já procurando, com o histórico mais recente; mostra primeiro a Zona da Mata e depois o restante de Minas.
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../components/ui.tsx';
 import { formatBRL } from '../data/servicesData.ts';
-import { baixarHistorico, gravarFonte, historicoPadrao, importarHistorico, lerFonte, lerHistorico } from '../lib/historicoVitorias.js';
+import { baixarHistorico, carregarHistorico, importarHistorico } from '../lib/historicoVitorias.js';
+import { guardarItens, itensGuardados } from '../lib/itensCache.ts';
 import { fetchItensCompra } from '../lib/pncp.js';
 import { callApi } from '../lib/pncpClient.ts';
 import { ROUTES } from '../lib/routes.ts';
@@ -36,34 +38,50 @@ function motivoTexto(m: any) {
   return m.nivel === 'media' ? `Já ganhamos ${m.porque.toLowerCase()} em ${onde}, ${proc}` : `Já ganhamos "${m.porque}" em ${onde}, ${proc}`;
 }
 
-export default function SuperSugestaoPanel({ obterEditais, onClose }: { obterEditais: (p: Progresso) => Promise<any[]>; onClose: () => void }) {
-  // padrão do sistema (arquivo do site) ou o existente neste navegador (importado ou vindo do Privado)
-  const [fonte, setFonte] = useState<'padrao' | 'local'>(() => (lerFonte() === 'local' && lerHistorico() ? 'local' : 'padrao'));
-  const [local, setLocal] = useState(() => lerHistorico());
-  const [padrao, setPadrao] = useState<any>(null);
-  const historico = fonte === 'local' ? local : padrao;
+const ORIGEM: Record<string, string> = {
+  privado: 'leitura da pasta do Privado',
+  navegador: 'guardado neste navegador',
+  sistema: 'histórico do sistema',
+  importado: 'cache importado',
+};
+
+export default function SuperSugestaoPanel({
+  obterEditais,
+  obterEditaisZM,
+  onClose,
+}: {
+  /** editais abertos de Minas Gerais inteira */
+  obterEditais: (p: Progresso) => Promise<any[]>;
+  /** editais abertos da Zona da Mata (rápido: filtro de municípios do PNCP) */
+  obterEditaisZM: (p: Progresso) => Promise<any[]>;
+  onClose: () => void;
+}) {
+  // histórico: o mais recente entre a leitura do Privado (GitHub), o deste navegador e o do sistema
+  const [historico, setHistorico] = useState<any>(null);
+  const [origem, setOrigem] = useState('');
+  const [carregandoHist, setCarregandoHist] = useState(true);
   const [erroCache, setErroCache] = useState('');
   const arquivo = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    if (fonte !== 'padrao' || padrao) return;
-    historicoPadrao()
-      .then(setPadrao)
-      .catch(() => setErroCache('Não consegui abrir o histórico padrão do sistema.'));
-  }, [fonte, padrao]);
-  const usar = (f: 'padrao' | 'local') => {
-    setFonte(f);
-    gravarFonte(f);
-    setRes([]);
-    setEstado('idle');
-  };
+    carregarHistorico()
+      .then((h) => {
+        if (!h) return setErroCache('Não encontrei o histórico do que a AGIL já ganhou. Importe o cache baixado na área Privado.');
+        setHistorico(h.dados);
+        setOrigem(h.origem);
+      })
+      .catch(() => setErroCache('Não consegui abrir o histórico do que a AGIL já ganhou.'))
+      .finally(() => setCarregandoHist(false));
+  }, []);
 
   // cache baixado na área Privado: dispensa fazer login de novo neste navegador
   const importar = async (f: File | undefined) => {
     if (!f) return;
     setErroCache('');
     try {
-      setLocal(importarHistorico(await f.text()));
-      usar('local');
+      setHistorico(importarHistorico(await f.text()));
+      setOrigem('importado');
+      iniciou.current = false; // procura de novo com o cache importado
+      setEstado('idle');
     } catch (e) {
       setErroCache((e as Error).message);
     } finally {
@@ -72,56 +90,112 @@ export default function SuperSugestaoPanel({ obterEditais, onClose }: { obterEdi
   };
   const [estado, setEstado] = useState<'idle' | 'loading' | 'ok' | 'erro'>('idle');
   const [prog, setProg] = useState<{ etapa: string; feito: number; total: number } | null>(null);
-  const [res, setRes] = useState<any[]>([]);
+  const [resZM, setResZM] = useState<any[]>([]);
+  const [resResto, setResResto] = useState<any[]>([]);
+  const [fase, setFase] = useState<'zm' | 'resto' | 'itens' | null>(null);
+  const res = useMemo(() => [...resZM, ...resResto], [resZM, resResto]);
+  const iniciou = useRef(false);
   const itensRef = useRef<Map<string, any[]>>(new Map());
   const [google, setGoogle] = useState<{ ocupado: boolean; msg: string; erro?: boolean }>({ ocupado: false, msg: '' });
-  const [verFracas, setVerFracas] = useState(false);
+  const [verFracas, setVerFracas] = useState<string[]>([]);
   const cancelar = useRef(false);
+
+  // itens dos editais (o objeto às vezes é genérico; os itens dizem o que é comprado)
+  const lerItens = async (alvo: any[], etapa: string, itens: Map<string, any[]>, aoAvancar: () => void) => {
+    let i = 0;
+    let feitos = 0;
+    let ultima = Date.now();
+    setProg({ etapa, feito: 0, total: alvo.length });
+    await Promise.all(
+      Array.from({ length: Math.min(8, alvo.length) }, async () => {
+        while (i < alvo.length && !cancelar.current) {
+          const e = alvo[i++];
+          try {
+            const viaApi = await callApi<{ itens: any[] | null }>('compra', { cnpj: e.compra.cnpj, ano: e.compra.ano, seq: e.compra.seq });
+            // o PNCP às vezes leva 20–40 s para devolver os itens: espera mais e tenta menos
+            const lidos = viaApi?.itens ?? (await fetchItensCompra(e.compra, fetch, 3, { timeout: 45000, retries: 1 }));
+            itens.set(e.id, lidos);
+            guardarItens(e.id, lidos);
+          } catch {
+            /* sem itens: usa só o objeto do edital */
+          }
+          setProg({ etapa, feito: ++feitos, total: alvo.length });
+          // a lista na tela vai melhorando enquanto os itens chegam
+          if (Date.now() - ultima > 5000) {
+            ultima = Date.now();
+            aoAvancar();
+          }
+        }
+      }),
+    );
+    cancelar.current = false;
+  };
+
+  const porPrazo = (a: any, b: any) => String(a.propostasAte || '9').localeCompare(String(b.propostasAte || '9'));
 
   const buscar = async () => {
     if (!historico) return;
     cancelar.current = false;
     setEstado('loading');
+    setResZM([]);
+    setResResto([]);
+    const itens = new Map<string, any[]>();
+    itensRef.current = itens;
     try {
-      const editais = await obterEditais((etapa, feito, total) => setProg({ etapa, feito, total }));
-      // nas cidades onde já ganhamos, os itens do edital também contam (o objeto às vezes é genérico)
-      const alvo = editaisNasCidades(historico, editais)
+      // 1) Zona da Mata primeiro (poucas páginas do PNCP): aparece já, pelo objeto do edital
+      setFase('zm');
+      const zm = await obterEditaisZM((etapa, feito, total) => setProg({ etapa, feito, total }));
+      const alvoZM = editaisNasCidades(historico, zm)
         .filter((e: any) => e.compra)
-        .slice(0, 400);
-      const itens = new Map<string, any[]>();
-      let i = 0;
-      let feitos = 0;
-      setProg({ etapa: 'Lendo os itens dos editais nas cidades onde já ganhamos', feito: 0, total: alvo.length });
-      await Promise.all(
-        Array.from({ length: Math.min(6, alvo.length) }, async () => {
-          while (i < alvo.length && !cancelar.current) {
-            const e = alvo[i++];
-            try {
-              const viaApi = await callApi<{ itens: any[] | null }>('compra', { cnpj: e.compra.cnpj, ano: e.compra.ano, seq: e.compra.seq });
-              itens.set(e.id, viaApi?.itens ?? (await fetchItensCompra(e.compra)));
-            } catch {
-              /* sem itens: usa só o objeto do edital */
-            }
-            setProg({ etapa: 'Lendo os itens dos editais nas cidades onde já ganhamos', feito: ++feitos, total: alvo.length });
-          }
-        }),
-      );
-      itensRef.current = itens;
-      setRes(superSugestao(historico, editais, itens));
+        .sort(porPrazo)
+        .slice(0, 250);
+      for (const [id, v] of await itensGuardados(alvoZM.map((e: any) => e.id))) itens.set(id, v);
+      setResZM(superSugestao(historico, zm, itens));
+      // 2) em seguida, o restante de Minas Gerais
+      setFase('resto');
+      const mg = await obterEditais((etapa, feito, total) => setProg({ etapa, feito, total }));
+      const idsZM = new Set(zm.map((e: any) => e.id));
+      const resto = mg.filter((e: any) => !idsZM.has(e.id) && !e.microrregiao);
+      const alvoResto = editaisNasCidades(historico, resto)
+        .filter((e: any) => e.compra)
+        .sort(porPrazo)
+        .slice(0, 300);
+      for (const [id, v] of await itensGuardados(alvoResto.map((e: any) => e.id))) itens.set(id, v);
+      setResResto(superSugestao(historico, resto, itens));
+      // 3) os itens dos editais refinam as duas listas (Zona da Mata primeiro)
+      setFase('itens');
+      const atualizar = () => {
+        setResZM(superSugestao(historico, zm, itens));
+        setResResto(superSugestao(historico, resto, itens));
+      };
+      const faltam = [...alvoZM, ...alvoResto].filter((e: any) => !itens.has(e.id));
+      if (faltam.length) await lerItens(faltam, 'Conferindo os itens dos editais (a lista vai se ajustando)', itens, atualizar);
+      atualizar();
       setEstado('ok');
     } catch {
       setEstado('erro');
     } finally {
       setProg(null);
+      setFase(null);
     }
   };
+
+  // abriu a Super Sugestão: com o histórico carregado, já começa a procurar
+  useEffect(() => {
+    if (!historico || iniciou.current) return;
+    iniciou.current = true;
+    buscar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historico, estado]);
 
   // Super Sugestão Google: itens dos editais sugeridos × preço de compra nas planilhas de custo (CSV)
   const superGoogle = async () => {
     setGoogle({ ocupado: true, msg: 'Entrando no Google…' });
     try {
       const conta = await garantirGoogle();
-      const b = await carregarBase(PASTA_PLANILHAS_ID, (etapa, feito, total) => setGoogle({ ocupado: true, msg: `${etapa}${total ? `: ${feito} de ${total}` : ''}…` }));
+      const b = await carregarBase(PASTA_PLANILHAS_ID, (etapa, feito, total) =>
+        setGoogle({ ocupado: true, msg: `${etapa}${total ? `: ${feito} de ${total}` : ''}…` }),
+      );
       const base = indexar(b.itens);
       // editais de outras cidades (alerta "fraca") ainda não tiveram os itens lidos
       const itens = itensRef.current;
@@ -201,8 +275,6 @@ export default function SuperSugestaoPanel({ obterEditais, onClose }: { obterEdi
     ]);
   };
 
-  const grupos = (['forte', 'media', 'fraca'] as Nivel[]).map((n) => ({ n, lista: res.filter((r) => r.nivel === n) }));
-
   return (
     <section id="super-sugestao" aria-label="Super Sugestão" className="mt-6 p-5 sm:p-6 rounded-2xl bg-white border-2 border-[#0F2053]/20 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -224,40 +296,8 @@ export default function SuperSugestaoPanel({ obterEditais, onClose }: { obterEdi
           {erroCache}
         </p>
       )}
-      <div className="mt-4 flex flex-wrap items-center gap-2">
-        <span className="text-sm font-semibold text-slate-600">Histórico de vitórias:</span>
-        {(
-          [
-            ['padrao', 'Usar o padrão do sistema', true],
-            ['local', 'Usar o existente neste navegador', !!local],
-          ] as const
-        ).map(([v, l, ok]) => (
-          <button
-            key={v}
-            type="button"
-            disabled={!ok}
-            aria-pressed={fonte === v}
-            onClick={() => usar(v)}
-            className={`px-3.5 py-2 rounded-xl text-sm font-bold border-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
-              fonte === v ? 'bg-[#0F2053] border-[#0F2053] text-white' : 'border-slate-200 text-[#0F2053] hover:border-[#0478CA]'
-            }`}
-          >
-            {l}
-          </button>
-        ))}
-        <button
-          type="button"
-          onClick={() => arquivo.current?.click()}
-          className="px-3.5 py-2 rounded-xl text-sm font-bold border-2 border-slate-200 text-[#0F2053] hover:border-[#0478CA] cursor-pointer"
-        >
-          Importar cache
-        </button>
-        <a href={ROUTES.privado} className="px-3.5 py-2 rounded-xl text-sm font-bold border-2 border-slate-200 text-[#0F2053] hover:border-[#0478CA]">
-          Entrar no Privado
-        </a>
-      </div>
-      {!historico && fonte === 'padrao' && !erroCache ? (
-        <p className="mt-4 text-[15px] text-slate-600">Carregando o histórico padrão do sistema…</p>
+      {!historico && carregandoHist ? (
+        <p className="mt-4 text-[15px] text-slate-600">Carregando o histórico do que a AGIL já ganhou…</p>
       ) : !historico ? (
         <div className="mt-4 p-4 rounded-xl bg-amber-50 border border-amber-200 text-[15px] text-amber-900">
           <p>
@@ -289,13 +329,17 @@ export default function SuperSugestaoPanel({ obterEditais, onClose }: { obterEdi
             {estado === 'ok' ? 'Procurar de novo' : 'Procurar oportunidades'}
           </button>
           <span className="text-sm text-slate-500">
-            {fonte === 'padrao' ? 'Padrão do sistema' : 'Deste navegador'}: {historico.processos.length} processos,{' '}
-            {historico.processos.reduce((s: number, p: any) => s + p.itens.length, 0)} itens · atualizado em {dataBR(historico.atualizadoEm)} ·{' '}
+            Histórico: {historico.processos.length} processos, {historico.processos.reduce((s: number, p: any) => s + p.itens.length, 0)} itens · atualizado em{' '}
+            {dataBR(historico.atualizadoEm)} ({ORIGEM[origem] || origem}) ·{' '}
             <button type="button" onClick={() => baixarHistorico(historico)} className="font-bold text-[#0478CA] underline cursor-pointer">
               baixar cache
+            </button>{' '}
+            ·{' '}
+            <button type="button" onClick={() => arquivo.current?.click()} className="font-bold text-[#0478CA] underline cursor-pointer">
+              importar cache
             </button>
           </span>
-          {estado === 'ok' && res.length > 0 && (
+          {(estado === 'ok' || fase === 'itens') && res.length > 0 && (
             <button
               type="button"
               onClick={superGoogle}
@@ -306,7 +350,7 @@ export default function SuperSugestaoPanel({ obterEditais, onClose }: { obterEdi
               <Icon name="sheet" className="w-5 h-5" /> Super Sugestão Google (CSV)
             </button>
           )}
-          {estado === 'ok' && res.length > 0 && (
+          {(estado === 'ok' || fase === 'itens') && res.length > 0 && (
             <button
               type="button"
               onClick={exportar}
@@ -347,62 +391,87 @@ export default function SuperSugestaoPanel({ obterEditais, onClose }: { obterEdi
         </div>
       )}
       {estado === 'erro' && <p className="mt-4 text-[15px] text-amber-900">O PNCP não respondeu agora. Tente de novo em alguns minutos.</p>}
-      {estado === 'ok' && !res.length && <p className="mt-4 text-[15px] text-slate-600">Nenhum edital aberto parecido com o que a AGIL já ganhou.</p>}
 
-      {estado === 'ok' &&
-        grupos.map(({ n, lista }) =>
-          !lista.length ? null : (
-            <div key={n} className="mt-6">
-              <p className="flex items-center gap-2 text-lg font-bold text-[#0F2053]">
-                <span className={`w-2.5 h-2.5 rounded-full ${NIVEIS[n].ponto}`} aria-hidden="true" />
-                {NIVEIS[n].titulo} <span className="text-slate-500 font-semibold">({lista.length})</span>
-              </p>
-              {n === 'fraca' && !verFracas ? (
-                <button type="button" onClick={() => setVerFracas(true)} className="mt-2 text-[15px] font-bold text-[#0478CA] underline cursor-pointer">
-                  Mostrar {lista.length} {lista.length === 1 ? 'edital' : 'editais'}
-                </button>
-              ) : (
-                <ul className="mt-3 space-y-3">
-                  {lista.slice(0, n === 'fraca' ? 60 : 200).map((r) => (
-                    <li key={r.edital.id} className={`p-4 rounded-xl border ${NIVEIS[n].cor}`}>
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-                        <strong>{r.edital.municipio}</strong>
-                        <span>{r.edital.orgao}</span>
-                        <span>· propostas até {dataBR(r.edital.propostasAte)}</span>
-                        {r.edital.valor && <span>· {formatBRL(r.edital.valor, 2)}</span>}
-                        {r.edital.local && <span>· pregão: {r.edital.local}</span>}
-                      </div>
-                      <p className="mt-1 font-bold text-[#0F2053] line-clamp-2">{r.edital.objeto || r.edital.titulo}</p>
-                      <ul className="mt-2 space-y-1 text-[15px]">
-                        {r.motivos.slice(0, 4).map((m: any, k: number) => (
-                          <li key={k}>
-                            <span className="font-semibold">{motivoTexto(m)}</span>
-                            {m.exemplos[0] && (
-                              <span className="text-slate-600">
-                                {' '}
-                                · ex.: {curto(m.exemplos[0].descricao)}
-                                {m.exemplos[0].unitario ? ` a ${formatBRL(m.exemplos[0].unitario, 2)}` : ''}
-                              </span>
-                            )}
-                          </li>
-                        ))}
-                        {r.motivos.length > 4 && <li className="text-slate-600">e mais {r.motivos.length - 4} motivo(s)</li>}
-                      </ul>
-                      <a
-                        href={r.edital.link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="mt-2 inline-flex items-center gap-1 text-sm font-bold text-[#0478CA] underline"
-                      >
-                        Ver edital no PNCP <Icon name="arrow" className="w-4 h-4" />
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          ),
-        )}
+      {(['zm', 'resto'] as const).map((bloco) => {
+        const lista = bloco === 'zm' ? resZM : resResto;
+        const pronto = bloco === 'zm' ? fase === 'resto' || fase === 'itens' || estado === 'ok' : fase === 'itens' || estado === 'ok';
+        if (!pronto && !lista.length) return null;
+        const grupos = (['forte', 'media', 'fraca'] as Nivel[]).map((n) => ({ n, lista: lista.filter((r) => r.nivel === n) }));
+        return (
+          <div key={bloco} className="mt-8">
+            <p className="pb-2 border-b-2 border-[#0F2053]/15 text-xl font-extrabold text-[#0F2053]">
+              {bloco === 'zm' ? '🟢 Zona da Mata' : '🔵 Restante de Minas Gerais'}{' '}
+              <span className="text-base font-semibold text-slate-500">
+                ({lista.length} {lista.length === 1 ? 'edital' : 'editais'})
+              </span>
+            </p>
+            {!lista.length && <p className="mt-3 text-[15px] text-slate-600">Nenhum edital aberto parecido com o que a AGIL já ganhou.</p>}
+            {grupos.map(({ n, lista: doNivel }) =>
+              !doNivel.length ? null : (
+                <div key={n} className="mt-5">
+                  <p className="flex items-center gap-2 text-lg font-bold text-[#0F2053]">
+                    <span className={`w-2.5 h-2.5 rounded-full ${NIVEIS[n].ponto}`} aria-hidden="true" />
+                    {NIVEIS[n].titulo} <span className="text-slate-500 font-semibold">({doNivel.length})</span>
+                  </p>
+                  {n === 'fraca' && !verFracas.includes(bloco) ? (
+                    <button
+                      type="button"
+                      onClick={() => setVerFracas((v) => [...v, bloco])}
+                      className="mt-2 text-[15px] font-bold text-[#0478CA] underline cursor-pointer"
+                    >
+                      Mostrar {doNivel.length} {doNivel.length === 1 ? 'edital' : 'editais'}
+                    </button>
+                  ) : (
+                    <ul className="mt-3 space-y-3">
+                      {doNivel.slice(0, n === 'fraca' ? 60 : 200).map((r) => (
+                        <Card key={r.edital.id} r={r} n={n} />
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ),
+            )}
+          </div>
+        );
+      })}
     </section>
+  );
+}
+
+function Card({ r, n }: { r: any; n: Nivel }) {
+  return (
+    <li className={`p-4 rounded-xl border ${NIVEIS[n].cor}`}>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+        <strong>{r.edital.municipio}</strong>
+        <span>{r.edital.orgao}</span>
+        <span>· propostas até {dataBR(r.edital.propostasAte)}</span>
+        {r.edital.valor && <span>· {formatBRL(r.edital.valor, 2)}</span>}
+        {r.edital.local && <span>· pregão: {r.edital.local}</span>}
+      </div>
+      <p className="mt-1 font-bold text-[#0F2053] line-clamp-2">{r.edital.objeto || r.edital.titulo}</p>
+      <ul className="mt-2 space-y-1 text-[15px]">
+        {r.motivos.slice(0, 4).map((m: any, k: number) => (
+          <li key={k}>
+            <span className="font-semibold">{motivoTexto(m)}</span>
+            {m.exemplos[0] && (
+              <span className="text-slate-600">
+                {' '}
+                · ex.: {curto(m.exemplos[0].descricao)}
+                {m.exemplos[0].unitario ? ` a ${formatBRL(m.exemplos[0].unitario, 2)}` : ''}
+              </span>
+            )}
+          </li>
+        ))}
+        {r.motivos.length > 4 && <li className="text-slate-600">e mais {r.motivos.length - 4} motivo(s)</li>}
+      </ul>
+      <a
+        href={r.edital.link}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mt-2 inline-flex items-center gap-1 text-sm font-bold text-[#0478CA] underline"
+      >
+        Ver edital no PNCP <Icon name="arrow" className="w-4 h-4" />
+      </a>
+    </li>
   );
 }

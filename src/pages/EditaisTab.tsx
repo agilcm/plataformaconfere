@@ -518,21 +518,24 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
                   <Icon name="gavel" className="w-5 h-5" />
                   Local do pregão{locais.length ? ` (${locais.length})` : ''}
                 </button>
-                <button
-                  type="button"
-                  aria-expanded={sugestao}
-                  aria-controls="sugestao"
-                  onClick={() => {
-                    setSugestao((v) => !v);
-                    setTimeout(() => document.getElementById('sugestao')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
-                  }}
-                  className={`shrink-0 inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-base font-extrabold tracking-wide transition-colors cursor-pointer ${
-                    sugestao ? 'bg-[#0F2053] text-white' : 'bg-[#F5A623] hover:bg-[#E0951A] text-[#0F2053]'
-                  }`}
-                >
-                  <Icon name="sheet" className="w-5 h-5" />
-                  Sugestão
-                </button>
+                {/* na aba AGIL CNAE fica só a Super Sugestão */}
+                {!agil && (
+                  <button
+                    type="button"
+                    aria-expanded={sugestao}
+                    aria-controls="sugestao"
+                    onClick={() => {
+                      setSugestao((v) => !v);
+                      setTimeout(() => document.getElementById('sugestao')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+                    }}
+                    className={`shrink-0 inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-base font-extrabold tracking-wide transition-colors cursor-pointer ${
+                      sugestao ? 'bg-[#0F2053] text-white' : 'bg-[#F5A623] hover:bg-[#E0951A] text-[#0F2053]'
+                    }`}
+                  >
+                    <Icon name="sheet" className="w-5 h-5" />
+                    Sugestão
+                  </button>
+                )}
                 {agil && (
                   <button
                     type="button"
@@ -790,7 +793,8 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
             {agil && superSug && (
               <SuperSugestaoPanel
                 onClose={() => setSuperSug(false)}
-                obterEditais={(prog) => listarTodos({ tudo: true, onProgress: (l, t) => prog('Lendo os editais abertos de Minas Gerais', l, t) })}
+                obterEditais={(prog) => listarTodos({ tudo: true, onProgress: (l, t) => prog('Lendo os editais abertos do restante de Minas Gerais', l, t) })}
+                obterEditaisZM={(prog) => listaDaRegiao('zona-da-mata', (l, t) => prog('Lendo os editais abertos da Zona da Mata', l, t))}
               />
             )}
 

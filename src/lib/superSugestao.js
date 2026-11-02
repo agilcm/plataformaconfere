@@ -34,15 +34,22 @@ const ADJETIVOS = new Set(
   'plastico plastica metalico metalica eletrico eletrica eletronico eletronica digital automatico automatica manual infantil adulto branco branca preto preta azul verde vermelho vermelha amarelo amarela transparente colorido colorida liso lisa simples duplo dupla triplo tripla polegadas litros metros centimetros gramas quilos multimidia portatil universal compativel original interno interna externo externa'.split(' '),
 );
 const CURTAS = new Set(['tv', 'hd', 'ssd', 'eva', 'epi', 'led', 'cd', 'dvd', 'gas', 'som']);
+// palavras de vários sentidos: valem junto com a seguinte ("banco imobiliario" não é banco da folha de pagamento)
+const AMBIGUAS = new Set(['banco', 'cilindro', 'folha', 'rede', 'fonte', 'placa', 'chave', 'cabo', 'bateria']);
+const LIGACOES = new Set(['de', 'do', 'da', 'dos', 'das', 'para', 'em', 'e', 'a', 'o']);
 
 /** Nome do produto: o começo da descrição, antes da ficha técnica */
 export const nomeDoProduto = (descricao) => norm(descricao).split(' ').slice(0, 8).join(' ');
 
 /** Palavra que identifica o item ganho: "TONER COMPATÍVEL HP 85A" -> "toner"; "CARRINHO DE BRINQUEDO" -> "carrinho" */
 export function palavraDoItem(descricao) {
-  for (const w of nomeDoProduto(descricao).split(' ')) {
+  const ws = nomeDoProduto(descricao).split(' ');
+  for (let i = 0; i < ws.length; i++) {
+    const w = ws[i];
     if (CURTAS.has(w)) return w;
     if (w.length < 4 || /\d/.test(w) || GENERICAS.has(w) || ADJETIVOS.has(w)) continue;
+    const prox = ws[i + 1];
+    if (AMBIGUAS.has(w) && prox && prox.length >= 4 && !LIGACOES.has(prox) && !/\d/.test(prox) && !ADJETIVOS.has(prox) && !GENERICAS.has(prox)) return `${w} ${prox}`;
     return w;
   }
   return '';

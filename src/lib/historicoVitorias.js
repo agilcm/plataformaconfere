@@ -1,6 +1,8 @@
-// Histórico do que a AGIL já ganhou (vem da área Privado) guardado neste navegador.
-// A Super Sugestão da aba AGIL CNAE usa esse histórico. Há também um histórico padrão do sistema
-// (src/data/historicoPadrao.json, exportado do Privado), carregado só quando a Super Sugestão abre.
+// Histórico do que a AGIL já ganhou, usado pela Super Sugestão (aba AGIL CNAE). Três origens, e vale a mais recente:
+//   - a leitura da pasta do Privado que o GitHub publica com o site a cada 3 horas (privado/leitura.json);
+//   - o guardado neste navegador (ao abrir o Privado ou importar um cache);
+//   - o histórico embutido no site (src/data/historicoPadrao.json), se as outras não estiverem disponíveis.
+import { vigencia } from './privado/relatorios.js';
 
 const CHAVE = 'agilcm:historico-vitorias';
 
@@ -12,9 +14,10 @@ export function cidadeDoOrgao(orgao) {
   return (m ? m[1] : s).replace(/\s*[-/]\s*MG$/i, '').trim();
 }
 
-export function salvarHistorico(processos, situacaoDe) {
-  const dados = {
-    atualizadoEm: new Date().toISOString(),
+/** Histórico no formato do cache a partir dos processos lidos no Privado */
+export function historicoDeProcessos(processos, situacaoDe, atualizadoEm = new Date().toISOString()) {
+  return {
+    atualizadoEm,
     processos: processos.map((p) => ({
       orgao: p.orgao,
       cidade: cidadeDoOrgao(p.orgao),
@@ -24,6 +27,10 @@ export function salvarHistorico(processos, situacaoDe) {
       itens: p.itens.map((i) => ({ descricao: i.descricao, quantidade: i.quantidade, medida: i.medida, unitario: i.unitario })),
     })),
   };
+}
+
+export function salvarHistorico(processos, situacaoDe) {
+  const dados = historicoDeProcessos(processos, situacaoDe);
   try {
     localStorage.setItem(CHAVE, JSON.stringify(dados));
   } catch {
@@ -101,21 +108,29 @@ export async function historicoPadrao() {
   return normalizarHistorico(m.default);
 }
 
-const CHAVE_FONTE = 'agilcm:historico-fonte';
-/** Qual histórico a Super Sugestão usa: o padrão do sistema (padrão) ou o existente neste navegador. */
-export function lerFonte() {
-  try {
-    return localStorage.getItem(CHAVE_FONTE) === 'local' ? 'local' : 'padrao';
-  } catch {
-    return 'padrao';
-  }
+/** Leitura do Privado publicada pelo GitHub (sem login), convertida para o formato do histórico */
+export async function historicoPublicado(fetchImpl = fetch) {
+  const base = import.meta.env?.BASE_URL || '/';
+  const r = await fetchImpl(`${base}privado/leitura.json?t=${Date.now()}`, { cache: 'no-store' });
+  if (!r.ok) throw new Error(`leitura do Privado indisponível (${r.status})`);
+  const l = await r.json();
+  if (!Array.isArray(l?.resultado?.processos) || !l.resultado.processos.length) throw new Error('leitura do Privado vazia');
+  return historicoDeProcessos(l.resultado.processos, (p) => vigencia(p).situacao, l.atualizadoEm);
 }
-export function gravarFonte(fonte) {
-  try {
-    localStorage.setItem(CHAVE_FONTE, fonte);
-  } catch {
-    /* sem armazenamento: volta ao padrão na próxima visita */
-  }
+
+/**
+ * O histórico mais recente entre a leitura do Privado, o deste navegador e o embutido no site.
+ * @returns {Promise<{ dados: { atualizadoEm: string, processos: any[] }, origem: 'privado' | 'navegador' | 'sistema' } | null>}
+ */
+export async function carregarHistorico() {
+  const [publicado, padrao] = await Promise.allSettled([historicoPublicado(), historicoPadrao()]);
+  const opcoes = [
+    publicado.status === 'fulfilled' ? { dados: publicado.value, origem: 'privado' } : null,
+    lerHistorico() ? { dados: lerHistorico(), origem: 'navegador' } : null,
+    padrao.status === 'fulfilled' ? { dados: padrao.value, origem: 'sistema' } : null,
+  ].filter(Boolean);
+  if (!opcoes.length) return null;
+  return opcoes.reduce((a, b) => (String(b.dados.atualizadoEm) > String(a.dados.atualizadoEm) ? b : a));
 }
 
 /** Baixa o cache como arquivo .json */

@@ -347,10 +347,10 @@ export function filterEditais(list, { regiao = 'mg', micro = '', q = '', fontes 
 
 // ---------------------------------------------------------------- detalhes de uma compra (itens e arquivos)
 
-export async function fetchItensCompra({ cnpj, ano, seq }, fetchImpl = fetch, maxPaginas = 10) {
+export async function fetchItensCompra({ cnpj, ano, seq }, fetchImpl = fetch, maxPaginas = 10, opcoes = {}) {
   const itens = [];
   for (let p = 1; p <= maxPaginas; p++) {
-    const page = await fetchJson(`${API}/orgaos/${cnpj}/compras/${ano}/${seq}/itens?pagina=${p}&tamanhoPagina=100`, { fetchImpl });
+    const page = await fetchJson(`${API}/orgaos/${cnpj}/compras/${ano}/${seq}/itens?pagina=${p}&tamanhoPagina=100`, { fetchImpl, ...opcoes });
     const arr = Array.isArray(page) ? page : [];
     itens.push(...arr);
     if (arr.length < 100) break;
