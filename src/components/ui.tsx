@@ -43,6 +43,10 @@ const PATHS: Record<string, string> = {
   doc: 'M9 12h6m-6 4h6M7 3h7l5 5v11a2 2 0 01-2 2H7a2 2 0 01-2-2V5a2 2 0 012-2z',
   arrow: 'M5 12h14m-6-6l6 6-6 6',
   calc: 'M8 7h8M8 11h2m4 0h2m-8 4h2m4 0h2M6 3h12a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V5a2 2 0 012-2z',
+  filter: 'M3 5h18l-7 8v5l-4 2v-7L3 5z',
+  star: 'M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9L12 3.5z',
+  calendar: 'M8 3v3m8-3v3M4 9h16M5 5h14a1 1 0 011 1v13a1 1 0 01-1 1H5a1 1 0 01-1-1V6a1 1 0 011-1z',
+  pin: 'M12 21s-7-6.2-7-11.5A7 7 0 0119 9.5C19 14.8 12 21 12 21zm0-9a2.5 2.5 0 100-5 2.5 2.5 0 000 5z',
 };
 
 export function Icon({ name, className = 'w-6 h-6' }: { name: keyof typeof PATHS | string; className?: string }) {

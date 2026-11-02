@@ -245,6 +245,12 @@ export function mapItem(it) {
     publicadoEm: it.data_publicacao_pncp || '',
     atualizadoEm: it.data_atualizacao_pncp || it.data_publicacao_pncp || '',
     propostasAte: it.data_fim_recebimento_propostas || it.data_fim_vigencia || null,
+    propostasDe: it.data_inicio_recebimento_propostas || it.data_inicio_vigencia || null,
+    srp: it.srp === true, // registro de preços
+    esfera: it.esfera_id || '', // M municipal, E estadual, F federal, D distrital
+    modoDisputa: fixText(it.modo_disputa_nome),
+    amparo: fixText((Array.isArray(it.amparo_legal_nome) ? it.amparo_legal_nome[0] : it.amparo_legal_nome) || ''),
+    ibge: it.codigo_ibge || '',
     link: path ? `https://pncp.gov.br/app/editais/${path}` : 'https://pncp.gov.br/app/editais',
     linkOrigem: it.link_sistema_origem || null,
     fonte: fonteDe(it),
@@ -364,8 +370,15 @@ export async function fetchItensCompra({ cnpj, ano, seq }, fetchImpl = fetch, ma
     valorTotalEstimado: num(i.valorTotal),
     situacao: i.situacaoCompraItemNome || '',
     temResultado: !!i.temResultado,
+    tipo: i.materialOuServicoNome || (i.materialOuServico === 'S' ? 'Serviço' : i.materialOuServico === 'M' ? 'Material' : ''),
+    beneficio: fixText(i.tipoBeneficioNome) || BENEFICIOS[i.tipoBeneficio] || '',
+    criterio: fixText(i.criterioJulgamentoNome),
+    sigiloso: !!i.orcamentoSigiloso,
   }));
 }
+
+// tipo de benefício às micro e pequenas empresas (LC 123/2006), quando o PNCP manda só o número
+const BENEFICIOS = { 1: 'Participação exclusiva para ME/EPP', 2: 'Subcontratação para ME/EPP', 3: 'Cota reservada para ME/EPP', 4: 'Sem benefício', 5: 'Não se aplica' };
 
 export async function fetchResultadosItem({ cnpj, ano, seq }, numeroItem, fetchImpl = fetch) {
   const arr = await fetchJson(`${API}/orgaos/${cnpj}/compras/${ano}/${seq}/itens/${numeroItem}/resultados`, { fetchImpl, retries: 2 });

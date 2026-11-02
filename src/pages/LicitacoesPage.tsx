@@ -6,20 +6,24 @@ import { Container, Icon } from '../components/ui.tsx';
 import { ROUTES } from '../lib/routes.ts';
 import EditaisTab from './EditaisTab.tsx';
 import ContratosTab from './ContratosTab.tsx';
+import MeusEditaisTab from './MeusEditaisTab.tsx';
+import { useMeusEditais } from '../lib/meusEditais.ts';
 
-type Aba = 'editais' | 'contratos' | 'agil';
+type Aba = 'editais' | 'contratos' | 'agil' | 'meus';
 
 const ABAS: { id: Aba; label: string; desc: string; icon: string }[] = [
   { id: 'editais', label: 'Editais abertos', desc: 'Licitações recebendo propostas agora', icon: 'doc' },
   { id: 'contratos', label: 'CONTRATOS', desc: 'Quem comprou, o quê e por quanto', icon: 'receipt' },
   { id: 'agil', label: 'AGIL CNAE', desc: 'Editais abertos ligados aos CNAEs da Ágil CM', icon: 'building' },
+  { id: 'meus', label: 'MEUS EDITAIS', desc: 'Salvos, etapas e prazos na agenda', icon: 'star' },
 ];
 
-const HASH_ABA: Record<string, Aba> = { '#contratos': 'contratos', '#agil-cnae': 'agil' };
-const ABA_HASH: Record<Aba, string> = { editais: '', contratos: '#contratos', agil: '#agil-cnae' };
+const HASH_ABA: Record<string, Aba> = { '#contratos': 'contratos', '#agil-cnae': 'agil', '#meus-editais': 'meus' };
+const ABA_HASH: Record<Aba, string> = { editais: '', contratos: '#contratos', agil: '#agil-cnae', meus: '#meus-editais' };
 
 export default function LicitacoesPage() {
   const [aba, setAba] = useState<Aba>('editais');
+  const salvos = Object.keys(useMeusEditais()).length;
 
   // Permite abrir direto em /licitacoes/#contratos ou /licitacoes/#agil-cnae
   useEffect(() => {
@@ -80,7 +84,7 @@ export default function LicitacoesPage() {
             </a>
 
             {/* Abas */}
-            <div role="tablist" aria-label="O que você quer ver" className="mt-10 grid grid-cols-3 gap-2 sm:gap-3 max-w-4xl">
+            <div role="tablist" aria-label="O que você quer ver" className="mt-10 grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 max-w-5xl">
               {ABAS.map((t) => (
                 <button
                   key={t.id}
@@ -97,6 +101,9 @@ export default function LicitacoesPage() {
                   <span className="flex items-center gap-2 text-sm sm:text-lg font-extrabold tracking-wide">
                     <Icon name={t.icon} className="hidden sm:block w-5 h-5 shrink-0" />
                     {t.label}
+                    {t.id === 'meus' && salvos > 0 && (
+                      <span className="px-2 py-0.5 rounded-full bg-[#F5A623] text-[#0F2053] text-xs font-extrabold tabular-nums">{salvos}</span>
+                    )}
                   </span>
                   <span className={`hidden sm:block mt-0.5 text-sm ${aba === t.id ? 'text-slate-600' : 'text-white/75'}`}>{t.desc}</span>
                 </button>
@@ -106,7 +113,7 @@ export default function LicitacoesPage() {
         </section>
 
         <div id="painel" role="tabpanel" aria-labelledby={`aba-${aba}`}>
-          {aba === 'contratos' ? <ContratosTab /> : <EditaisTab key={aba} agil={aba === 'agil'} />}
+          {aba === 'contratos' ? <ContratosTab /> : aba === 'meus' ? <MeusEditaisTab /> : <EditaisTab key={aba} agil={aba === 'agil'} />}
         </div>
       </main>
       <Footer page="licitacoes" />

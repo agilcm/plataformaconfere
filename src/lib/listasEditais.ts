@@ -13,13 +13,15 @@ export interface Lista {
   items: any[];
   at: number; // quando foi lida do PNCP
   incompleto?: boolean;
+  v?: number;
 }
 
 const VALIDADE = 30 * 60e3;
+const VERSAO = 2; // muda quando os campos de cada edital mudam (lib/pncp.js mapItem)
 const ZM_IDS = Object.values(PNCP_MUNICIPIOS_ZM) as string[];
 const memoria = new Map<Chave, Lista>();
 const andamento = new Map<Chave, { promessa: Promise<Lista>; ouvintes: Set<Progresso>; ultimo?: [number, number] }>();
-const fresca = (l?: Lista | null): l is Lista => !!l && Date.now() - l.at < VALIDADE;
+const fresca = (l?: Lista | null): l is Lista => !!l && l.v === VERSAO && Date.now() - l.at < VALIDADE;
 
 // ---------------------------------------------------------------- IndexedDB
 
@@ -71,7 +73,7 @@ export function listaPronta(chave: Chave): Lista | null {
   const m = memoria.get(chave);
   if (fresca(m)) return m;
   const mg = memoria.get('mg');
-  if (chave === 'zm' && fresca(mg)) return { items: mg.items.filter((e) => e.microrregiao), at: mg.at, incompleto: mg.incompleto };
+  if (chave === 'zm' && fresca(mg)) return { items: mg.items.filter((e) => e.microrregiao), at: mg.at, incompleto: mg.incompleto, v: VERSAO };
   return null;
 }
 
@@ -93,7 +95,7 @@ export async function listaDe(chave: Chave, onProgress?: Progresso): Promise<Lis
         return salva;
       }
       const r = chave === 'zm' ? await fetchMunicipios(ZM_IDS, { onProgress: avisar }) : await fetchAllMG({ onProgress: avisar });
-      const lista: Lista = { items: r.items, at: Date.now(), incompleto: r.paginasComErro > 0 };
+      const lista: Lista = { items: r.items, at: Date.now(), incompleto: r.paginasComErro > 0, v: VERSAO };
       memoria.set(chave, lista);
       // lista com páginas faltando não fica guardada para a próxima visita
       if (!lista.incompleto) gravar(chave, lista);

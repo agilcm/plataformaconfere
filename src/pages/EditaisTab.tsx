@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Container, Icon, WhatsAppIcon } from '../components/ui.tsx';
 import { formatBRL, whatsappLink } from '../data/servicesData.ts';
-import { MICRORREGIOES } from '../data/zonaDaMata.js';
+import { MICRORREGIOES, normalizeName } from '../data/zonaDaMata.js';
 import { AGIL_CNAES } from '../data/agilCnaes.js';
 import { filtrarPorCnaes, filtrarPorRegras, filtrarPorSegmento } from '../lib/agilCnae.js';
 import { buscarCnae, CATALOGO_POR_ID, regrasDoCatalogo } from '../lib/catalogoCnae.js';
 import { contarFontes, contarLocais, fetchDetalheCompra, fetchItensCompra, fetchPage, filterEditais, sortByUpdate } from '../lib/pncp.js';
-import { descartarListas, listaDe, preCarregar } from '../lib/listasEditais.ts';
+import { descartarListas, listaDe, listaPronta, preCarregar } from '../lib/listasEditais.ts';
+import { distanciaKm, filtrarAvancado, grupoModalidade, ibgeDe, ordenarEditais, raioXItens, resumoEditais } from '../lib/filtrosEditais.js';
+import FiltrosAvancados, { AVANCADO_VAZIO, BASE_PADRAO, contarAvancado, type Avancado } from './FiltrosAvancados.tsx';
+import { alternarMeuEdital, useMeusEditais } from '../lib/meusEditais.ts';
 import { guardarItens, itensGuardados } from '../lib/itensCache.ts';
 import { SEGMENTOS, SEGMENTO_POR_ID } from '../data/segmentos.js';
 import { abasEditais } from '../lib/exportarEditais.js';
@@ -37,6 +40,12 @@ interface Edital {
   local?: string;
   linkLocal?: string | null;
   compra?: { cnpj: string; ano: string; seq: string } | null;
+  propostasDe?: string | null;
+  srp?: boolean;
+  esfera?: string;
+  modoDisputa?: string;
+  amparo?: string;
+  ibge?: string;
   cnaes?: string[]; // só na aba AGIL CNAE: CNAEs da Ágil CM que casaram com o objeto
   termos?: string[];
 }
@@ -47,7 +56,15 @@ interface Resultado {
   atualizadoEm?: string;
   desatualizado?: boolean;
   incompleto?: boolean;
+  resumo?: ReturnType<typeof resumoEditais>;
 }
+
+interface Geo {
+  coords: Record<string, number[]>;
+  cidades: [string, string][];
+  porNome: Map<string, string>;
+}
+const BASE_KEY = 'agilcm:editais:base';
 
 const PAGE_SIZE = 20;
 const FONTES_KEY = 'agilcm:fontes';
@@ -64,6 +81,15 @@ const PERTO = ['Juiz de Fora', 'Cataguases', 'Ubá', 'Muriaé', 'cidade:Rodeiro'
   (m) => m.startsWith('cidade:') || m in MICRORREGIOES,
 );
 const rotuloPerto = (m: string) => m.replace(/^cidade:/, '');
+/** R$ 312.400.000 → "R$ 312,4 mi" */
+const abreviarBRL = (v: number) =>
+  v >= 1e9
+    ? `R$ ${(v / 1e9).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} bi`
+    : v >= 1e6
+      ? `R$ ${(v / 1e6).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} mi`
+      : v >= 1e3
+        ? `R$ ${(v / 1e3).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} mil`
+        : formatBRL(v, 0);
 const CNAES_KEY = 'agilcm:cnaes-livres';
 
 // Datas do PNCP vêm no horário de Brasília, sem fuso: tratamos como -03:00
@@ -132,6 +158,40 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
   const [exportando, setExportando] = useState<{ etapa: string; feito: number; total: number } | null>(null);
   const [exportErro, setExportErro] = useState('');
   const cancelarExport = useRef(false);
+  // Editais abertos: filtros avançados, ordenação e distância (a aba AGIL CNAE não usa)
+  const [avanc, setAvanc] = useState<Avancado>(AVANCADO_VAZIO);
+  const [ordem, setOrdem] = useState('recentes');
+  const [painelMais, setPainelMais] = useState(false);
+  const [geo, setGeo] = useState<Geo | null>(null);
+  const [resumo, setResumo] = useState<Resultado['resumo'] | null>(null);
+  const meus = useMeusEditais();
+  useEffect(() => {
+    if (agil) return;
+    try {
+      const b = localStorage.getItem(BASE_KEY);
+      if (b && /^\d{7}$/.test(b)) setAvanc((a) => ({ ...a, base: b }));
+    } catch {
+      /* sem armazenamento */
+    }
+    import('../data/coordenadasMunicipios.js').then((m) =>
+      setGeo({ coords: m.COORDS, cidades: m.CIDADES_MG as [string, string][], porNome: new Map(m.CIDADES_MG.map(([n, ib]) => [normalizeName(n), ib])) }),
+    );
+  }, [agil]);
+  useEffect(() => {
+    if (agil || avanc.base === BASE_PADRAO) return;
+    try {
+      localStorage.setItem(BASE_KEY, avanc.base);
+    } catch {
+      /* sem armazenamento */
+    }
+  }, [avanc.base, agil]);
+  const usaGeo = !agil && (avanc.raio > 0 || ordem === 'distancia');
+  const extrasAtivos = !agil && (contarAvancado(avanc) > 0 || ordem !== 'recentes');
+  const extrasKey = extrasAtivos ? JSON.stringify({ ...avanc, base: usaGeo ? avanc.base : '', ordem, geo: usaGeo && !!geo }) : '';
+  const kmAte = useCallback(
+    (e: Edital) => (geo ? distanciaKm(geo.coords[avanc.base], geo.coords[ibgeDe(e, geo.porNome)]) : null),
+    [geo, avanc.base],
+  );
   // Lista completa da região (modo direto), compartilhada entre as abas (lib/listasEditais.ts).
   // Brasil não tem lista completa: são dezenas de milhares de editais.
   const listaDaRegiao = async (reg: Regiao, onProgress: (loaded: number, total: number) => void): Promise<Edital[]> =>
@@ -179,7 +239,7 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
   const cnaesKey = cnaesSel.slice().sort().join('|');
   const locaisKey = locais.slice().sort().join('|');
 
-  useEffect(() => setPagina(1), [regiao, micro, q, fontesKey, cnaesKey, locaisKey, livresKey, segmento]);
+  useEffect(() => setPagina(1), [regiao, micro, q, fontesKey, cnaesKey, locaisKey, livresKey, segmento, extrasKey]);
 
   // Filtro local (modo direto e amostra), igual ao da função /api/editais
   const aplicar = useCallback(
@@ -187,13 +247,20 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
       const f = filterEditais(list, opts);
       if (agil && segmento) return filtrarPorSegmento(f, segmento);
       if (agil) return filtrarPorCnaes(f, { cnaes: cnaesKey });
-      return livresKey ? filtrarPorRegras(f, regrasDoCatalogo(livresKey)) : f;
+      const g = livresKey ? filtrarPorRegras(f, regrasDoCatalogo(livresKey)) : f;
+      return extrasAtivos ? filtrarAvancado(g, avanc, { coords: geo?.coords, porNome: geo?.porNome }) : g;
     },
-    [agil, cnaesKey, livresKey, segmento],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [agil, cnaesKey, livresKey, segmento, extrasKey, geo],
+  );
+  const ordenar = useCallback(
+    (list: Edital[]) => (extrasAtivos ? ordenarEditais(list, ordem, { coords: geo?.coords, base: avanc.base, porNome: geo?.porNome }) : list),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [extrasKey, geo],
   );
 
   const carregar = useCallback(async (pag: number): Promise<Resultado & { fonte: Fonte }> => {
-    const key = `${agil ? `agil:${segmento ? `seg-${segmento}` : cnaesKey}` : `editais:${livresKey}`}:${regiao}:${micro}:${q}:${fontesKey}:${locaisKey}:${pag}`;
+    const key = `${agil ? `agil:${segmento ? `seg-${segmento}` : cnaesKey}` : `editais:${livresKey}:${extrasKey}`}:${regiao}:${micro}:${q}:${fontesKey}:${locaisKey}:${pag}`;
     // 1) Função do servidor (site publicado na Vercel)
     const p: Record<string, string> = { regiao, pagina: String(pag), tamanho: String(PAGE_SIZE) };
     if (micro) p.micro = micro;
@@ -204,7 +271,7 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
     if (agil && cnaesKey) p.cnaes = cnaesKey;
     if (livresKey) Object.assign(p, { cnae: 'lista', cnaes: livresKey });
     // a função do servidor não conhece segmento nem Brasil: nesses casos vai direto ao PNCP
-    const viaApi = segmento || regiao === 'brasil' ? null : await callApi<Resultado>('editais', p);
+    const viaApi = segmento || regiao === 'brasil' || extrasAtivos ? null : await callApi<Resultado>('editais', p);
     if (viaApi) {
       saveLocal(key, viaApi);
       return { ...viaApi, fonte: 'servidor' };
@@ -215,11 +282,11 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
         // Brasil: página a página (o PNCP tem dezenas de milhares de editais abertos); a busca vai para o PNCP
         const r = await fetchPage({ pagina: pag, tamanho: PAGE_SIZE, q, uf: '' });
         const f = aplicar(r.items as Edital[], { regiao, micro: '', q: '', fontes: fontesKey, locais: locaisKey });
-        const out = { items: sortByUpdate(f), total: r.total, atualizadoEm: new Date().toISOString() };
+        const out = { items: extrasAtivos ? ordenar(f) : sortByUpdate(f), total: r.total, atualizadoEm: new Date().toISOString() };
         saveLocal(key, out);
         return { ...out, fonte: 'direto' };
       }
-      if (regiao === 'mg' && !micro && !q && !fontesKey && !locaisKey && !agil && !livresKey) {
+      if (regiao === 'mg' && !micro && !q && !fontesKey && !locaisKey && !agil && !livresKey && !extrasAtivos) {
         const r = await fetchPage({ pagina: pag, tamanho: PAGE_SIZE });
         const out = { items: sortByUpdate(r.items), total: r.total, atualizadoEm: new Date().toISOString() };
         saveLocal(key, out);
@@ -227,12 +294,13 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
       }
       const l = await listaDe(regiao === 'zona-da-mata' ? 'zm' : 'mg', (loaded, t) => setProgresso({ loaded, total: t }));
       setProgresso(null);
-      const f = aplicar(l.items as Edital[], { regiao, micro, q, fontes: fontesKey, locais: locaisKey });
+      const f = ordenar(aplicar(l.items as Edital[], { regiao, micro, q, fontes: fontesKey, locais: locaisKey }));
       const out = {
         items: f.slice((pag - 1) * PAGE_SIZE, pag * PAGE_SIZE),
         total: f.length,
         atualizadoEm: new Date(l.at).toISOString(),
         incompleto: l.incompleto,
+        resumo: agil || pag > 1 ? undefined : resumoEditais(f),
       };
       saveLocal(key, out);
       return { ...out, fonte: 'direto' };
@@ -249,7 +317,7 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
       return { items: f.slice((pag - 1) * PAGE_SIZE, pag * PAGE_SIZE), total: f.length, atualizadoEm: sample.capturadoEm, fonte: 'amostra' };
     }
     throw new Error('sem conexão');
-  }, [regiao, micro, q, fontesKey, locaisKey, agil, cnaesKey, livresKey, segmento, aplicar]);
+  }, [regiao, micro, q, fontesKey, locaisKey, agil, cnaesKey, livresKey, segmento, aplicar, ordenar, extrasKey, extrasAtivos]);
 
   useEffect(() => {
     const id = ++reqId.current;
@@ -261,6 +329,7 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
         if (id !== reqId.current) return;
         setItems((prev) => (pagina === 1 ? r.items : [...prev, ...r.items]));
         setTotal(r.total);
+        if (pagina === 1) setResumo(r.resumo ?? null);
         setFonte(r.fonte);
         setAtualizadoEm(r.atualizadoEm || '');
         setAviso(
@@ -407,6 +476,16 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
   const alternarFonte = (nome: string) => setFontes((f) => (f.includes(nome) ? f.filter((x) => x !== nome) : [...f, nome]));
 
   const temMais = items.length < total;
+  const nomeBase = geo?.cidades.find(([, ib]) => ib === avanc.base)?.[0] || 'Astolfo Dutra';
+  // quantos editais de cada modalidade há na região (para os botões do filtro)
+  const contagemModalidade = (() => {
+    if (agil || !painelMais || regiao === 'brasil') return null;
+    const l = listaPronta(regiao === 'zona-da-mata' ? 'zm' : 'mg');
+    if (!l) return null;
+    const m = new Map<string, number>();
+    for (const e of filterEditais(l.items, { regiao, micro, q })) m.set(grupoModalidade(e.modalidade), (m.get(grupoModalidade(e.modalidade)) || 0) + 1);
+    return m;
+  })();
 
   return (
     <>
@@ -527,6 +606,20 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
                   <Icon name="gavel" className="w-5 h-5" />
                   Local do pregão{locais.length ? ` (${locais.length})` : ''}
                 </button>
+                {!agil && (
+                  <button
+                    type="button"
+                    aria-expanded={painelMais}
+                    aria-controls="filtro-avancado"
+                    onClick={() => setPainelMais((v) => !v)}
+                    className={`shrink-0 inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-base font-bold border-2 transition-colors cursor-pointer whitespace-nowrap ${
+                      painelMais || extrasAtivos ? 'border-[#0478CA] text-[#0478CA] bg-[#0478CA]/5' : 'border-slate-300 text-slate-700 hover:border-[#0478CA]'
+                    }`}
+                  >
+                    <Icon name="filter" className="w-5 h-5" />
+                    Mais filtros{contarAvancado(avanc) ? ` (${contarAvancado(avanc)})` : ''}
+                  </button>
+                )}
                 {/* na aba AGIL CNAE fica só a Super Sugestão */}
                 {!agil && (
                   <button
@@ -584,6 +677,17 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
                     ))}
                   </div>
                 </div>
+              )}
+
+              {!agil && painelMais && (
+                <FiltrosAvancados
+                  valor={avanc}
+                  onChange={setAvanc}
+                  ordem={ordem}
+                  onOrdem={setOrdem}
+                  cidades={geo?.cidades ?? null}
+                  contagemModalidade={contagemModalidade}
+                />
               )}
 
               {agil && !segmento && painelCnaes && (
@@ -824,7 +928,15 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
               </p>
               <div className="flex flex-wrap items-center gap-3">
                 <p className="text-sm text-slate-500">
-                  Ordenados pela última atualização
+                  {agil || ordem === 'recentes'
+                    ? 'Ordenados pela última atualização'
+                    : ordem === 'prazo'
+                      ? 'Ordenados pelo prazo mais próximo'
+                      : ordem === 'valor-desc'
+                        ? 'Ordenados do maior valor para o menor'
+                        : ordem === 'valor-asc'
+                          ? 'Ordenados do menor valor para o maior'
+                          : `Ordenados do mais perto para o mais longe de ${nomeBase}`}
                   {atualizadoEm && !loading ? ` · consulta em ${formatHora(atualizadoEm)}` : ''}
                   {atualizadoEm && !loading && fonte === 'direto' && regiao !== 'brasil' && (
                     <>
@@ -926,6 +1038,66 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
               </div>
             )}
 
+            {!agil && resumo && resumo.total > 0 && !loading && (
+              <div className="mt-6 p-4 sm:p-5 rounded-2xl bg-white border border-slate-200">
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div>
+                    <p className="text-sm text-slate-500">Editais nesta busca</p>
+                    <p className="text-2xl font-extrabold text-[#0F2053] tabular-nums">{resumo.total.toLocaleString('pt-BR')}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-slate-500">Valor estimado somado</p>
+                    <p className="text-2xl font-extrabold text-[#0F2053] tabular-nums">{abreviarBRL(resumo.valor)}</p>
+                    {resumo.semValor > 0 && <p className="text-xs text-slate-500">{resumo.semValor.toLocaleString('pt-BR')} sem valor informado</p>}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAvanc((a) => ({ ...a, prazo: a.prazo === '3' ? '' : '3' }));
+                      setPainelMais(true);
+                    }}
+                    title="Mostrar só os que encerram em até 3 dias"
+                    className="text-left cursor-pointer group"
+                  >
+                    <p className="text-sm text-slate-500 group-hover:text-[#0478CA]">Encerram em até 3 dias</p>
+                    <p className="text-2xl font-extrabold text-red-700 tabular-nums">{resumo.encerra3.toLocaleString('pt-BR')}</p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAvanc((a) => ({ ...a, srp: a.srp === 'sim' ? '' : 'sim' }));
+                      setPainelMais(true);
+                    }}
+                    title="Mostrar só registro de preços"
+                    className="text-left cursor-pointer group"
+                  >
+                    <p className="text-sm text-slate-500 group-hover:text-[#0478CA]">Registro de preços</p>
+                    <p className="text-2xl font-extrabold text-[#0F2053] tabular-nums">{resumo.srp.toLocaleString('pt-BR')}</p>
+                  </button>
+                </div>
+                {resumo.porModalidade.length > 1 && (
+                  <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Por modalidade">
+                    {resumo.porModalidade.map((m) => {
+                      const on = avanc.modalidades.includes(m.nome);
+                      return (
+                        <button
+                          key={m.nome}
+                          type="button"
+                          aria-pressed={on}
+                          onClick={() => setAvanc((a) => ({ ...a, modalidades: on ? a.modalidades.filter((x) => x !== m.nome) : [...a.modalidades, m.nome] }))}
+                          className={`px-3 py-1.5 rounded-full text-sm font-semibold border cursor-pointer ${
+                            on ? 'bg-[#0F2053] border-[#0F2053] text-white' : 'bg-[#F7FAFD] border-slate-200 text-slate-700 hover:border-[#0478CA]'
+                          }`}
+                        >
+                          {m.nome} <span className={on ? 'text-white/75' : 'text-slate-400'}>· {m.total.toLocaleString('pt-BR')}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="mt-6 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
               <ol className="lg:col-span-8 space-y-4">
                 {items.map((e) => {
@@ -937,6 +1109,17 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
                       <article className="p-5 sm:p-6 rounded-2xl bg-white border border-slate-200 hover:border-[#0478CA]/40 hover:shadow-md hover:shadow-[#0F2053]/5 transition-all">
                         <div className="flex flex-wrap items-center gap-2 text-sm">
                           <span className="px-2.5 py-1 rounded-full bg-[#0478CA]/10 text-[#0478CA] font-bold">{e.modalidade || 'Licitação'}</span>
+                          {!agil && e.srp && <span className="px-2.5 py-1 rounded-full bg-violet-50 text-violet-800 font-bold">Registro de preços</span>}
+                          {!agil &&
+                            (() => {
+                              const km = kmAte(e);
+                              return km === null || km === undefined ? null : (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 font-semibold" title="Distância em linha reta entre as sedes dos municípios">
+                                  <Icon name="pin" className="w-3.5 h-3.5" />
+                                  {km < 3 ? `em ${nomeBase}` : `~${Math.round(km)} km de ${nomeBase}`}
+                                </span>
+                              );
+                            })()}
                           {e.microrregiao && (
                             <span className="px-2.5 py-1 rounded-full bg-[#128C4A]/10 text-[#0E7A40] font-bold">Zona da Mata · {e.microrregiao}</span>
                           )}
@@ -946,6 +1129,20 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
                             </span>
                           )}
                           <span className="text-slate-500">Atualizado {ha(e.atualizadoEm)}</span>
+                          {!agil && (
+                            <button
+                              type="button"
+                              onClick={() => alternarMeuEdital(e)}
+                              aria-pressed={!!meus[e.id]}
+                              title={meus[e.id] ? 'Tirar de Meus editais' : 'Salvar em Meus editais (acompanhar prazo, etapa e anotações)'}
+                              className={`ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm font-bold cursor-pointer transition-colors ${
+                                meus[e.id] ? 'bg-[#F5A623]/15 border-[#F5A623] text-[#8a5a00]' : 'bg-white border-slate-300 text-slate-600 hover:border-[#F5A623]'
+                              }`}
+                            >
+                              <Icon name="star" className={`w-4 h-4 ${meus[e.id] ? 'fill-current' : ''}`} />
+                              {meus[e.id] ? 'Salvo' : 'Salvar'}
+                            </button>
+                          )}
                         </div>
                         <h2 className="mt-3 text-lg font-bold text-[#0F2053] leading-snug line-clamp-3">{e.objeto || e.titulo}</h2>
                         {e.cnaes && e.cnaes.length > 0 && (
@@ -1001,7 +1198,7 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
                             </dd>
                           </div>
                         </dl>
-                        {e.compra && <DetalheCompra compra={e.compra} />}
+                        {e.compra && <DetalheCompra compra={e.compra} edital={agil ? undefined : e} />}
                         <div className="mt-5 flex flex-col sm:flex-row gap-2">
                           <a
                             href={e.link}
@@ -1103,7 +1300,7 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
 }
 
 // Itens (o que está sendo comprado) e documentos (edital, termo de referência) de uma compra
-function DetalheCompra({ compra }: { compra: { cnpj: string; ano: string; seq: string } }) {
+function DetalheCompra({ compra, edital }: { compra: { cnpj: string; ano: string; seq: string }; edital?: Edital }) {
   const [aberto, setAberto] = useState(false);
   const [estado, setEstado] = useState<'idle' | 'loading' | 'ok' | 'erro'>('idle');
   const [dados, setDados] = useState<{ itens: Item[] | null; arquivos: Arquivo[] | null } | null>(null);
@@ -1138,13 +1335,14 @@ function DetalheCompra({ compra }: { compra: { cnpj: string; ano: string; seq: s
         className="inline-flex items-center gap-2 text-[15px] font-bold text-[#0F2053] hover:text-[#0478CA] cursor-pointer"
       >
         <span className={`inline-block transition-transform ${aberto ? 'rotate-90' : ''}`} aria-hidden="true">›</span>
-        {aberto ? 'Ocultar itens e documentos' : 'Ver itens e documentos do edital'}
+        {aberto ? 'Ocultar itens e documentos' : edital ? 'Raio-X: itens, ME/EPP e documentos do edital' : 'Ver itens e documentos do edital'}
       </button>
       {aberto && (
         <div className="mt-3 p-4 rounded-xl bg-[#F7FAFD] border border-slate-200">
-          {estado === 'loading' && <p className="text-[15px] text-slate-600">Carregando do PNCP…</p>}
+          {edital && <RaioX edital={edital} itens={estado === 'ok' ? (dados?.itens ?? null) : null} lendo={estado === 'loading'} />}
+          {estado === 'loading' && <p className={`text-[15px] text-slate-600 ${edital ? 'mt-3' : ''}`}>Carregando itens e documentos do PNCP…</p>}
           {estado === 'erro' && (
-            <p className="text-[15px] text-amber-900">
+            <p className={`text-[15px] text-amber-900 ${edital ? 'mt-3' : ''}`}>
               O PNCP não respondeu.{' '}
               <button type="button" onClick={carregar} className="font-bold underline cursor-pointer">
                 Tentar de novo
@@ -1152,7 +1350,7 @@ function DetalheCompra({ compra }: { compra: { cnpj: string; ano: string; seq: s
             </p>
           )}
           {estado === 'ok' && dados && (
-            <div className="space-y-4">
+            <div className={`space-y-4 ${edital ? 'mt-4' : ''}`}>
               {dados.arquivos && dados.arquivos.length > 0 && (
                 <div>
                   <p className="text-sm font-bold text-slate-500 mb-2">Documentos</p>
@@ -1175,7 +1373,14 @@ function DetalheCompra({ compra }: { compra: { cnpj: string; ano: string; seq: s
                     {dados.itens.map((i) => (
                       <li key={i.numero} className="py-2.5 flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-4 text-[15px]">
                         <span className="text-slate-500 tabular-nums shrink-0 w-8">{i.numero}</span>
-                        <span className="flex-1 min-w-0 text-slate-800">{i.descricao}</span>
+                        <span className="flex-1 min-w-0 text-slate-800">
+                          {i.descricao}
+                          {edital && i.beneficio && /exclusiva|cota|subcontrata/i.test(i.beneficio) && (
+                            <span className="ml-2 inline-block px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 text-xs font-bold align-middle">
+                              {/exclusiva/i.test(i.beneficio) ? 'Exclusivo ME/EPP' : /cota/i.test(i.beneficio) ? 'Cota ME/EPP' : 'Subcontratação ME/EPP'}
+                            </span>
+                          )}
+                        </span>
                         <span className="shrink-0 text-slate-600 tabular-nums sm:text-right">
                           {i.quantidade?.toLocaleString('pt-BR')} {i.unidade}
                           {i.valorUnitarioEstimado ? <><br className="hidden sm:block" /> <strong className="text-slate-800">{formatBRL(i.valorUnitarioEstimado, 2)}</strong> /un.</> : null}
@@ -1201,6 +1406,59 @@ interface Item {
   quantidade: number | null;
   unidade: string;
   valorUnitarioEstimado: number | null;
+  valorTotalEstimado?: number | null;
+  tipo?: string;
+  beneficio?: string;
+  criterio?: string;
+  sigiloso?: boolean;
+}
+
+// Raio-X do edital: o que decide se vale a pena entrar, num quadro só (dados do PNCP)
+function RaioX({ edital, itens, lendo }: { edital: Edital; itens: Item[] | null; lendo?: boolean }) {
+  const r = itens && itens.length ? raioXItens(itens) : null;
+  const de = parseBR(edital.propostasDe);
+  const ate = parseBR(edital.propostasAte);
+  const linhas: [string, React.ReactNode][] = [
+    ['Modalidade', edital.modalidade || '—'],
+    ['Modo de disputa', edital.modoDisputa || '—'],
+    ['Registro de preços', edital.srp ? 'Sim: o órgão registra o preço e compra conforme a necessidade, enquanto a ata valer' : 'Não'],
+    ['Propostas', `${de ? `de ${de.d} às ${de.h} ` : ''}${ate ? `até ${ate.d} às ${ate.h}` : '—'}`],
+  ];
+  if (edital.amparo) linhas.push(['Base legal', edital.amparo]);
+  if (r) {
+    if (r.criterios.length) linhas.push(['Critério de julgamento', r.criterios.join(' · ')]);
+    linhas.push(['Itens', `${r.total} ${r.total === 1 ? 'item' : 'itens'}${r.materiais || r.servicos ? ` · ${r.materiais} de material e ${r.servicos} de serviço` : ''}`]);
+    if (r.valor) linhas.push(['Soma estimada dos itens', formatBRL(r.valor, 2)]);
+    if (r.sigilosos) linhas.push(['Orçamento sigiloso', `${r.sigilosos} ${r.sigilosos === 1 ? 'item' : 'itens'} sem valor de referência divulgado`]);
+  }
+  const mpe = r && (r.exclusivos || r.cota || r.subcontratacao);
+  return (
+    <div className="p-4 rounded-xl bg-white border border-[#0478CA]/25">
+      <p className="text-sm font-extrabold tracking-wide text-[#0478CA] uppercase">Raio-X do edital</p>
+      {lendo && <p className="mt-2 px-3 py-2 rounded-lg bg-slate-50 text-[15px] text-slate-600">Conferindo os itens exclusivos para ME/EPP…</p>}
+      {r && (
+        <p className={`mt-2 px-3 py-2 rounded-lg text-[15px] font-bold ${mpe ? 'bg-emerald-50 text-emerald-800' : 'bg-slate-50 text-slate-700'}`}>
+          {mpe
+            ? [
+                r.exclusivos ? `${r.exclusivos} de ${r.total} ${r.exclusivos === 1 ? 'item exclusivo' : 'itens exclusivos'} para ME/EPP` : '',
+                r.cota ? `${r.cota} com cota reservada para ME/EPP` : '',
+                r.subcontratacao ? `${r.subcontratacao} com subcontratação de ME/EPP` : '',
+              ]
+                .filter(Boolean)
+                .join(' · ')
+            : 'Nenhum item com benefício para ME/EPP informado no PNCP (ampla concorrência)'}
+        </p>
+      )}
+      <dl className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-[15px]">
+        {linhas.map(([k, v]) => (
+          <div key={k}>
+            <dt className="text-sm text-slate-500">{k}</dt>
+            <dd className="font-semibold text-slate-800">{v}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
 }
 interface Arquivo {
   titulo: string;
