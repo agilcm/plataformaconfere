@@ -5,11 +5,17 @@ import { useRef, useState } from 'react';
 import { Container, Icon } from '../components/ui.tsx';
 import { formatBRL } from '../data/servicesData.ts';
 import { diasPara } from '../lib/filtrosEditais.js';
+import { MEUS_EDITAIS_URL } from '../data/privadoConfig.ts';
 import {
   agendaIcs,
   atualizarMeuEdital,
   baixarTexto,
+  conectarEquipe,
+  desconectarEquipe,
+  equipe,
   ETAPAS,
+  sincronizar,
+  useSincronizacao,
   exportarMeusEditais,
   importarMeusEditais,
   removerMeuEdital,
@@ -40,6 +46,7 @@ const ORDEM_GRUPOS = ['Hoje', 'Amanhã', 'Próximos 7 dias', 'Próximos 30 dias'
 
 export default function MeusEditaisTab() {
   const meus = useMeusEditais();
+  useSincronizacao(); // redesenha quando conecta ou desconecta
   const [etapa, setEtapa] = useState<Etapa | ''>('');
   const [msg, setMsg] = useState('');
   const arquivo = useRef<HTMLInputElement>(null);
@@ -74,7 +81,8 @@ export default function MeusEditaisTab() {
               <h2 className="text-2xl font-bold text-[#0F2053]">Meus editais</h2>
               <p className="mt-1 text-[15px] text-slate-600 leading-relaxed">
                 Os editais que você salvou com a estrela <Icon name="star" className="inline w-4 h-4 -mt-0.5 text-[#F5A623] fill-current" /> em Editais abertos.
-                Marque a etapa de cada um, anote o que precisa e leve os prazos para a sua agenda. Fica guardado neste navegador.
+                Marque a etapa de cada um, anote o que precisa e leve os prazos para a sua agenda.{' '}
+                {equipe() ? 'Fica na planilha da equipe: todos veem a mesma lista.' : 'Fica guardado neste navegador.'}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -116,6 +124,7 @@ export default function MeusEditaisTab() {
               {msg}
             </p>
           )}
+          <PainelEquipe />
 
           {todos.length > 0 && (
             <div role="group" aria-label="Etapa" className="mt-5 pt-4 border-t border-slate-100 flex flex-wrap gap-2">
@@ -200,6 +209,11 @@ function Cartao({ m }: { m: MeuEdital }) {
         </label>
       </div>
       <h3 className="mt-3 text-[17px] font-bold text-[#0F2053] leading-snug line-clamp-3">{e.objeto || e.titulo}</h3>
+      {m.por && (
+        <p className="mt-1 text-sm text-slate-500">
+          Salvo por {m.por} em {dataHora(m.salvoEm.slice(0, 10))}
+        </p>
+      )}
       <dl className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-x-6 gap-y-2 text-[15px]">
         <div>
           <dt className="text-sm text-slate-500">Propostas até</dt>
@@ -266,5 +280,130 @@ function Cartao({ m }: { m: MeuEdital }) {
         </button>
       </div>
     </li>
+  );
+}
+
+// Equipe: liga este navegador à planilha Google da equipe, para todos verem os mesmos editais salvos
+function PainelEquipe() {
+  const sinc = useSincronizacao();
+  const conectado = equipe();
+  const [aberto, setAberto] = useState(false);
+  const [url, setUrl] = useState('');
+  const [senha, setSenha] = useState('');
+  const [nome, setNome] = useState('');
+  const [ocupado, setOcupado] = useState(false);
+  const [erro, setErro] = useState('');
+  const hora = (iso?: string) => (iso ? new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '');
+
+  if (conectado) {
+    return (
+      <div className="mt-4 p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 flex flex-wrap items-center gap-x-4 gap-y-2 text-[15px]">
+        <span className="font-bold text-emerald-900">☁ Lista da equipe{conectado.nome ? ` · você é ${conectado.nome}` : ''}</span>
+        <span className={sinc.estado === 'erro' ? 'text-red-700' : 'text-emerald-800'}>
+          {sinc.estado === 'sincronizando'
+            ? 'Sincronizando…'
+            : sinc.estado === 'erro'
+              ? sinc.erro
+              : sinc.em
+                ? `Igual à planilha da equipe (conferido às ${hora(sinc.em)})`
+                : 'Conectado'}
+        </span>
+        <span className="ml-auto flex gap-3">
+          <button type="button" onClick={() => sincronizar()} className="font-bold text-emerald-900 underline cursor-pointer">
+            Sincronizar agora
+          </button>
+          <button type="button" onClick={desconectarEquipe} className="text-sm text-slate-600 underline cursor-pointer">
+            Desconectar
+          </button>
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-4 p-4 rounded-xl bg-[#F7FAFD] border border-slate-200">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-[15px] text-slate-700">
+          <strong className="text-[#0F2053]">Só neste navegador.</strong> Para a equipe toda ver os mesmos editais salvos, em qualquer computador ou celular,
+          conecte à planilha da equipe.
+        </p>
+        {!aberto && (
+          <button
+            type="button"
+            onClick={() => setAberto(true)}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#0F2053] hover:bg-[#13306f] text-white text-[15px] font-bold cursor-pointer"
+          >
+            ☁ Conectar à equipe
+          </button>
+        )}
+      </div>
+      {aberto && (
+        <form
+          className="mt-3 grid sm:grid-cols-3 gap-3"
+          onSubmit={async (ev) => {
+            ev.preventDefault();
+            setOcupado(true);
+            setErro('');
+            try {
+              await conectarEquipe({ url, senha, nome });
+              setAberto(false);
+            } catch (err) {
+              setErro((err as Error).message || 'Não deu para conectar.');
+            } finally {
+              setOcupado(false);
+            }
+          }}
+        >
+          {!MEUS_EDITAIS_URL && (
+            <label className="sm:col-span-3 block">
+              <span className="block text-sm text-slate-600 mb-1">Endereço do App da Web da planilha (https://script.google.com/macros/s/…/exec)</span>
+              <input
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                required
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-[15px] focus:outline-none focus:border-[#0478CA]"
+              />
+            </label>
+          )}
+          <label className="block">
+            <span className="block text-sm text-slate-600 mb-1">Senha da equipe</span>
+            <input
+              type="password"
+              value={senha}
+              onChange={(e) => setSenha(e.target.value)}
+              required
+              autoComplete="current-password"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-[15px] focus:outline-none focus:border-[#0478CA]"
+            />
+          </label>
+          <label className="block">
+            <span className="block text-sm text-slate-600 mb-1">Seu nome (aparece em “salvo por”)</span>
+            <input
+              value={nome}
+              onChange={(e) => setNome(e.target.value)}
+              placeholder="ex.: Allan"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-[15px] focus:outline-none focus:border-[#0478CA]"
+            />
+          </label>
+          <div className="flex items-end gap-3">
+            <button
+              type="submit"
+              disabled={ocupado}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#0F2053] hover:bg-[#13306f] text-white text-[15px] font-bold cursor-pointer disabled:opacity-50"
+            >
+              {ocupado ? 'Conectando…' : 'Conectar'}
+            </button>
+            <button type="button" onClick={() => setAberto(false)} className="py-2.5 text-sm text-slate-600 underline cursor-pointer">
+              Cancelar
+            </button>
+          </div>
+          {erro && (
+            <p role="alert" className="sm:col-span-3 text-[15px] text-red-700">
+              {erro}
+            </p>
+          )}
+        </form>
+      )}
+    </div>
   );
 }

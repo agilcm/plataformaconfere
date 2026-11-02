@@ -20,3 +20,10 @@ export const LOGIN = {
 
 /** Raiz do CNPJ da AGIL CM PRODUTOS ALIMENTICIOS LTDA (51.328.978/0001-18) */
 export const AGIL_CNPJ_RAIZ = '51.328.978';
+
+/**
+ * App da Web da planilha "AGIL CM - Meus editais (equipe)" (Apps Script, scripts/apps-script/meus-editais.gs).
+ * Com ele preenchido, cada pessoa só digita a senha da equipe na aba MEUS EDITAIS. O endereço não é segredo:
+ * sem a senha (que fica só no Apps Script) a planilha não abre.
+ */
+export const MEUS_EDITAIS_URL = '';
