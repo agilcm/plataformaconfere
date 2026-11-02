@@ -199,3 +199,12 @@ test('AGIL CNAE: nome de lugar não vira produto e obra não entra em CNAE de co
     ['47.29-6-99', '43.21-5-00'],
   );
 });
+
+test('AGIL CNAE › Segmento: editais do segmento; produto não vale para obra', async () => {
+  const { filtrarPorSegmento } = await import('../src/lib/agilCnae.js');
+  const ed = (objeto) => ({ titulo: '', objeto, modalidade: 'Pregão Eletrônico' });
+  const lista = [ed('Aquisição de uniformes escolares'), ed('Obra de reforma com fornecimento de uniformes'), ed('Pavimentação asfáltica em CBUQ')];
+  assert.deepEqual(filtrarPorSegmento(lista, 'uniformes').map((e) => e.objeto), ['Aquisição de uniformes escolares']);
+  assert.equal(filtrarPorSegmento(lista, 'pavimentacao').length, 1);
+  assert.equal(filtrarPorSegmento(lista, 'pavimentacao')[0].cnaes[0], 'pavimentacao');
+});

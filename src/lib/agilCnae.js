@@ -1,6 +1,7 @@
 // Filtro de editais por CNAE: termos de cada CNAE procurados no objeto do edital.
 // Usado pela função /api/editais (cnae=agil ou cnae=lista) e, como plano B, direto no navegador.
 import { AGIL_CNAES } from '../data/agilCnaes.js';
+import { SEGMENTO_POR_ID } from '../data/segmentos.js';
 import { IGNORAR, ehObra, hasTerm, norm, semLugares } from './sugestoes.js';
 
 const REGRAS = AGIL_CNAES.map((c) => ({ codigo: c.codigo, termos: c.termos.map(norm) }));
@@ -8,7 +9,7 @@ const REGRAS = AGIL_CNAES.map((c) => ({ codigo: c.codigo, termos: c.termos.map(n
 /**
  * Mantém só os editais cujo objeto tem algum termo das regras e anota quais regras (CNAEs) e termos casaram.
  * @param {any[]} list  editais no formato mapItem (pncp.js)
- * @param {{ codigo: string, termos: string[] }[]} regras  termos já normalizados
+ * @param {{ codigo: string, termos: string[], produto?: boolean }[]} regras  termos já normalizados (produto: não vale para obra)
  */
 export function filtrarPorRegras(list, regras) {
   const out = [];
@@ -20,7 +21,7 @@ export function filtrarPorRegras(list, regras) {
     const casou = [];
     const termos = new Set();
     for (const r of regras) {
-      if (obra && r.codigo.startsWith('47.')) continue; // obra não é compra de produto
+      if (obra && (r.produto ?? r.codigo.startsWith('47.'))) continue; // obra não é compra de produto
       const achados = r.termos.filter((t) => hasTerm(texto, t));
       if (!achados.length) continue;
       casou.push(r.codigo);
@@ -45,4 +46,11 @@ export function filtrarPorCnaes(list, { cnaes = [] } = {}) {
           .filter(Boolean),
   );
   return filtrarPorRegras(list, sel.size ? REGRAS.filter((r) => sel.has(r.codigo)) : REGRAS);
+}
+
+/** Aba AGIL CNAE › Segmento: editais cujo objeto tem algum termo do segmento (o "cnaes" do edital traz o id do segmento). */
+export function filtrarPorSegmento(list, id) {
+  const s = SEGMENTO_POR_ID.get(id);
+  if (!s) return [];
+  return filtrarPorRegras(list, [{ codigo: s.id, termos: s.termos.map(norm), produto: !!s.produto }]);
 }

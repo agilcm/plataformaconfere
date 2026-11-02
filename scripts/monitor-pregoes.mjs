@@ -38,7 +38,7 @@ const chave = (r) => `${r.cnpj}/${r.ano}/${r.seq}`;
 const controle = (r) => `${r.cnpj}-1-${String(r.seq).padStart(6, '0')}/${r.ano}`;
 
 async function situacaoCompra(r) {
-  const p = new URLSearchParams({ q: controle(r), tipos_documento: 'edital', pagina: '1', tam_pagina: '5' });
+  const p = new URLSearchParams({ q: controle(r), tipos_documento: 'edital', status: 'todos', pagina: '1', tam_pagina: '5' });
   const d = await fetchJson(`https://pncp.gov.br/api/search/?${p}`);
   const it = (d?.items || []).find((x) => x.numero_controle_pncp === controle(r)) || null;
   if (!it) return null;

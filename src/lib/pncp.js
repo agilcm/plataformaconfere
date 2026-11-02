@@ -107,15 +107,20 @@ async function mapLimit(list, limit, fn) {
 
 // ---------------------------------------------------------------- editais abertos
 
-export function buildSearchUrl({ pagina = 1, tamanho = 50, q = '', tipo = 'edital', status = 'recebendo_proposta' } = {}) {
+/**
+ * @param {{ pagina?: number, tamanho?: number, q?: string, tipo?: string, status?: string, uf?: string, municipios?: string[] }} [o]
+ *   uf: '' = Brasil inteiro; municipios: códigos de município do PNCP (busca só nesses municípios)
+ */
+export function buildSearchUrl({ pagina = 1, tamanho = 50, q = '', tipo = 'edital', status = 'recebendo_proposta', uf = 'MG', municipios = [] } = {}) {
   const p = new URLSearchParams({
     q,
     tipos_documento: tipo,
     ordenacao: '-data', // mais recentes primeiro (última atualização)
     pagina: String(pagina),
     tam_pagina: String(tamanho),
-    ufs: 'MG',
   });
+  if (uf) p.set('ufs', uf);
+  if (municipios.length) p.set('municipios', municipios.join('|'));
   if (status) p.set('status', status);
   return `${SEARCH}?${p.toString()}`;
 }
@@ -233,7 +238,8 @@ export function mapItem(it) {
     orgao: fixText(it.orgao_nome),
     unidade: fixText(it.unidade_nome),
     municipio: fixText(it.municipio_nome),
-    microrregiao: microrregiaoDe(it.municipio_nome),
+    uf: it.uf || 'MG',
+    microrregiao: it.uf && it.uf !== 'MG' ? null : microrregiaoDe(it.municipio_nome),
     modalidade: it.modalidade_licitacao_nome || '',
     valor: num(it.valor_total_estimado),
     publicadoEm: it.data_publicacao_pncp || '',
@@ -251,8 +257,9 @@ export function mapItem(it) {
 export const sortByUpdate = (list) =>
   [...list].sort((a, b) => (b.atualizadoEm || '').localeCompare(a.atualizadoEm || ''));
 
-export async function fetchPage({ pagina = 1, tamanho = 50, q = '' } = {}, fetchImpl = fetch) {
-  const data = await fetchJson(buildSearchUrl({ pagina, tamanho, q }), { fetchImpl });
+/** @param {{ pagina?: number, tamanho?: number, q?: string, uf?: string, municipios?: string[] }} [o] */
+export async function fetchPage({ pagina = 1, tamanho = 50, q = '', uf = 'MG', municipios = [] } = {}, fetchImpl = fetch) {
+  const data = await fetchJson(buildSearchUrl({ pagina, tamanho, q, uf, municipios }), { fetchImpl });
   return {
     items: (data?.items || []).filter((i) => i && i.item_url).map(mapItem),
     total: Number(data?.total) || 0,
@@ -286,6 +293,35 @@ export async function fetchAllMG({ maxPages = 200, concurrency = 6, tamanho = 50
     total: first.total,
     paginasComErro: failed,
   };
+}
+
+/**
+ * Todos os editais abertos de uma lista de municípios (ex.: Zona da Mata), pelo filtro de municípios do PNCP:
+ * poucas páginas em vez das ~120 de Minas Gerais inteira.
+ * @param {string[]} municipios códigos de município do PNCP
+ * @param {{ onProgress?: (loaded: number, total: number) => void }} [o]
+ */
+export async function fetchMunicipios(municipios, { onProgress } = {}, fetchImpl = fetch) {
+  const tamanho = 50;
+  const first = await fetchPage({ pagina: 1, tamanho, municipios }, fetchImpl);
+  const all = [...first.items];
+  onProgress?.(all.length, first.total);
+  const pages = Math.min(40, Math.ceil(first.total / tamanho));
+  let failed = 0;
+  await mapLimit(
+    Array.from({ length: Math.max(0, pages - 1) }, (_, i) => i + 2),
+    4,
+    async (n) => {
+      try {
+        all.push(...(await fetchPage({ pagina: n, tamanho, municipios }, fetchImpl)).items);
+        onProgress?.(all.length, first.total);
+      } catch {
+        failed++;
+      }
+    },
+  );
+  const seen = new Set();
+  return { items: sortByUpdate(all.filter((e) => (seen.has(e.id) ? false : seen.add(e.id)))), total: first.total, paginasComErro: failed };
 }
 
 /**
@@ -412,7 +448,7 @@ export async function searchContratosProduto(
   let totalBusca = 0;
   let fim = false;
   for (let lidas = 0; lidas < maxPaginas && contratos.length < alvo && !fim; lidas++, p++) {
-    const data = await fetchJson(buildSearchUrl({ q, pagina: p, tamanho: 30, tipo: 'contrato', status: '' }), { fetchImpl });
+    const data = await fetchJson(buildSearchUrl({ q, pagina: p, tamanho: 30, tipo: 'contrato', status: 'todos' }), { fetchImpl });
     const items = (data?.items || []).filter((i) => i && i.item_url).map(mapContrato);
     totalBusca = Number(data?.total) || totalBusca;
     if (items.length < 30) fim = true;
