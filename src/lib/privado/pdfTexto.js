@@ -7,7 +7,7 @@ import { montarLinhas } from './linhas.js';
  * @param {{ maxPaginas?: number }} opts
  */
 export async function linhasDoPdf(pdfjs, bytes, { maxPaginas = Infinity } = {}) {
-  const doc = await pdfjs.getDocument({ data: bytes, isEvalSupported: false, useSystemFonts: false }).promise;
+  const doc = await pdfjs.getDocument({ data: bytes, isEvalSupported: false, useSystemFonts: false, verbosity: 0 }).promise;
   try {
     const total = Math.min(doc.numPages, maxPaginas);
     const paginas = [];

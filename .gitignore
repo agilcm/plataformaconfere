@@ -7,3 +7,5 @@ coverage/
 .env*
 !.env.example
 dist-ssr/
+public/privado/leitura.json
+privado-cache.json
