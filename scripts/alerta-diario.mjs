@@ -2,6 +2,8 @@
 //   1) Zona da Mata: todos os editais abertos ligados aos CNAEs da Ágil CM, repetidos todo dia até a data do pregão
 //      (🆕 nos que apareceram desde o último aviso);
 //   2) Minas Gerais (fora da Zona da Mata): só os editais novos do dia.
+// Em cada bloco, os editais vêm separados por local do pregão (AMM Licita, Licitar Digital, Compras.gov.br,
+// Portal de Compras Públicas e depois os demais).
 //
 // Configuração no GitHub (Settings → Secrets and variables → Actions):
 //   segredos  TELEGRAM_BOT_TOKEN e TELEGRAM_CHAT_ID (os mesmos do monitor de pregões)
@@ -51,6 +53,21 @@ export function editaisDaAgil(editais, segmentos = []) {
   return [...out.values()];
 }
 
+// Local do pregão: estes primeiro, nesta ordem; depois os demais (os com mais editais antes)
+const LOCAIS_PRIMEIRO = ['AMM Licita', 'Licitar Digital', 'Compras.gov.br', 'Portal de Compras Públicas'];
+export function porLocal(lista) {
+  const grupos = new Map();
+  for (const e of lista) {
+    const k = e.local || 'Local não informado';
+    grupos.set(k, [...(grupos.get(k) || []), e]);
+  }
+  const ordem = (k) => {
+    const i = LOCAIS_PRIMEIRO.indexOf(k);
+    return i < 0 ? LOCAIS_PRIMEIRO.length + (k === 'Local não informado' ? 1 : 0) : i;
+  };
+  return [...grupos].sort((a, b) => ordem(a[0]) - ordem(b[0]) || b[1].length - a[1].length || a[0].localeCompare(b[0], 'pt-BR'));
+}
+
 const linkEdital = (e) => `<a href="${esc(e.link)}">ver edital</a>`;
 const motivo = (e) => esc([...new Set(e.motivos || [])].slice(0, 3).join(', '));
 
@@ -75,13 +92,15 @@ export function mensagem({ zm, novosZm = new Set(), mg = [], hoje = new Date() }
     `🟢 <b>ZONA DA MATA</b> · ${abertos.length} ${abertos.length === 1 ? 'edital aberto' : 'editais abertos'}${qtdNovos ? ` (${qtdNovos} ${qtdNovos === 1 ? 'novo' : 'novos'} 🆕)` : ''}`,
   );
   if (!abertos.length) l.push('Nenhum edital aberto ligado aos CNAEs da Ágil.');
-  for (const e of abertos) {
-    const prazo = dataHora(e.propostasAte);
-    l.push(
-      '',
-      `${novosZm.has(e.id) ? '🆕 ' : ''}<b>${esc(e.municipio)}</b> · ${esc(curto(e.objeto || e.titulo, 120))}`,
-      `${[e.valor ? brl(e.valor) : '', prazo ? `até ${prazo}` : '', quando(e.dias)].filter(Boolean).join(' · ')} · ${linkEdital(e)}`,
-    );
+  for (const [local, lista] of porLocal(abertos)) {
+    l.push('', `🏛 <b>${esc(local)}</b> (${lista.length})`);
+    for (const e of lista) {
+      const prazo = dataHora(e.propostasAte);
+      l.push(
+        `${novosZm.has(e.id) ? '🆕 ' : '• '}<b>${esc(e.municipio)}</b> · ${esc(curto(e.objeto || e.titulo, 120))}`,
+        `   ${[e.valor ? brl(e.valor) : '', prazo ? `até ${prazo}` : '', quando(e.dias)].filter(Boolean).join(' · ')} · ${linkEdital(e)}`,
+      );
+    }
   }
 
   // 2) Minas Gerais fora da Zona da Mata: só os novos
@@ -90,13 +109,18 @@ export function mensagem({ zm, novosZm = new Set(), mg = [], hoje = new Date() }
   else if (!mg.length) l.push('Nenhum edital novo ligado aos CNAEs da Ágil.');
   else {
     const lista = [...mg].sort((a, b) => (a.propostasAte || '').localeCompare(b.propostasAte || ''));
-    for (const e of lista.slice(0, MAX_MG)) {
-      const prazo = dataHora(e.propostasAte);
-      l.push(
-        '',
-        `<b>${esc(e.municipio)}</b> · ${esc(curto(e.objeto || e.titulo, 120))}`,
-        `${[e.valor ? brl(e.valor) : '', prazo ? `até ${prazo}` : '', `<i>${motivo(e)}</i>`].filter(Boolean).join(' · ')} · ${linkEdital(e)}`,
-      );
+    let n = 0;
+    for (const [local, doLocal] of porLocal(lista)) {
+      if (n >= MAX_MG) break;
+      l.push('', `🏛 <b>${esc(local)}</b> (${doLocal.length})`);
+      for (const e of doLocal) {
+        if (n++ >= MAX_MG) break;
+        const prazo = dataHora(e.propostasAte);
+        l.push(
+          `• <b>${esc(e.municipio)}</b> · ${esc(curto(e.objeto || e.titulo, 120))}`,
+          `   ${[e.valor ? brl(e.valor) : '', prazo ? `até ${prazo}` : '', `<i>${motivo(e)}</i>`].filter(Boolean).join(' · ')} · ${linkEdital(e)}`,
+        );
+      }
     }
     if (lista.length > MAX_MG) l.push('', `… e mais ${lista.length - MAX_MG}. Veja todos em ${SITE}`);
   }

@@ -50,3 +50,10 @@ test('alerta diário: Zona da Mata repete até o pregão (🆕 nos novos) e Mina
   assert.ok(m.slice(m.indexOf('MINAS GERAIS')).includes('<b>Varginha</b>'));
   assert.ok(mensagem({ zm: [], mg: null, hoje }).includes('O PNCP não respondeu para Minas Gerais'));
 });
+
+test('alerta diário: separa por local do pregão na ordem AMM Licita, Licitar Digital, Compras.gov.br, Portal de Compras Públicas', async () => {
+  const { porLocal } = await import('../scripts/alerta-diario.mjs');
+  const ed = (local) => ({ id: local, local });
+  const ordem = porLocal(['BNC', 'Portal de Compras Públicas', 'Compras.gov.br', 'AMM Licita', 'Licitar Digital', 'BNC', ''].map(ed)).map(([k]) => k);
+  assert.deepEqual(ordem, ['AMM Licita', 'Licitar Digital', 'Compras.gov.br', 'Portal de Compras Públicas', 'BNC', 'Local não informado']);
+});
