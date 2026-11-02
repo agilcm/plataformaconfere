@@ -103,6 +103,12 @@ export default function TermoReferenciaPanel() {
   const [aberto, setAberto] = useState<string | null>(null);
   const [filtro, setFiltro] = useState<'todos' | 'achados' | 'faltando'>('todos');
   const parar = useRef(false);
+  const [comando, setComando] = useState<{ tipo: 'tudo' | 'editais' | 'planilhas'; n: number } | null>(null);
+  const [lendoPlanilhas, setLendoPlanilhas] = useState(false);
+  const pesquisarPor = (tipo: 'tudo' | 'editais' | 'planilhas') => {
+    if (tipo === 'planilhas') setResultado(null);
+    setComando((c) => ({ tipo, n: (c?.n || 0) + 1 }));
+  };
   const inputRef = useRef<HTMLInputElement>(null);
 
   const itens: ItemTermo[] = mapa ? (itensDoTermo(linhas, mapa as never) as ItemTermo[]) : [];
@@ -172,8 +178,8 @@ export default function TermoReferenciaPanel() {
       <div className="p-4 sm:p-6 rounded-2xl bg-white border border-slate-200 shadow-sm">
         <p className="text-lg font-bold text-[#0F2053]">1. Importe o termo de referência</p>
         <p className="mt-1 text-[15px] text-slate-600">
-          Planilha em Excel (.xlsx) ou CSV com o produto, a especificação e o valor unitário, como vem da plataforma. Depois: procurar nas planilhas de custo,
-          buscar em contratos (opcional) e gerar a planilha de custos.
+          Planilha em Excel (.xlsx) ou CSV com o produto, a especificação e o valor unitário, como vem da plataforma. Depois escolha a pesquisa (planilhas de
+          custo, editais ou as duas) e gere a planilha de custos.
         </p>
         <div className="mt-4 flex flex-col sm:flex-row gap-3">
           <button
@@ -284,6 +290,29 @@ export default function TermoReferenciaPanel() {
                 Pesquisa completa (mais editais, mais lenta)
               </label>
             </div>
+            <div className="mt-4 flex flex-col sm:flex-row flex-wrap gap-3">
+              {(
+                [
+                  ['tudo', 'Pesquisar preços ganhos', 'Planilhas Google + editais', 'bg-[#0E7A40] hover:bg-[#0B6535] text-white'],
+                  ['editais', 'Pesquisar editais', 'Só os pregões do PNCP', 'bg-[#0478CA] hover:bg-[#03609F] text-white'],
+                  ['planilhas', 'Buscar nas planilhas Google', 'Só as planilhas de custo da Ágil', 'bg-[#0F2053] hover:bg-[#13306f] text-white'],
+                ] as const
+              ).map(([tipo, titulo, sub, cor]) => (
+                <button
+                  key={tipo}
+                  type="button"
+                  disabled={!itens.length || pesquisando || lendoPlanilhas}
+                  onClick={() => pesquisarPor(tipo)}
+                  className={`inline-flex items-center gap-3 px-5 py-3 rounded-xl text-left disabled:opacity-50 cursor-pointer ${cor}`}
+                >
+                  <Icon name={tipo === 'planilhas' ? 'sheet' : 'search'} className="w-5 h-5 shrink-0" />
+                  <span>
+                    <span className="block text-base font-bold">{titulo}</span>
+                    <span className="block text-xs opacity-85">{sub}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
           </>
         )}
       </div>
@@ -294,6 +323,8 @@ export default function TermoReferenciaPanel() {
           contratos={resultado ? resultado.itens.map((i) => (i.melhor ? { ...i.melhor, valorUnitario: i.melhor.valorUnitario } : null)) : null}
           buscandoContratos={pesquisando}
           onBuscarContratos={pesquisar}
+          comando={comando}
+          onOcupado={setLendoPlanilhas}
         >
           {progresso && (
             <div className="p-5 rounded-2xl bg-white border border-slate-200" role="status" aria-live="polite">

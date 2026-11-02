@@ -1,7 +1,8 @@
-// Contratos › Termo de referência, depois de importar a planilha:
-// 2) procura cada item nas planilhas de custo da Ágil no Google Drive (link de referência, marca e valor de compra);
-// 3) pergunta "Deseja buscar em contratos?" (a busca no PNCP é a do painel do termo, passada em `children`);
-// 4) pede órgão, processo e data e gera a planilha de custos no molde da Ágil, como Planilha Google na pasta "cloud".
+// Contratos › Termo de referência, depois de importar a planilha. Três pesquisas (botões do painel do termo):
+// - "tudo": planilhas de custo da Ágil no Google Drive + editais (PNCP);
+// - "editais": só o PNCP (a busca e o resultado são os do painel do termo, passados em `children`);
+// - "planilhas": só as planilhas de custo (link de referência, marca e valor de compra), e depois pergunta se quer buscar em contratos.
+// No fim, pede órgão, processo e data e gera a planilha de custos no molde da Ágil, como Planilha Google na pasta "cloud".
 // O acesso às planilhas é pelo login Google de quem tem permissão na pasta: o site não guarda nenhum dado delas.
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Icon } from '../components/ui.tsx';
@@ -58,6 +59,8 @@ export default function CotacaoFluxo({
   contratos,
   buscandoContratos,
   onBuscarContratos,
+  comando,
+  onOcupado,
   children,
 }: {
   itens: ItemCotacao[];
@@ -65,6 +68,9 @@ export default function CotacaoFluxo({
   contratos: (ContratoItem | null)[] | null;
   buscandoContratos: boolean;
   onBuscarContratos: () => void;
+  /** pesquisa pedida pelos botões do painel; `n` muda a cada clique */
+  comando: { tipo: 'tudo' | 'editais' | 'planilhas'; n: number } | null;
+  onOcupado?: (ocupado: boolean) => void;
   /** progresso e resultado da busca em contratos (painel do termo) */
   children?: ReactNode;
 }) {
@@ -101,7 +107,7 @@ export default function CotacaoFluxo({
     if (!conectado()) await entrarGoogle();
   };
 
-  const procurarNasPlanilhas = async () => {
+  const procurarNasPlanilhas = async (): Promise<boolean> => {
     setErro('');
     try {
       await garantirGoogle();
@@ -113,12 +119,36 @@ export default function CotacaoFluxo({
       setBuscas(r);
       setEscolhas(r.map((x) => (x.confiavel ? x.melhor : null)));
       setEtapaBase('feito');
+      return true;
     } catch (e) {
       setErro((e as Error).message);
+      return false;
     } finally {
       setProg(null);
     }
   };
+
+  // botões do painel: planilhas + editais, só editais ou só planilhas
+  useEffect(() => {
+    if (!comando) return;
+    setCriado(null);
+    if (comando.tipo === 'editais') {
+      setEtapaBase('pulado');
+      setBuscas(null);
+      setEscolhas([]);
+      setEtapaContratos('sim');
+      onBuscarContratos();
+      return;
+    }
+    setEtapaContratos('pergunta');
+    procurarNasPlanilhas().then((ok) => {
+      if (comando.tipo !== 'tudo') return;
+      if (!ok) setEtapaBase('pulado'); // sem acesso às planilhas: segue só com os editais
+      setEtapaContratos('sim');
+      onBuscarContratos();
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [comando?.n]);
 
   const comContratos = etapaContratos === 'sim' && !!contratos;
   const linhasPlanilha = () => itens.map((it, i) => ({ ...it, base: escolhas[i] || null, contrato: comContratos ? contratos?.[i] || null : null }));
@@ -163,54 +193,36 @@ export default function CotacaoFluxo({
   }, [buscas, escolhas]);
 
   const ocupado = !!prog || buscandoContratos;
+  useEffect(() => onOcupado?.(!!prog), [prog]); // eslint-disable-line react-hooks/exhaustive-deps
   const formOk = form.orgao.trim() && form.processo.trim() && form.data;
   const mostrarForm = etapaBase !== 'inicio' && (etapaContratos === 'nao' || (etapaContratos === 'sim' && !!contratos && !buscandoContratos));
 
   return (
     <>
-      {/* 2. planilhas de custo */}
-      <div className={card}>
-        <p className="text-lg font-bold text-[#0F2053]">2. Procurar nas planilhas de custo</p>
-        <p className="mt-1 text-[15px] text-slate-600">
-          Procura cada item nas planilhas da pasta "PLANILHAS PARA LICITAÇÕES" no Google Drive (todas as cidades e subpastas) e copia o link de referência, a
-          marca e o valor de compra. Escolhe o menor valor de compra que encaixa na especificação.
-        </p>
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-          <button type="button" disabled={ocupado} onClick={procurarNasPlanilhas} className={`${botao} bg-[#0E7A40] hover:bg-[#0B6535] text-white`}>
-            <Icon name="search" className="w-5 h-5" />
-            {etapaBase === 'feito' ? 'Procurar de novo' : `Procurar ${itens.length} ${itens.length === 1 ? 'item' : 'itens'} nas planilhas`}
-          </button>
-          {etapaBase === 'inicio' && (
-            <button type="button" disabled={ocupado} onClick={() => setEtapaBase('pulado')} className={`${botao} border-2 border-slate-200 text-slate-700`}>
-              Pular esta etapa
-            </button>
-          )}
-          <span className="text-sm text-slate-500">
+      {comando && comando.tipo !== 'editais' && (
+        <div className={card}>
+          <p className="text-lg font-bold text-[#0F2053]">Planilhas de custo (Google Drive)</p>
+          <p className="mt-1 text-sm text-slate-600">
             {conta ? (
               <>
-                Google: <strong>{conta}</strong>
+                Google: <strong>{conta}</strong> ·{' '}
               </>
-            ) : (
-              'Pede o login do Google com a conta que tem acesso à pasta.'
-            )}
-          </span>
+            ) : null}
+            {base
+              ? `${base.total.toLocaleString('pt-BR')} itens cotados em ${base.planilhas} planilhas da pasta "PLANILHAS PARA LICITAÇÕES".${base.comErro.length ? ` Não consegui ler: ${base.comErro.join(', ')}.` : ''}`
+              : 'Lê as planilhas da pasta "PLANILHAS PARA LICITAÇÕES" com o login do Google de quem tem acesso à pasta.'}
+          </p>
+          {!lerClientId() && (
+            <p className="mt-3 p-3 rounded-xl bg-amber-50 border border-amber-200 text-sm text-amber-900">
+              Para entrar com o Google neste navegador, configure antes o Client ID na{' '}
+              <a href={ROUTES.privado} className="font-bold underline">
+                área Privado
+              </a>{' '}
+              (botão "Configurações").
+            </p>
+          )}
         </div>
-        {!lerClientId() && (
-          <p className="mt-3 p-3 rounded-xl bg-amber-50 border border-amber-200 text-sm text-amber-900">
-            Para entrar com o Google neste navegador, configure antes o Client ID na{' '}
-            <a href={ROUTES.privado} className="font-bold underline">
-              área Privado
-            </a>{' '}
-            (botão "Configurações").
-          </p>
-        )}
-        {base && (
-          <p className="mt-3 text-sm text-slate-600">
-            Base: {base.total.toLocaleString('pt-BR')} itens cotados em {base.planilhas} planilhas.
-            {base.comErro.length > 0 && ` Não consegui ler: ${base.comErro.join(', ')}.`}
-          </p>
-        )}
-      </div>
+      )}
 
       {prog && (
         <div className={card} role="status" aria-live="polite">
@@ -299,9 +311,9 @@ export default function CotacaoFluxo({
       )}
 
       {/* 3. contratos */}
-      {etapaBase !== 'inicio' && (
+      {comando?.tipo === 'planilhas' && etapaBase === 'feito' && (
         <div className={`${card} border-2 border-[#0478CA]/40`}>
-          <p className="text-lg font-bold text-[#0F2053]">3. Deseja buscar em contratos?</p>
+          <p className="text-lg font-bold text-[#0F2053]">Deseja buscar em contratos?</p>
           <p className="mt-1 text-[15px] text-slate-600">
             Procura os mesmos itens nos pregões homologados (PNCP), com o período e a região escolhidos acima: menor preço ganho, onde e quem venceu.
           </p>
@@ -336,7 +348,7 @@ export default function CotacaoFluxo({
       {/* 4. planilha */}
       {mostrarForm && (
         <div className={card}>
-          <p className="text-lg font-bold text-[#0F2053]">4. Gerar a planilha de custos</p>
+          <p className="text-lg font-bold text-[#0F2053]">Gerar a planilha de custos</p>
           <p className="mt-1 text-[15px] text-slate-600">
             No molde da Ágil (uma aba), com as fórmulas de custo, como Planilha Google na pasta "{PASTA_COTACOES_NOME}" dentro de "PLANILHAS PARA LICITAÇÕES".
           </p>
