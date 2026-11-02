@@ -4,7 +4,7 @@
 // O PNCP oscila com frequência (erros 5xx, lentidão, limite de requisições). Por isso toda
 // chamada passa por fetchJson(), que tem tempo limite, novas tentativas com espera crescente
 // e mensagens de erro claras.
-import { microrregiaoDe } from '../data/zonaDaMata.js';
+import { microrregiaoDe, normalizeName } from '../data/zonaDaMata.js';
 
 const SEARCH = 'https://pncp.gov.br/api/search/';
 const API = 'https://pncp.gov.br/api/pncp/v1';
@@ -338,7 +338,8 @@ export function filterEditais(list, { regiao = 'mg', micro = '', q = '', fontes 
     if (fs.size && !fs.has(e.fonte || 'Não informada')) return false;
     if (ls.size && !ls.has(e.local || 'Não informado')) return false;
     if (regiao === 'zona-da-mata' && !e.microrregiao) return false;
-    if (micro && e.microrregiao !== micro) return false;
+    // micro: nome da microrregião ou "cidade:Nome" (uma cidade só)
+    if (micro.startsWith('cidade:') ? normalizeName(e.municipio) !== normalizeName(micro.slice(7)) : micro && e.microrregiao !== micro) return false;
     if (terms.length && !matchesAll(`${e.objeto} ${e.orgao} ${e.municipio} ${e.titulo}`, terms)) return false;
     return true;
   });

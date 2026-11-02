@@ -58,7 +58,11 @@ const lerFontesSalvas = (): string[] => {
     return [];
   }
 };
-const MICROS = Object.keys(MICRORREGIOES);
+// "Por aqui por perto": microrregiões e, com o prefixo "cidade:", cidades onde a Ágil atua
+const PERTO = ['Juiz de Fora', 'Cataguases', 'Ubá', 'Muriaé', 'cidade:Rodeiro', 'cidade:Astolfo Dutra', 'cidade:Leopoldina'].filter(
+  (m) => m.startsWith('cidade:') || m in MICRORREGIOES,
+);
+const rotuloPerto = (m: string) => m.replace(/^cidade:/, '');
 const CNAES_KEY = 'agilcm:cnaes-livres';
 
 // Datas do PNCP vêm no horário de Brasília, sem fuso: tratamos como -03:00
@@ -376,7 +380,7 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
       );
       if (cancelarExport.current) return;
       const hoje = new Date().toISOString().slice(0, 10);
-      const regiaoNome = regiao === 'zona-da-mata' ? (micro ? `zona-da-mata-${micro}` : 'zona-da-mata') : regiao;
+      const regiaoNome = regiao === 'zona-da-mata' ? (micro ? `zona-da-mata-${rotuloPerto(micro)}` : 'zona-da-mata') : regiao;
       const nome = `${agil ? 'editais-agil-cnae' : 'editais-abertos'}-${regiaoNome}-${hoje}.xlsx`
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
@@ -551,9 +555,9 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
 
               {regiao === 'zona-da-mata' && (
                 <div className="mt-4 pt-4 border-t border-slate-100">
-                  <p className="text-sm font-semibold text-slate-600 mb-2">Por aqui por perto · microrregião</p>
-                  <div role="group" aria-label="Microrregião" className="flex flex-wrap gap-2">
-                    {['', ...MICROS].map((m) => (
+                  <p className="text-sm font-semibold text-slate-600 mb-2">Por aqui por perto · microrregião ou cidade</p>
+                  <div role="group" aria-label="Microrregião ou cidade" className="flex flex-wrap gap-2">
+                    {['', ...PERTO].map((m) => (
                       <button
                         key={m || 'todas'}
                         type="button"
@@ -563,7 +567,7 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
                           micro === m ? 'bg-[#0F2053] border-[#0F2053] text-white' : 'bg-white border-slate-300 text-slate-700 hover:border-[#0478CA]'
                         }`}
                       >
-                        {m || 'Toda a Zona da Mata'}
+                        {m ? rotuloPerto(m) : 'Toda a Zona da Mata'}
                       </button>
                     ))}
                   </div>
@@ -800,7 +804,7 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
                     }${
                       agil && segmento ? ` do segmento ${SEGMENTO_POR_ID.get(segmento)?.nome}` : agil ? (cnaesSel.length === 1 ? ` do CNAE ${cnaesSel[0]}` : cnaesSel.length ? ` de ${cnaesSel.length} CNAEs da Ágil CM` : ` ${total === 1 ? 'ligado' : 'ligados'} aos CNAEs da Ágil CM`) : ''
                     }${
-                      regiao === 'zona-da-mata' ? (micro ? ` na microrregião de ${micro}` : ' na Zona da Mata') : regiao === 'brasil' ? ' no Brasil' : ' em Minas Gerais'
+                      regiao === 'zona-da-mata' ? (micro.startsWith('cidade:') ? ` em ${rotuloPerto(micro)}` : micro ? ` na microrregião de ${micro}` : ' na Zona da Mata') : regiao === 'brasil' ? ' no Brasil' : ' em Minas Gerais'
                     }${fontes.length ? ` · ${fontes.length === 1 ? `fonte ${fontes[0]}` : `${fontes.length} fontes`}` : ''}${
                       locais.length ? ` · ${locais.length === 1 ? `pregão em ${locais[0]}` : `${locais.length} locais`}` : ''
                     }`}

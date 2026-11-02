@@ -1,0 +1,50 @@
+name: Alerta diário de editais
+
+# Toda manhã: editais abertos novos na Zona da Mata ligados aos CNAEs da Ágil, pelo Telegram (scripts/alerta-diario.mjs).
+# Usa os mesmos segredos do monitor de pregões (Settings → Secrets and variables → Actions):
+#   Secrets:   TELEGRAM_BOT_TOKEN e TELEGRAM_CHAT_ID
+#   Variables: ALERTA_SEGMENTOS (opcional, ex.: "uniformes,eventos")
+on:
+  schedule:
+    - cron: '17 10 * * *' # 7h17 em Brasília
+  workflow_dispatch:
+    inputs:
+      teste:
+        description: 'Só mandar uma mensagem de teste no Telegram'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: alerta-diario
+  cancel-in-progress: false
+
+jobs:
+  alertar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Recuperar o que já foi avisado
+        uses: actions/cache/restore@v4
+        with:
+          path: alerta-estado.json
+          key: alerta-estado-${{ github.run_id }}
+          restore-keys: alerta-estado-
+      - name: Buscar editais e avisar
+        run: node scripts/alerta-diario.mjs ${{ inputs.teste && '--teste' || '' }}
+        env:
+          ALERTA_SEGMENTOS: ${{ vars.ALERTA_SEGMENTOS }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      - name: Guardar o que foi avisado
+        if: always() && hashFiles('alerta-estado.json') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: alerta-estado.json
+          key: alerta-estado-${{ github.run_id }}

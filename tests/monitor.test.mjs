@@ -30,3 +30,14 @@ test('monitor: avisa mudança de situação, resultado (destacando a AGIL) e doc
   assert.equal(primeira.length, 1);
   assert.match(primeira[0], /Começando a monitorar/);
 });
+
+test('alerta diário: mensagem por cidade, com prazo, motivo e link', async () => {
+  const { mensagem } = await import('../scripts/alerta-diario.mjs');
+  const e = { id: '1', municipio: 'Rodeiro', orgao: 'PREFEITURA DE RODEIRO', objeto: 'Aquisição de gêneros alimentícios', valor: 1000, propostasAte: '2026-11-12T09:00:00', link: 'https://pncp.gov.br/app/editais/1/2026/2', motivos: ['generos alimenticios'] };
+  const m = mensagem([e], { hoje: new Date('2026-11-03T10:00:00Z') });
+  assert.ok(m.includes('1 edital novo ligado'));
+  assert.ok(m.includes('📍 <b>Rodeiro</b>'));
+  assert.ok(m.includes('propostas até 12/11 às 09:00'));
+  assert.ok(m.includes('<a href="https://pncp.gov.br/app/editais/1/2026/2">ver edital</a>'));
+  assert.ok(mensagem([]).includes('Nenhum edital novo'));
+});

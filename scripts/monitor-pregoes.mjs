@@ -10,13 +10,13 @@
 // O estado (o que já foi visto) fica em monitor-estado.json, guardado pelo cache do Actions.
 import fs from 'node:fs';
 import { fetchArquivosCompra, fetchItensCompra, fetchJson, fetchResultadosItem, fixText, parseCompraRef } from '../src/lib/pncp.js';
+import { esc, telegram } from './telegram.mjs';
 
 const AGIL_CNPJ = '51328978000118';
 const ARQUIVO_ESTADO = process.env.MONITOR_ESTADO || 'monitor-estado.json';
 const semAcento = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 const IMPORTANTES = /\b(esclarec|impugna|suspens|revoga|anula|adiamento|adiad|reabert|retifica|errata|ata\b|adjudica|homologa|resultado|recurso|contrarraz|diligencia|convoca|habilita)/i;
 
-const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const brl = (v) => (v == null ? '' : `R$ ${Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
 const curto = (s, n = 90) => {
   const t = fixText(s);
@@ -104,24 +104,6 @@ const resumo = (c) => ({
   itens: Object.fromEntries(c.itens.map((i) => [i.numero, { situacao: i.situacao, resultados: [...new Set([...(i._cache || []), ...i.resultados.map((r) => `${r.fornecedorDoc}|${r.valorTotal}`)])] }])),
   arquivos: c.arquivos.map((d) => d.url),
 });
-
-async function telegram(texto) {
-  const token = process.env.TELEGRAM_BOT_TOKEN;
-  const chat = process.env.TELEGRAM_CHAT_ID;
-  if (!token || !chat) {
-    console.log('[sem Telegram configurado]\n' + texto.replace(/<[^>]+>/g, ''));
-    return;
-  }
-  // limite do Telegram: 4096 caracteres por mensagem
-  for (let i = 0; i < texto.length; i += 3900) {
-    const r = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: chat, text: texto.slice(i, i + 3900), parse_mode: 'HTML', disable_web_page_preview: true }),
-    });
-    if (!r.ok) throw new Error(`Telegram respondeu ${r.status}: ${(await r.text()).slice(0, 200)}`);
-  }
-}
 
 async function main() {
   if (process.argv.includes('--teste')) {
