@@ -1,6 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { abasReferencia, departamentos, juntarCentros, lerDetalhamento, separarGuias, valorDaGuia } from '../src/lib/guiasDotacao.js';
+import {
+  abasReferencia,
+  aplicarAliquotas,
+  departamentos,
+  juntarCentros,
+  lerDetalhamento,
+  porcentagem,
+  separarGuias,
+  valorDaGuia,
+} from '../src/lib/guiasDotacao.js';
 import { criarXlsx } from '../src/lib/xlsx.js';
 
 // Uma página do "Detalhamento de Guias por Dotação" como o leitor de PDF entrega (as duas colunas na mesma linha)
@@ -82,19 +91,36 @@ test('separa FUNDEB e restante pela guia original', () => {
 
 test('planilha de referência tem as fórmulas da conta', () => {
   const { centros } = lerDetalhamento(linhas);
-  const abas = abasReferencia(separarGuias(centros, new Set(['Fundeb']), 34513.41), { prefeitura: 'X', competencia: 'Outubro/2026' });
+  const cs = aplicarAliquotas(centros, { patronal: 16.4, rat: 3.384 });
+  const abas = abasReferencia(separarGuias(cs, new Set(['Fundeb']), 34513.41), { prefeitura: 'X', competencia: 'Outubro/2026', patronal: 16.4, rat: 3.384 });
   assert.deepEqual(
     abas.map((a) => a.nome),
     ['Resumo', 'FUNDEB', 'Restante'],
   );
   const fundeb = abas[1];
-  assert.deepEqual(fundeb.linhas[0][9], { f: 'I2+G2+H2' });
-  assert.deepEqual(fundeb.linhas.at(-1)[9], { f: 'SUM(J2:J3)' });
+  // patronal e RAT = base patronal × alíquotas que ficam no Resumo
+  assert.deepEqual(fundeb.linhas[0][5], { f: 'ROUND(D2*Resumo!$B$4/100,2)' });
+  assert.deepEqual(fundeb.linhas[0][6], { f: 'ROUND(D2*Resumo!$B$5/100,2)' });
+  assert.deepEqual(fundeb.linhas[0][11], { f: 'SUM(E2:K2)' });
+  assert.deepEqual(fundeb.linhas.at(-1)[11], { f: 'SUM(L2:L3)' });
   const resumo = abas[0].linhas;
-  assert.deepEqual(resumo[3][1], { f: 'FUNDEB!J4' });
-  assert.deepEqual(resumo[4][1], { f: 'IF(B4="","",B4-B5)' });
+  assert.deepEqual(resumo[2], ['Alíquota patronal (%)', { v: 16.4, tipo: 'numero' }, 'Digitada na ferramenta. Troque aqui e a planilha recalcula']);
+  assert.deepEqual(resumo[4][1], { f: 'FUNDEB!L4' });
+  assert.deepEqual(resumo[12][1], { f: 'IF(B13="","",B13-B6)' });
   const xlsx = new TextDecoder().decode(criarXlsx(abas));
-  assert.ok(xlsx.includes('<f>I2+G2+H2</f>') && xlsx.includes('fullCalcOnLoad="1"'));
+  assert.ok(xlsx.includes('<f>ROUND(D2*Resumo!$B$4/100,2)</f>') && xlsx.includes('<c r="B4" s="5"><v>16.4</v></c>') && xlsx.includes('fullCalcOnLoad="1"'));
+});
+
+test('alíquotas digitadas recalculam patronal e RAT sobre a base patronal', () => {
+  const { centros } = lerDetalhamento(linhas);
+  const c = aplicarAliquotas(centros, { patronal: 20, rat: 2 })[0];
+  assert.deepEqual([c.patronalEmpresa, c.gilrat, c.valorGuia], [14011.15, 1401.12, 22489.31]); // 70.055,75 × 20% e × 2%, + segurados 7.077,04
+  assert.equal(c.diferencaRelatorio, 1552.44); // 15.412,27 − 13.859,83 do relatório
+  // sem alíquotas, fica o que o relatório calculou
+  assert.equal(aplicarAliquotas(centros, { patronal: null, rat: null })[0].valorGuia, 20936.87);
+  assert.equal(porcentagem('16,40%'), 16.4);
+  assert.equal(porcentagem(' 3,384 '), 3.384);
+  assert.equal(porcentagem(''), null);
 });
 
 test('acha o valor total numa guia (DARF/GPS)', () => {

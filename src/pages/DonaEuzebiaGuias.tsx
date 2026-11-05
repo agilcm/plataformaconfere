@@ -1,9 +1,11 @@
-// /dados/ › Dona Euzébia: separa a guia de INSS em duas, uma do FUNDEB e outra do restante.
-// Lê o "Detalhamento de Guias por Dotação" (SiplanWeb) no navegador; nada é enviado nem guardado.
-import { useMemo, useRef, useState } from 'react';
+// /dados/ › Dona Euzébia: guia de INSS do FUNDEB (e, com a guia original, a do restante).
+// 1) a equipe digita a alíquota patronal e a do RAT ajustado; 2) envia o PDF "Detalhamento de Guias por Dotação"
+// do SiplanWeb; 3) baixa a planilha. Os PDFs são lidos no navegador; nada é enviado nem guardado.
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../components/ui.tsx';
 import {
   abasReferencia,
+  aplicarAliquotas,
   blocosPdfGuias,
   departamentos,
   dividirPorCodigo,
@@ -13,6 +15,7 @@ import {
   lerDetalhamento,
   mesmoMunicipio,
   numeroBR,
+  porcentagem,
   separarGuias,
   valorDaGuia,
 } from '../lib/guiasDotacao.js';
@@ -34,34 +37,62 @@ async function linhasDe(arquivo: File) {
 }
 
 const brl = (v: number | null | undefined) => (v == null ? '—' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }));
+const pctTexto = (v: number | null | undefined) => (v == null ? '' : v.toLocaleString('pt-BR', { maximumFractionDigits: 4 }));
+const dinheiro = (v: number) => v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const card = 'p-5 sm:p-6 rounded-2xl bg-white border border-slate-200';
 const botao =
   'inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-[15px] font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed';
+const campo =
+  'w-full pl-3 pr-9 py-2.5 rounded-xl border border-slate-300 text-base tabular-nums focus:outline-none focus:border-[#0478CA] focus:ring-2 focus:ring-[#0478CA]/20';
+const CHAVE_ALIQ = 'agilcm:euzebia:aliquotas';
 
 type Centro = ReturnType<typeof lerDetalhamento>['centros'][number];
 type Darf = NonNullable<ReturnType<typeof lerDarf>>;
-const dinheiro = (v: number) => v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function DonaEuzebiaGuias() {
+  const [patronalTxt, setPatronalTxt] = useState('');
+  const [ratTxt, setRatTxt] = useState('');
   const [centros, setCentros] = useState<Centro[]>([]);
   const [prefeitura, setPrefeitura] = useState('');
   const [arquivos, setArquivos] = useState<string[]>([]);
   const [marcados, setMarcados] = useState<Set<string>>(new Set());
   const [original, setOriginal] = useState('');
   const [origemOriginal, setOrigemOriginal] = useState('');
+  const [darf, setDarf] = useState<Darf | null>(null);
   const [lendo, setLendo] = useState('');
   const [aviso, setAviso] = useState('');
   const [verZerados, setVerZerados] = useState(false);
-  const [darf, setDarf] = useState<Darf | null>(null);
-  const inputDet = useRef<HTMLInputElement>(null);
+  const [verGuia, setVerGuia] = useState(false);
+  const inputPdf = useRef<HTMLInputElement>(null);
   const inputGuia = useRef<HTMLInputElement>(null);
 
-  const deps = useMemo(() => departamentos(centros), [centros]);
+  // as alíquotas do mês passado ficam lembradas neste navegador
+  useEffect(() => {
+    try {
+      const a = JSON.parse(localStorage.getItem(CHAVE_ALIQ) || 'null');
+      if (a?.patronal) setPatronalTxt(a.patronal);
+      if (a?.rat) setRatTxt(a.rat);
+    } catch {
+      /* sem armazenamento */
+    }
+  }, []);
+  useEffect(() => {
+    try {
+      if (patronalTxt || ratTxt) localStorage.setItem(CHAVE_ALIQ, JSON.stringify({ patronal: patronalTxt, rat: ratTxt }));
+    } catch {
+      /* sem armazenamento */
+    }
+  }, [patronalTxt, ratTxt]);
+
+  const patronal = porcentagem(patronalTxt);
+  const rat = porcentagem(ratTxt);
+  const aliqDigitadas = patronal != null && rat != null;
+  const doRelatorio = centros.find((c) => c.aliqEmpresa || c.aliqRat);
+  const calculados = useMemo(() => aplicarAliquotas(centros, { patronal, rat }), [centros, patronal, rat]);
+  const deps = useMemo(() => departamentos(calculados), [calculados]);
   const competencias = [...new Set(centros.map((c) => c.competencia))];
   const valorOriginal = original.trim() ? numeroBR(original.replace(/[^\d.,-]/g, '')) : null;
-  const g = useMemo(() => separarGuias(centros, marcados, valorOriginal), [centros, marcados, valorOriginal]);
-  const somaRelatorio = Math.round(centros.reduce((s, c) => s + c.liquido, 0) * 100) / 100;
-  const temOutros = deps.some((d) => !marcados.has(d.nome));
+  const g = useMemo(() => separarGuias(calculados, marcados, valorOriginal), [calculados, marcados, valorOriginal]);
 
   /** A guia original: o DARF do DCTFWeb (com os códigos de receita) ou, sem ele, só o valor total achado no PDF */
   const usarGuia = (linhas: any[], nome: string) => {
@@ -70,6 +101,7 @@ export default function DonaEuzebiaGuias() {
       setDarf(d);
       setOriginal(dinheiro(d.total));
       setOrigemOriginal(`DARF ${d.numero || nome} · ${d.contribuinte} · ${d.periodo} · vence em ${d.vencimento}`);
+      setVerGuia(true);
       return true;
     }
     const v = valorDaGuia(linhas);
@@ -77,10 +109,11 @@ export default function DonaEuzebiaGuias() {
     setDarf(null);
     setOriginal(dinheiro(v));
     setOrigemOriginal(`Lido do PDF ${nome}`);
+    setVerGuia(true);
     return true;
   };
 
-  const lerDetalhamentos = async (lista: FileList) => {
+  const lerPdfs = async (lista: FileList) => {
     setAviso('');
     const novos: Centro[][] = [];
     const nomes: string[] = [];
@@ -103,7 +136,7 @@ export default function DonaEuzebiaGuias() {
       }
     }
     setLendo('');
-    if (naoReconhecidos.length) setAviso(`Não reconheci ${naoReconhecidos.join(', ')}: não é o detalhamento nem uma guia com o valor total.`);
+    if (naoReconhecidos.length) setAviso(`Não reconheci ${naoReconhecidos.join(', ')}: não é o “Detalhamento de Guias por Dotação” nem uma guia.`);
     if (!novos.length) return;
     const todos = juntarCentros([centros, ...novos]);
     setCentros(todos);
@@ -143,37 +176,74 @@ export default function DonaEuzebiaGuias() {
     prefeitura: prefeitura || 'Prefeitura Municipal de Dona Euzébia',
     competencia: competencias.join(', '),
     origemOriginal: origemOriginal || (valorOriginal != null ? 'Digitado na ferramenta' : ''),
+    patronal: aliqDigitadas ? patronal : (doRelatorio?.aliqEmpresa ?? null),
+    rat: aliqDigitadas ? rat : (doRelatorio?.aliqRat ?? null),
   };
-  const nomeArquivo = `guias-inss-fundeb-${slug(info.competencia || 'competencia')}`;
+  const nomeArquivo = `guia-inss-fundeb-${slug(info.competencia || 'competencia')}`;
+  const baixarPlanilha = () => baixarXlsx(`${nomeArquivo}.xlsx`, abasReferencia(g, info, darf));
   const listaFundeb = g.fundeb.filter((c) => verZerados || c.valorGuia || c.liquido || c.base);
   const porCodigo = darf ? dividirPorCodigo(darf, g.totalFundeb) : null;
   const outroMunicipio = darf && prefeitura && !mesmoMunicipio(darf.contribuinte, prefeitura);
   const outraCompetencia = darf && competencias.length > 0 && !competencias.some((c) => c.toLowerCase() === darf.periodo.toLowerCase());
+  const tf = g.totalFundeb;
 
   return (
     <div className="space-y-6">
       <div className={card}>
-        <p className="text-lg font-bold text-[#0F2053]">Dona Euzébia · guias de INSS do FUNDEB e do restante</p>
+        <p className="text-lg font-bold text-[#0F2053]">Dona Euzébia · guia de INSS do FUNDEB</p>
         <p className="mt-1 text-[15px] text-slate-600 leading-relaxed max-w-3xl">
-          Separa a guia de INSS em duas: uma só do FUNDEB e outra com o restante. A guia do FUNDEB soma segurados e patronal dos centros de custo do FUNDEB, sem
-          abater salário-família e salário-maternidade. A do restante é a guia original menos a do FUNDEB. Os PDFs são lidos aqui no navegador; nada é enviado.
+          Digite as alíquotas, envie o PDF do relatório e baixe a planilha. A guia do FUNDEB soma, em cada centro de custo do FUNDEB, os segurados, o patronal e
+          o RAT ajustado (base patronal × alíquota), sem abater salário-família e salário-maternidade. O PDF é lido aqui no navegador; nada é enviado.
         </p>
 
-        <div className="mt-5 grid lg:grid-cols-2 gap-5">
+        <div className="mt-5 grid lg:grid-cols-2 gap-6">
           <div>
-            <p className="text-sm font-bold text-slate-600">1. O relatório e a guia (PDF)</p>
-            <p className="text-sm text-slate-500">
-              O “Detalhamento de Guias por Dotação” do SiplanWeb (uma página por centro de custo) e a guia original (DARF do DCTFWeb). Pode enviar os dois
-              juntos.
+            <p className="text-sm font-bold text-slate-600">1. Alíquotas</p>
+            <div className="mt-2 grid grid-cols-2 gap-3 max-w-md">
+              <label className="block">
+                <span className="block text-sm text-slate-600 mb-1">Patronal (%)</span>
+                <span className="relative block">
+                  <input
+                    value={patronalTxt}
+                    onChange={(e) => setPatronalTxt(e.target.value)}
+                    inputMode="decimal"
+                    placeholder={pctTexto(doRelatorio?.aliqEmpresa) || 'ex.: 20'}
+                    className={campo}
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500">%</span>
+                </span>
+              </label>
+              <label className="block">
+                <span className="block text-sm text-slate-600 mb-1">RAT ajustado (%)</span>
+                <span className="relative block">
+                  <input
+                    value={ratTxt}
+                    onChange={(e) => setRatTxt(e.target.value)}
+                    inputMode="decimal"
+                    placeholder={pctTexto(doRelatorio?.aliqRat) || 'ex.: 2'}
+                    className={campo}
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500">%</span>
+                </span>
+              </label>
+            </div>
+            <p className="mt-2 text-sm text-slate-500">
+              RAT ajustado = RAT × FAP. As duas ficam lembradas para o próximo mês.
+              {doRelatorio && ` No relatório: ${pctTexto(doRelatorio.aliqEmpresa)}% e ${pctTexto(doRelatorio.aliqRat)}%.`}
             </p>
+          </div>
+
+          <div>
+            <p className="text-sm font-bold text-slate-600">2. PDF do relatório</p>
+            <p className="text-sm text-slate-500">O “Detalhamento de Guias por Dotação” do SiplanWeb, com uma página por centro de custo.</p>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                onClick={() => inputDet.current?.click()}
+                onClick={() => inputPdf.current?.click()}
                 disabled={!!lendo}
                 className={`${botao} bg-[#0F2053] hover:bg-[#13306f] text-white`}
               >
-                <Icon name="doc" className="w-5 h-5" /> Enviar os PDFs
+                <Icon name="doc" className="w-5 h-5" /> Enviar o PDF
               </button>
               {centros.length > 0 && (
                 <button type="button" onClick={limpar} className="text-sm font-bold text-slate-600 underline cursor-pointer">
@@ -182,12 +252,12 @@ export default function DonaEuzebiaGuias() {
               )}
             </div>
             <input
-              ref={inputDet}
+              ref={inputPdf}
               type="file"
               accept="application/pdf,.pdf"
               multiple
               className="hidden"
-              onChange={(e) => e.target.files?.length && lerDetalhamentos(e.target.files).finally(() => (e.target.value = ''))}
+              onChange={(e) => e.target.files?.length && lerPdfs(e.target.files).finally(() => (e.target.value = ''))}
             />
             {arquivos.length > 0 && (
               <p className="mt-2 text-sm text-slate-600">
@@ -195,75 +265,16 @@ export default function DonaEuzebiaGuias() {
               </p>
             )}
           </div>
-          <div>
-            <p className="text-sm font-bold text-slate-600">2. Guia original (o total, numa guia só)</p>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <label className="relative">
-                <span className="sr-only">Valor da guia original</span>
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">R$</span>
-                <input
-                  value={original}
-                  onChange={(e) => {
-                    setOriginal(e.target.value);
-                    setOrigemOriginal('');
-                    setDarf(null);
-                  }}
-                  inputMode="decimal"
-                  placeholder="0,00"
-                  className="w-44 pl-10 pr-3 py-2.5 rounded-xl border border-slate-300 text-base tabular-nums focus:outline-none focus:border-[#0478CA] focus:ring-2 focus:ring-[#0478CA]/20"
-                />
-              </label>
-              <button
-                type="button"
-                onClick={() => inputGuia.current?.click()}
-                disabled={!!lendo}
-                className={`${botao} border-2 border-slate-200 text-[#0F2053] hover:border-[#0478CA]`}
-              >
-                {darf ? 'trocar a guia (DARF)' : 'ou enviar o PDF da guia (DARF)'}
-              </button>
-              {temOutros && somaRelatorio > 0 && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setOriginal(somaRelatorio.toLocaleString('pt-BR', { minimumFractionDigits: 2 }));
-                    setOrigemOriginal('Soma do total líquido de todos os centros do relatório');
-                  }}
-                  className="text-sm font-bold text-[#0478CA] underline cursor-pointer"
-                >
-                  usar a soma do relatório ({brl(somaRelatorio)})
-                </button>
-              )}
-            </div>
-            <input
-              ref={inputGuia}
-              type="file"
-              accept="application/pdf,.pdf"
-              className="hidden"
-              onChange={(e) => e.target.files?.[0] && lerGuiaOriginal(e.target.files[0]).finally(() => (e.target.value = ''))}
-            />
-            {origemOriginal && <p className="mt-1 text-sm text-slate-500">{origemOriginal}</p>}
-          </div>
         </div>
         {lendo && <p className="mt-4 text-[15px] text-slate-700">{lendo}</p>}
         {aviso && <p className="mt-4 text-[15px] text-amber-900">{aviso}</p>}
         {competencias.length > 1 && (
           <p className="mt-4 text-[15px] text-red-700">Atenção: os PDFs são de competências diferentes ({competencias.join(', ')}).</p>
         )}
-        {outroMunicipio && (
-          <p role="alert" className="mt-4 p-3 rounded-xl bg-red-50 border border-red-200 text-[15px] text-red-800">
-            Atenção: a guia é de <strong>{darf!.contribuinte}</strong> (CNPJ {darf!.cnpj}) e o relatório é de <strong>{prefeitura}</strong>. Confira se os dois
-            arquivos são do mesmo município.
-          </p>
-        )}
-        {outraCompetencia && (
-          <p role="alert" className="mt-4 text-[15px] text-red-700">
-            Atenção: a guia é de {darf!.periodo} e o relatório de {competencias.join(', ')}.
-          </p>
-        )}
 
-        {deps.length > 0 && (
+        {deps.length > 1 && (
           <div className="mt-5 pt-4 border-t border-slate-100">
-            <p className="text-sm font-bold text-slate-600 mb-2">3. Departamentos que vão para a guia do FUNDEB</p>
+            <p className="text-sm font-bold text-slate-600 mb-2">Departamentos que vão para a guia do FUNDEB</p>
             <div className="flex flex-wrap gap-2">
               {deps.map((d) => {
                 const on = marcados.has(d.nome);
@@ -284,17 +295,8 @@ export default function DonaEuzebiaGuias() {
                       on ? 'bg-[#0F2053] border-[#0F2053] text-white' : 'bg-white border-slate-300 text-slate-700 hover:border-[#0478CA]'
                     }`}
                   >
-                    <span
-                      aria-hidden="true"
-                      className={`w-4 h-4 rounded border flex items-center justify-center text-[11px] ${on ? 'bg-white text-[#0F2053] border-white' : 'border-slate-400'}`}
-                    >
-                      {on ? '✓' : ''}
-                    </span>
                     {d.nome}
-                    {d.codigo ? ` (${d.codigo})` : ''}
-                    <span className={on ? 'text-white/75' : 'text-slate-400'}>
-                      · {d.centros} centros · {brl(d.valorGuia)}
-                    </span>
+                    {d.codigo ? ` (${d.codigo})` : ''} <span className={on ? 'text-white/75' : 'text-slate-400'}>· {d.centros} centros</span>
                   </button>
                 );
               })}
@@ -305,130 +307,56 @@ export default function DonaEuzebiaGuias() {
 
       {centros.length > 0 && (
         <div className={card}>
-          <div className="grid sm:grid-cols-3 gap-4">
-            <div className="p-4 rounded-xl bg-[#0F2053] text-white">
-              <p className="text-sm text-white/80">Guia do FUNDEB</p>
-              <p className="text-2xl font-extrabold tabular-nums">{brl(g.guiaFundeb)}</p>
-              <p className="text-xs text-white/75">
-                segurados {brl(g.totalFundeb.segurados)} + patronal {brl(g.totalFundeb.patronal)}
-                {g.totalFundeb.outros ? ` + outros ${brl(g.totalFundeb.outros)}` : ''}
-              </p>
-            </div>
-            <div
-              className={`p-4 rounded-xl ${g.guiaRestante != null && g.guiaRestante < 0 ? 'bg-red-50 border border-red-200' : 'bg-[#F7FAFD] border border-slate-200'}`}
-            >
-              <p className="text-sm text-slate-500">Guia do restante</p>
-              <p className="text-2xl font-extrabold tabular-nums text-[#0F2053]">{g.guiaRestante == null ? 'Informe a guia original' : brl(g.guiaRestante)}</p>
-              <p className="text-xs text-slate-500">guia original − guia do FUNDEB</p>
-            </div>
-            <div className="p-4 rounded-xl bg-[#F7FAFD] border border-slate-200">
-              <p className="text-sm text-slate-500">Guia original</p>
-              <p className="text-2xl font-extrabold tabular-nums text-[#0F2053]">{brl(g.guiaOriginal)}</p>
-              <p className="text-xs text-slate-500">{origemOriginal || (valorOriginal != null ? 'digitado' : 'ainda não informado')}</p>
-            </div>
-          </div>
-          {g.guiaRestante != null && g.guiaRestante < 0 && (
-            <p className="mt-3 text-[15px] text-red-700">
-              A guia do FUNDEB ficou maior que a original. Confira o valor da guia original e os departamentos marcados.
+          {!aliqDigitadas && (
+            <p className="mb-4 p-3 rounded-xl bg-amber-50 border border-amber-200 text-[15px] text-amber-900">
+              Usando as alíquotas do relatório ({pctTexto(doRelatorio?.aliqEmpresa)}% e {pctTexto(doRelatorio?.aliqRat)}%). Digite as suas no passo 1 para
+              recalcular.
             </p>
           )}
-          {g.deducoesForaDoFundeb > 0 && (
-            <p className="mt-4 p-3 rounded-xl bg-amber-50 border border-amber-200 text-[15px] text-amber-900">
-              Desconsiderados na guia do FUNDEB: salário-família {brl(g.totalFundeb.salarioFamilia)} e salário-maternidade {brl(g.totalFundeb.maternidade)}.
-              Eles continuam abatidos na guia original, então ficam na guia do restante.
-            </p>
-          )}
-
-          {porCodigo && (
-            <div className="mt-6">
-              <p className="font-bold text-[#0F2053]">Por código de receita · para emitir as duas guias no DCTFWeb</p>
-              <p className="text-sm text-slate-500">
-                Ao emitir cada guia, edite o valor de cada código com a coluna correspondente. Restante = guia original − FUNDEB, código por código.
-              </p>
-              <div className="mt-2 overflow-x-auto">
-                <table className="w-full min-w-[720px] text-[15px]">
-                  <thead className="bg-[#F7FAFD] text-left text-sm text-slate-500">
-                    <tr>
-                      <th className="px-3 py-2 font-semibold">Código</th>
-                      <th className="px-3 py-2 font-semibold">Descrição</th>
-                      <th className="px-3 py-2 font-semibold text-right">Guia original</th>
-                      <th className="px-3 py-2 font-semibold text-right">Guia do FUNDEB</th>
-                      <th className="px-3 py-2 font-semibold text-right">Guia do restante</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {porCodigo.linhas.map((l) => (
-                      <tr key={`${l.codigo}-${l.detalhe}`} className="border-t border-slate-100">
-                        <td className="px-3 py-2 tabular-nums font-semibold">
-                          {l.codigo}-{l.detalhe}
-                        </td>
-                        <td className="px-3 py-2">{l.descricao}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">{brl(l.total)}</td>
-                        <td className="px-3 py-2 text-right tabular-nums font-bold">{brl(l.fundeb)}</td>
-                        <td className={`px-3 py-2 text-right tabular-nums font-bold ${l.restante < 0 ? 'text-red-700' : ''}`}>{brl(l.restante)}</td>
-                      </tr>
-                    ))}
-                    <tr className="border-t-2 border-slate-300 font-bold">
-                      <td className="px-3 py-2" colSpan={2}>
-                        Total
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums">{brl(porCodigo.linhas.reduce((s, l) => s + l.total, 0))}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{brl(porCodigo.linhas.reduce((s, l) => s + l.fundeb, 0))}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{brl(porCodigo.linhas.reduce((s, l) => s + l.restante, 0))}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-              {porCodigo.linhas.some((l) => l.restante < 0) && (
-                <p className="mt-2 text-[15px] text-red-700">
-                  Algum código ficou negativo no restante: a parte do FUNDEB passou do valor da guia nesse código.
-                </p>
-              )}
-              {porCodigo.semCodigo.length > 0 && (
-                <p className="mt-2 text-[15px] text-red-700">
-                  O FUNDEB tem valores sem código na guia: {porCodigo.semCodigo.map((c) => `${c.chave} ${c.nome} (${brl(c.valor)})`).join('; ')}.
-                </p>
-              )}
+          <div className="flex flex-wrap items-end gap-x-8 gap-y-4">
+            <div>
+              <p className="text-sm text-slate-500">Guia do FUNDEB</p>
+              <p className="text-3xl font-extrabold tabular-nums text-[#0F2053]">{brl(g.guiaFundeb)}</p>
             </div>
-          )}
-
-          <div className="mt-5 flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => baixarXlsx(`${nomeArquivo}.xlsx`, abasReferencia(g, info, darf))}
-              className={`${botao} bg-[#1D6F42] hover:bg-[#185C37] text-white`}
-            >
-              <Icon name="sheet" className="w-5 h-5" /> Baixar planilha de referência (Excel)
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                downloadPdf(`${nomeArquivo}.pdf`, 'Guias de INSS: FUNDEB e restante', [
-                  { type: 'date', text: dateText() },
-                  ...(blocosPdfGuias(g, info, darf) as any),
-                ])
-              }
-              className={`${botao} bg-[#0478CA] hover:bg-[#03609F] text-white`}
-            >
-              <Icon name="doc" className="w-5 h-5" /> Relatório em PDF
+            <dl className="grid grid-cols-3 gap-x-6 gap-y-1 text-[15px]">
+              <dt className="text-sm text-slate-500">Segurados</dt>
+              <dt className="text-sm text-slate-500">Patronal ({pctTexto(info.patronal)}%)</dt>
+              <dt className="text-sm text-slate-500">RAT ajustado ({pctTexto(info.rat)}%)</dt>
+              <dd className="font-bold tabular-nums">{brl(tf.segurados)}</dd>
+              <dd className="font-bold tabular-nums">{brl(tf.patronalEmpresa)}</dd>
+              <dd className="font-bold tabular-nums">{brl(tf.gilrat)}</dd>
+            </dl>
+            <button type="button" onClick={baixarPlanilha} className={`${botao} ml-auto bg-[#1D6F42] hover:bg-[#185C37] text-white text-base px-5 py-3`}>
+              <Icon name="sheet" className="w-5 h-5" /> Baixar a planilha
             </button>
           </div>
+          <p className="mt-3 text-sm text-slate-500">
+            Base patronal do FUNDEB: {brl(tf.baseTributavel)}.
+            {aliqDigitadas && Math.abs(tf.diferencaRelatorio) >= 0.05 && (
+              <>
+                {' '}
+                Com essas alíquotas, patronal + RAT ficam {brl(Math.abs(tf.diferencaRelatorio))} {tf.diferencaRelatorio > 0 ? 'acima' : 'abaixo'} do que o
+                relatório calculou.
+              </>
+            )}{' '}
+            Salário-família ({brl(tf.salarioFamilia)}) e salário-maternidade ({brl(tf.maternidade)}) não foram abatidos.
+          </p>
 
           <div className="mt-6 flex flex-wrap items-baseline justify-between gap-2">
             <p className="font-bold text-[#0F2053]">Centros de custo do FUNDEB</p>
             <label className="inline-flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
-              <input type="checkbox" checked={verZerados} onChange={(e) => setVerZerados(e.target.checked)} /> mostrar também os centros zerados
+              <input type="checkbox" checked={verZerados} onChange={(e) => setVerZerados(e.target.checked)} /> mostrar também os zerados
             </label>
           </div>
           <div className="mt-2 overflow-x-auto">
-            <table className="w-full min-w-[720px] text-[15px]">
+            <table className="w-full min-w-[760px] text-[15px]">
               <thead className="bg-[#F7FAFD] text-left text-sm text-slate-500">
                 <tr>
                   <th className="px-3 py-2 font-semibold">Centro de custo</th>
-                  <th className="px-3 py-2 font-semibold text-right">Base INSS</th>
+                  <th className="px-3 py-2 font-semibold text-right">Base patronal</th>
                   <th className="px-3 py-2 font-semibold text-right">Segurados</th>
                   <th className="px-3 py-2 font-semibold text-right">Patronal</th>
-                  <th className="px-3 py-2 font-semibold text-right">Sal.-família e maternidade (fora)</th>
+                  <th className="px-3 py-2 font-semibold text-right">RAT ajustado</th>
                   <th className="px-3 py-2 font-semibold text-right">Valor para a guia</th>
                 </tr>
               </thead>
@@ -439,28 +367,129 @@ export default function DonaEuzebiaGuias() {
                       {c.centro}
                       {c.ccCodigo ? <span className="text-slate-400"> ({c.ccCodigo})</span> : null}
                     </td>
-                    <td className="px-3 py-2 text-right tabular-nums">{brl(c.base)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{brl(c.baseTributavel)}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{brl(c.segurados)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{brl(c.patronal)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-slate-500">{brl(c.salarioFamilia + c.maternidade)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{brl(c.patronalEmpresa)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{brl(c.gilrat)}</td>
                     <td className="px-3 py-2 text-right tabular-nums font-bold">{brl(c.valorGuia)}</td>
                   </tr>
                 ))}
                 <tr className="border-t-2 border-slate-300 font-bold">
                   <td className="px-3 py-2">Total ({g.fundeb.length} centros)</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{brl(g.totalFundeb.base)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{brl(g.totalFundeb.segurados)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{brl(g.totalFundeb.patronal)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{brl(g.totalFundeb.salarioFamilia + g.totalFundeb.maternidade)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{brl(tf.baseTributavel)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{brl(tf.segurados)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{brl(tf.patronalEmpresa)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{brl(tf.gilrat)}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{brl(g.guiaFundeb)}</td>
                 </tr>
               </tbody>
             </table>
           </div>
-          <p className="mt-3 text-sm text-slate-500">
-            Valor para a guia = total líquido do relatório + salário-família + salário-maternidade (o mesmo que segurados + patronal). Confira com a guia gerada
-            antes de pagar.
-          </p>
+
+          <div className="mt-6 pt-4 border-t border-slate-100">
+            <button type="button" onClick={() => setVerGuia((v) => !v)} aria-expanded={verGuia} className="text-[15px] font-bold text-[#0F2053] cursor-pointer">
+              <span className={`inline-block transition-transform ${verGuia ? 'rotate-90' : ''}`} aria-hidden="true">
+                ›
+              </span>{' '}
+              Opcional: guia do restante (com a guia original)
+            </button>
+            {verGuia && (
+              <div className="mt-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="relative">
+                    <span className="sr-only">Valor da guia original</span>
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">R$</span>
+                    <input
+                      value={original}
+                      onChange={(e) => {
+                        setOriginal(e.target.value);
+                        setOrigemOriginal('');
+                        setDarf(null);
+                      }}
+                      inputMode="decimal"
+                      placeholder="valor total da guia"
+                      className="w-52 pl-10 pr-3 py-2.5 rounded-xl border border-slate-300 text-base tabular-nums focus:outline-none focus:border-[#0478CA]"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => inputGuia.current?.click()}
+                    disabled={!!lendo}
+                    className={`${botao} border-2 border-slate-200 text-[#0F2053] hover:border-[#0478CA]`}
+                  >
+                    {darf ? 'trocar a guia (DARF)' : 'ou enviar o PDF da guia (DARF)'}
+                  </button>
+                  <input
+                    ref={inputGuia}
+                    type="file"
+                    accept="application/pdf,.pdf"
+                    className="hidden"
+                    onChange={(e) => e.target.files?.[0] && lerGuiaOriginal(e.target.files[0]).finally(() => (e.target.value = ''))}
+                  />
+                </div>
+                {origemOriginal && <p className="mt-1 text-sm text-slate-500">{origemOriginal}</p>}
+                {outroMunicipio && (
+                  <p role="alert" className="mt-3 p-3 rounded-xl bg-red-50 border border-red-200 text-[15px] text-red-800">
+                    Atenção: a guia é de <strong>{darf!.contribuinte}</strong> (CNPJ {darf!.cnpj}) e o relatório é de <strong>{prefeitura}</strong>.
+                  </p>
+                )}
+                {outraCompetencia && (
+                  <p role="alert" className="mt-3 text-[15px] text-red-700">
+                    Atenção: a guia é de {darf!.periodo} e o relatório de {competencias.join(', ')}.
+                  </p>
+                )}
+                {g.guiaRestante != null && (
+                  <p className="mt-3 text-[15px]">
+                    Guia original {brl(g.guiaOriginal)} − FUNDEB {brl(g.guiaFundeb)} ={' '}
+                    <strong className={g.guiaRestante < 0 ? 'text-red-700' : ''}>restante {brl(g.guiaRestante)}</strong>
+                  </p>
+                )}
+                {porCodigo && (
+                  <div className="mt-3 overflow-x-auto">
+                    <table className="w-full min-w-[640px] text-[15px]">
+                      <thead className="bg-[#F7FAFD] text-left text-sm text-slate-500">
+                        <tr>
+                          <th className="px-3 py-2 font-semibold">Código</th>
+                          <th className="px-3 py-2 font-semibold">Descrição</th>
+                          <th className="px-3 py-2 font-semibold text-right">Guia original</th>
+                          <th className="px-3 py-2 font-semibold text-right">FUNDEB</th>
+                          <th className="px-3 py-2 font-semibold text-right">Restante</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {porCodigo.linhas.map((l) => (
+                          <tr key={`${l.codigo}-${l.detalhe}`} className="border-t border-slate-100">
+                            <td className="px-3 py-2 tabular-nums font-semibold">
+                              {l.codigo}-{l.detalhe}
+                            </td>
+                            <td className="px-3 py-2">{l.descricao}</td>
+                            <td className="px-3 py-2 text-right tabular-nums">{brl(l.total)}</td>
+                            <td className="px-3 py-2 text-right tabular-nums font-bold">{brl(l.fundeb)}</td>
+                            <td className={`px-3 py-2 text-right tabular-nums font-bold ${l.restante < 0 ? 'text-red-700' : ''}`}>{brl(l.restante)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="mt-6 flex flex-wrap gap-2">
+            <button type="button" onClick={baixarPlanilha} className={`${botao} bg-[#1D6F42] hover:bg-[#185C37] text-white`}>
+              <Icon name="sheet" className="w-5 h-5" /> Baixar a planilha
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                downloadPdf(`${nomeArquivo}.pdf`, 'Guia de INSS do FUNDEB', [{ type: 'date', text: dateText() }, ...(blocosPdfGuias(g, info, darf) as any)])
+              }
+              className={`${botao} border-2 border-slate-200 text-[#0F2053] hover:border-[#0478CA]`}
+            >
+              <Icon name="doc" className="w-5 h-5" /> Relatório em PDF
+            </button>
+          </div>
         </div>
       )}
     </div>

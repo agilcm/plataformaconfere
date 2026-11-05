@@ -4,7 +4,8 @@
 /**
  * @typedef {{ titulo: string, largura?: number, tipo?: 'texto' | 'numero' | 'moeda' | 'data' | 'dataHora' }} Coluna
  * @typedef {{ nome: string, colunas: Coluna[], linhas: any[][] }} Aba
- * Uma célula pode ser uma fórmula: { f: 'SUM(B2:B9)' } (sem o "="), com o formato da coluna.
+ * Uma célula pode ser uma fórmula: { f: 'SUM(B2:B9)' } (sem o "="), com o formato da coluna, ou ter formato próprio:
+ * { v: 16.4, tipo: 'numero' } / { f: '...', tipo: 'numero' }.
  */
 
 const CRC = (() => {
@@ -105,7 +106,13 @@ function planilha(aba) {
       if (r === 0) return `<c r="${ref}" s="1" t="inlineStr"><is><t>${esc(v)}</t></is></c>`;
       if (v == null || v === '') return '';
       const tipo = aba.colunas[c]?.tipo || 'texto';
-      if (typeof v === 'object' && typeof v.f === 'string') return `<c r="${ref}" s="${ESTILO[tipo] ?? 0}"><f>${esc(v.f.replace(/^=/, ''))}</f></c>`;
+      if (typeof v === 'object') {
+        // célula com formato próprio ({ v: 16.4, tipo: 'numero' }) ou fórmula ({ f: 'SUM(B2:B9)', tipo? })
+        const est = ESTILO[v.tipo || tipo] ?? 0;
+        if (typeof v.f === 'string') return `<c r="${ref}" s="${est}"><f>${esc(v.f.replace(/^=/, ''))}</f></c>`;
+        if (typeof v.v === 'number' && Number.isFinite(v.v)) return `<c r="${ref}" s="${est}"><v>${v.v}</v></c>`;
+        return '';
+      }
       if (tipo === 'data' || tipo === 'dataHora') {
         const n = serial(v);
         if (n != null) return `<c r="${ref}" s="${ESTILO[tipo]}"><v>${n}</v></c>`;
