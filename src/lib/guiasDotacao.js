@@ -500,6 +500,9 @@ export function blocosPdfGuias(g, info, darf = null) {
               type: 'note',
               text: `DARF ${darf.numero || ''} · ${darf.contribuinte || ''} · período ${darf.periodo || '—'} · vencimento ${darf.vencimento || '—'}`,
             },
+            ...(mesmoMunicipio(darf.contribuinte, info.prefeitura)
+              ? []
+              : [{ type: 'para', bold: true, text: `Atenção: a guia é de ${darf.contribuinte} e o relatório é de ${info.prefeitura}. Confira os arquivos.` }]),
           ];
         })()
       : []),
