@@ -6,9 +6,12 @@ import {
   abasReferencia,
   blocosPdfGuias,
   departamentos,
+  dividirPorCodigo,
   ehFundeb,
   juntarCentros,
+  lerDarf,
   lerDetalhamento,
+  mesmoMunicipio,
   numeroBR,
   separarGuias,
   valorDaGuia,
@@ -36,6 +39,8 @@ const botao =
   'inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-[15px] font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed';
 
 type Centro = ReturnType<typeof lerDetalhamento>['centros'][number];
+type Darf = NonNullable<ReturnType<typeof lerDarf>>;
+const dinheiro = (v: number) => v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function DonaEuzebiaGuias() {
   const [centros, setCentros] = useState<Centro[]>([]);
@@ -47,6 +52,7 @@ export default function DonaEuzebiaGuias() {
   const [lendo, setLendo] = useState('');
   const [aviso, setAviso] = useState('');
   const [verZerados, setVerZerados] = useState(false);
+  const [darf, setDarf] = useState<Darf | null>(null);
   const inputDet = useRef<HTMLInputElement>(null);
   const inputGuia = useRef<HTMLInputElement>(null);
 
@@ -57,38 +63,47 @@ export default function DonaEuzebiaGuias() {
   const somaRelatorio = Math.round(centros.reduce((s, c) => s + c.liquido, 0) * 100) / 100;
   const temOutros = deps.some((d) => !marcados.has(d.nome));
 
+  /** A guia original: o DARF do DCTFWeb (com os códigos de receita) ou, sem ele, só o valor total achado no PDF */
+  const usarGuia = (linhas: any[], nome: string) => {
+    const d = lerDarf(linhas);
+    if (d?.total) {
+      setDarf(d);
+      setOriginal(dinheiro(d.total));
+      setOrigemOriginal(`DARF ${d.numero || nome} · ${d.contribuinte} · ${d.periodo} · vence em ${d.vencimento}`);
+      return true;
+    }
+    const v = valorDaGuia(linhas);
+    if (v == null) return false;
+    setDarf(null);
+    setOriginal(dinheiro(v));
+    setOrigemOriginal(`Lido do PDF ${nome}`);
+    return true;
+  };
+
   const lerDetalhamentos = async (lista: FileList) => {
     setAviso('');
     const novos: Centro[][] = [];
     const nomes: string[] = [];
-    let semCentros = 0;
+    const naoReconhecidos: string[] = [];
     for (const arq of Array.from(lista)) {
       setLendo(`Lendo ${arq.name}…`);
       try {
         const linhas = await linhasDe(arq);
         const r = lerDetalhamento(linhas);
         if (!r.centros.length) {
-          semCentros++;
-          // talvez seja a própria guia original
-          const v = valorDaGuia(linhas);
-          if (v != null) {
-            setOriginal(v.toLocaleString('pt-BR', { minimumFractionDigits: 2 }));
-            setOrigemOriginal(`Lido do PDF ${arq.name}`);
-          }
+          // não é o relatório: pode ser a guia original
+          if (!usarGuia(linhas, arq.name)) naoReconhecidos.push(arq.name);
           continue;
         }
         if (r.prefeitura) setPrefeitura(r.prefeitura);
         novos.push(r.centros);
         nomes.push(arq.name);
       } catch {
-        semCentros++;
+        naoReconhecidos.push(arq.name);
       }
     }
     setLendo('');
-    if (semCentros)
-      setAviso(
-        `${semCentros} arquivo(s) não são o “Detalhamento de Guias por Dotação”${semCentros ? ' (se for a guia original, o valor foi preenchido abaixo quando encontrado)' : ''}.`,
-      );
+    if (naoReconhecidos.length) setAviso(`Não reconheci ${naoReconhecidos.join(', ')}: não é o detalhamento nem uma guia com o valor total.`);
     if (!novos.length) return;
     const todos = juntarCentros([centros, ...novos]);
     setCentros(todos);
@@ -105,13 +120,8 @@ export default function DonaEuzebiaGuias() {
   const lerGuiaOriginal = async (arq: File) => {
     setLendo(`Lendo ${arq.name}…`);
     try {
-      const v = valorDaGuia(await linhasDe(arq));
-      if (v == null) setAviso(`Não achei o valor total em ${arq.name}. Digite o valor da guia original.`);
-      else {
-        setOriginal(v.toLocaleString('pt-BR', { minimumFractionDigits: 2 }));
-        setOrigemOriginal(`Lido do PDF ${arq.name}`);
-        setAviso('');
-      }
+      if (usarGuia(await linhasDe(arq), arq.name)) setAviso('');
+      else setAviso(`Não achei o valor total em ${arq.name}. Digite o valor da guia original.`);
     } catch {
       setAviso(`Não consegui ler ${arq.name}. Digite o valor da guia original.`);
     } finally {
@@ -126,6 +136,7 @@ export default function DonaEuzebiaGuias() {
     setOriginal('');
     setOrigemOriginal('');
     setAviso('');
+    setDarf(null);
   };
 
   const info = {
@@ -135,6 +146,9 @@ export default function DonaEuzebiaGuias() {
   };
   const nomeArquivo = `guias-inss-fundeb-${slug(info.competencia || 'competencia')}`;
   const listaFundeb = g.fundeb.filter((c) => verZerados || c.valorGuia || c.liquido || c.base);
+  const porCodigo = darf ? dividirPorCodigo(darf, g.totalFundeb) : null;
+  const outroMunicipio = darf && prefeitura && !mesmoMunicipio(darf.contribuinte, prefeitura);
+  const outraCompetencia = darf && competencias.length > 0 && !competencias.some((c) => c.toLowerCase() === darf.periodo.toLowerCase());
 
   return (
     <div className="space-y-6">
@@ -147,8 +161,11 @@ export default function DonaEuzebiaGuias() {
 
         <div className="mt-5 grid lg:grid-cols-2 gap-5">
           <div>
-            <p className="text-sm font-bold text-slate-600">1. Detalhamento de Guias por Dotação (SiplanWeb)</p>
-            <p className="text-sm text-slate-500">O PDF com uma página por centro de custo. Dá para enviar mais de um.</p>
+            <p className="text-sm font-bold text-slate-600">1. O relatório e a guia (PDF)</p>
+            <p className="text-sm text-slate-500">
+              O “Detalhamento de Guias por Dotação” do SiplanWeb (uma página por centro de custo) e a guia original (DARF do DCTFWeb). Pode enviar os dois
+              juntos.
+            </p>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <button
                 type="button"
@@ -156,7 +173,7 @@ export default function DonaEuzebiaGuias() {
                 disabled={!!lendo}
                 className={`${botao} bg-[#0F2053] hover:bg-[#13306f] text-white`}
               >
-                <Icon name="doc" className="w-5 h-5" /> Enviar o PDF do detalhamento
+                <Icon name="doc" className="w-5 h-5" /> Enviar os PDFs
               </button>
               {centros.length > 0 && (
                 <button type="button" onClick={limpar} className="text-sm font-bold text-slate-600 underline cursor-pointer">
@@ -179,7 +196,7 @@ export default function DonaEuzebiaGuias() {
             )}
           </div>
           <div>
-            <p className="text-sm font-bold text-slate-600">2. Valor da guia original (o total, numa guia só)</p>
+            <p className="text-sm font-bold text-slate-600">2. Guia original (o total, numa guia só)</p>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <label className="relative">
                 <span className="sr-only">Valor da guia original</span>
@@ -189,6 +206,7 @@ export default function DonaEuzebiaGuias() {
                   onChange={(e) => {
                     setOriginal(e.target.value);
                     setOrigemOriginal('');
+                    setDarf(null);
                   }}
                   inputMode="decimal"
                   placeholder="0,00"
@@ -201,7 +219,7 @@ export default function DonaEuzebiaGuias() {
                 disabled={!!lendo}
                 className={`${botao} border-2 border-slate-200 text-[#0F2053] hover:border-[#0478CA]`}
               >
-                ou enviar o PDF da guia
+                {darf ? 'trocar a guia (DARF)' : 'ou enviar o PDF da guia (DARF)'}
               </button>
               {temOutros && somaRelatorio > 0 && (
                 <button
@@ -230,6 +248,17 @@ export default function DonaEuzebiaGuias() {
         {aviso && <p className="mt-4 text-[15px] text-amber-900">{aviso}</p>}
         {competencias.length > 1 && (
           <p className="mt-4 text-[15px] text-red-700">Atenção: os PDFs são de competências diferentes ({competencias.join(', ')}).</p>
+        )}
+        {outroMunicipio && (
+          <p role="alert" className="mt-4 p-3 rounded-xl bg-red-50 border border-red-200 text-[15px] text-red-800">
+            Atenção: a guia é de <strong>{darf!.contribuinte}</strong> (CNPJ {darf!.cnpj}) e o relatório é de <strong>{prefeitura}</strong>. Confira se os dois
+            arquivos são do mesmo município.
+          </p>
+        )}
+        {outraCompetencia && (
+          <p role="alert" className="mt-4 text-[15px] text-red-700">
+            Atenção: a guia é de {darf!.periodo} e o relatório de {competencias.join(', ')}.
+          </p>
         )}
 
         {deps.length > 0 && (
@@ -310,10 +339,63 @@ export default function DonaEuzebiaGuias() {
             </p>
           )}
 
+          {porCodigo && (
+            <div className="mt-6">
+              <p className="font-bold text-[#0F2053]">Por código de receita · para emitir as duas guias no DCTFWeb</p>
+              <p className="text-sm text-slate-500">
+                Ao emitir cada guia, edite o valor de cada código com a coluna correspondente. Restante = guia original − FUNDEB, código por código.
+              </p>
+              <div className="mt-2 overflow-x-auto">
+                <table className="w-full min-w-[720px] text-[15px]">
+                  <thead className="bg-[#F7FAFD] text-left text-sm text-slate-500">
+                    <tr>
+                      <th className="px-3 py-2 font-semibold">Código</th>
+                      <th className="px-3 py-2 font-semibold">Descrição</th>
+                      <th className="px-3 py-2 font-semibold text-right">Guia original</th>
+                      <th className="px-3 py-2 font-semibold text-right">Guia do FUNDEB</th>
+                      <th className="px-3 py-2 font-semibold text-right">Guia do restante</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {porCodigo.linhas.map((l) => (
+                      <tr key={`${l.codigo}-${l.detalhe}`} className="border-t border-slate-100">
+                        <td className="px-3 py-2 tabular-nums font-semibold">
+                          {l.codigo}-{l.detalhe}
+                        </td>
+                        <td className="px-3 py-2">{l.descricao}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{brl(l.total)}</td>
+                        <td className="px-3 py-2 text-right tabular-nums font-bold">{brl(l.fundeb)}</td>
+                        <td className={`px-3 py-2 text-right tabular-nums font-bold ${l.restante < 0 ? 'text-red-700' : ''}`}>{brl(l.restante)}</td>
+                      </tr>
+                    ))}
+                    <tr className="border-t-2 border-slate-300 font-bold">
+                      <td className="px-3 py-2" colSpan={2}>
+                        Total
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums">{brl(porCodigo.linhas.reduce((s, l) => s + l.total, 0))}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{brl(porCodigo.linhas.reduce((s, l) => s + l.fundeb, 0))}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{brl(porCodigo.linhas.reduce((s, l) => s + l.restante, 0))}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              {porCodigo.linhas.some((l) => l.restante < 0) && (
+                <p className="mt-2 text-[15px] text-red-700">
+                  Algum código ficou negativo no restante: a parte do FUNDEB passou do valor da guia nesse código.
+                </p>
+              )}
+              {porCodigo.semCodigo.length > 0 && (
+                <p className="mt-2 text-[15px] text-red-700">
+                  O FUNDEB tem valores sem código na guia: {porCodigo.semCodigo.map((c) => `${c.chave} ${c.nome} (${brl(c.valor)})`).join('; ')}.
+                </p>
+              )}
+            </div>
+          )}
+
           <div className="mt-5 flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={() => baixarXlsx(`${nomeArquivo}.xlsx`, abasReferencia(g, info))}
+              onClick={() => baixarXlsx(`${nomeArquivo}.xlsx`, abasReferencia(g, info, darf))}
               className={`${botao} bg-[#1D6F42] hover:bg-[#185C37] text-white`}
             >
               <Icon name="sheet" className="w-5 h-5" /> Baixar planilha de referência (Excel)
@@ -321,7 +403,10 @@ export default function DonaEuzebiaGuias() {
             <button
               type="button"
               onClick={() =>
-                downloadPdf(`${nomeArquivo}.pdf`, 'Guias de INSS: FUNDEB e restante', [{ type: 'date', text: dateText() }, ...(blocosPdfGuias(g, info) as any)])
+                downloadPdf(`${nomeArquivo}.pdf`, 'Guias de INSS: FUNDEB e restante', [
+                  { type: 'date', text: dateText() },
+                  ...(blocosPdfGuias(g, info, darf) as any),
+                ])
               }
               className={`${botao} bg-[#0478CA] hover:bg-[#03609F] text-white`}
             >

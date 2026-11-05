@@ -12,6 +12,14 @@ const ROTULOS = {
   segurados: 'Segurado (Empregados)',
   autonomos: 'Contrib. Individuais (Autônomos)',
   autonomosTransporte: 'Contrib. Individuais (Aut. Transporte)',
+  conselheiros: 'Contrib. Individuais (Conselheiros Tutelares)',
+  patronalAutonomos: 'Percentual Autônomos',
+  patronalAutonomosTransporte: 'Percentual Autônomos - Transporte',
+  patronalConselheiros: 'Percentual Conselheiros Tutelares',
+  extraRat: 'Percentual Extra Aliq. RAT',
+  nocivo15: 'RAT Agente Nocivo 12%',
+  nocivo20: 'RAT Agente Nocivo 9%',
+  nocivo25: 'RAT Agente Nocivo 6%',
   patronal: 'Empresa + (AcdTrab x FAP)',
   salarioFamilia: 'Deduções FPAS (Sal. Família/Aux. Nat.)',
   maternidade: 'Deduções FPAS (Sal. Maternidade)',
@@ -77,6 +85,9 @@ export function lerDetalhamento(linhas) {
     const seguradosAnteriores = valorDe(textos, ROTULOS.segurados, 1);
     const aliquota = (textos.join(' ').match(/AcdTrab x FAP\)\s*\(([^)]*)\)/) || [])[1] || '';
     const deducoes = centavos(v.salarioFamilia + v.maternidade + v.maternidade13);
+    // "Empresa + (AcdTrab x FAP) (16,40 + 3,3840)": a parte da empresa (código 1138) e o GILRAT ajustado (1646)
+    const [pEmpresa, pRat] = aliquota.split('+').map((x) => numeroBR(x.trim()));
+    const patronalEmpresa = pEmpresa > 0 && pRat >= 0 ? centavos((v.patronal * pEmpresa) / (pEmpresa + pRat)) : v.patronal;
     // a guia sem as deduções de salário-família e maternidade
     const valorGuia = centavos(v.liquido + deducoes);
     centros.push({
@@ -90,6 +101,13 @@ export function lerDetalhamento(linhas) {
       base: v.base,
       segurados: centavos(v.segurados + seguradosAnteriores),
       patronal: v.patronal,
+      aliqEmpresa: pEmpresa > 0 ? pEmpresa : 0,
+      aliqRat: pRat >= 0 ? pRat || 0 : 0,
+      patronalEmpresa,
+      gilrat: centavos(v.patronal - patronalEmpresa),
+      contribIndividuais: centavos(v.autonomos + v.autonomosTransporte + v.conselheiros),
+      patronalIndividuais: centavos(v.patronalAutonomos + v.patronalAutonomosTransporte + v.patronalConselheiros),
+      adicionalEspecial: centavos(v.nocivo15 + v.nocivo20 + v.nocivo25 + v.extraRat),
       outros: centavos(valorGuia - v.segurados - seguradosAnteriores - v.patronal),
       salarioFamilia: v.salarioFamilia,
       maternidade: centavos(v.maternidade + v.maternidade13),
@@ -133,7 +151,22 @@ export const ehFundeb = (departamento) => /fundeb/i.test(departamento);
 const somar = (lista, campo) => centavos(lista.reduce((s, c) => s + (Number(c[campo]) || 0), 0));
 export function totais(lista) {
   return Object.fromEntries(
-    ['base', 'segurados', 'patronal', 'outros', 'salarioFamilia', 'maternidade', 'liquido', 'valorGuia', 'irrf'].map((k) => [k, somar(lista, k)]),
+    [
+      'base',
+      'segurados',
+      'patronal',
+      'patronalEmpresa',
+      'gilrat',
+      'contribIndividuais',
+      'patronalIndividuais',
+      'adicionalEspecial',
+      'outros',
+      'salarioFamilia',
+      'maternidade',
+      'liquido',
+      'valorGuia',
+      'irrf',
+    ].map((k) => [k, somar(lista, k)]),
   );
 }
 
@@ -174,6 +207,93 @@ export function departamentos(centros) {
   return [...m.values()];
 }
 
+// ---------------------------------------------------------------- guia original (DARF do DCTFWeb) por código de receita
+
+const DINHEIRO = /\d{1,3}(?:\.\d{3})*,\d{2}/g;
+
+/**
+ * Lê o DARF (Documento de Arrecadação de Receitas Federais) do DCTFWeb: contribuinte, período, vencimento,
+ * total e a composição por código de receita. Devolve null se o PDF não for um DARF.
+ */
+export function lerDarf(linhas) {
+  const textos = linhas.map((l) => (l.texto ?? String(l)).trim());
+  if (!textos.some((t) => /Composi[cç][aã]o do Documento de Arrecada/i.test(t))) return null;
+  const contribuinte = textos.map((t) => t.match(/(\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2})\s+(.+)/)).find(Boolean);
+  const periodo = textos
+    .map((t) =>
+      t.match(/^((?:janeiro|fevereiro|mar[cç]o|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\/\d{4})\s+(\d{2}\/\d{2}\/\d{4})\s+([\d.-]+)/i),
+    )
+    .find(Boolean);
+  const itens = [];
+  for (let i = 0; i < textos.length; i++) {
+    const m = textos[i].match(/^(\d{4})\s+(.+?)\s+(\d{1,3}(?:\.\d{3})*,\d{2}(?:\s+.*)?)$/);
+    if (!m) continue;
+    const valores = m[3].match(DINHEIRO).map(numeroBR);
+    const detalhe = (textos[i + 1] || '').match(/^(\d{2})\s+(.+)$/);
+    itens.push({
+      codigo: m[1],
+      detalhe: detalhe ? detalhe[1] : '',
+      denominacao: m[2].trim(),
+      descricao: detalhe ? detalhe[2].trim() : m[2].trim(),
+      principal: valores[0],
+      total: valores.at(-1),
+    });
+  }
+  return {
+    cnpj: contribuinte?.[1] || '',
+    contribuinte: contribuinte?.[2]?.trim() || '',
+    periodo: periodo?.[1] || '',
+    vencimento: periodo?.[2] || '',
+    numero: periodo?.[3] || '',
+    total: valorDaGuia(linhas),
+    itens,
+  };
+}
+
+/** Parte do FUNDEB em cada código de receita do DARF (o que vem do relatório de cada centro) */
+export const CODIGOS_FUNDEB = [
+  { chave: '1082-01', campo: 'segurados', nome: 'Segurados (empregados)' },
+  { chave: '1099-01', campo: 'contribIndividuais', nome: 'Segurados contribuintes individuais' },
+  { chave: '1138-01', campo: 'patronalEmpresa', nome: 'Patronal sobre empregados' },
+  { chave: '1138-04', campo: 'patronalIndividuais', nome: 'Patronal sobre contribuintes individuais' },
+  { chave: '1646-01', campo: 'gilrat', nome: 'GILRAT ajustado (RAT × FAP)' },
+  { chave: '1141-01', campo: 'adicionalEspecial', nome: 'Adicional para aposentadoria especial' },
+];
+
+/**
+ * Divide cada código do DARF entre a guia do FUNDEB e a do restante (restante = original − FUNDEB).
+ * @returns {{ linhas: any[], semCodigo: any[] }}  semCodigo = parte do FUNDEB sem código correspondente na guia
+ */
+export function dividirPorCodigo(darf, totalFundeb) {
+  const linhas = darf.itens.map((it) => {
+    const c = CODIGOS_FUNDEB.find((x) => x.chave === `${it.codigo}-${it.detalhe}`);
+    const fundeb = c ? centavos(totalFundeb[c.campo]) : 0;
+    return { ...it, fundeb, restante: centavos(it.total - fundeb) };
+  });
+  const semCodigo = CODIGOS_FUNDEB.filter((c) => centavos(totalFundeb[c.campo]) && !darf.itens.some((it) => `${it.codigo}-${it.detalhe}` === c.chave)).map(
+    (c) => ({
+      ...c,
+      valor: centavos(totalFundeb[c.campo]),
+    }),
+  );
+  return { linhas, semCodigo };
+}
+
+/** "MUNICIPIO DE ASTOLFO DUTRA" × "PREFEITURA MUNICIPAL DE DONA EUZEBIA": é o mesmo município? */
+export function mesmoMunicipio(a, b) {
+  const nome = (s) =>
+    String(s || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase()
+      .replace(/^.*?\b(MUNICIPIO|PREFEITURA MUNICIPAL|CAMARA MUNICIPAL)\s+(DE|DO|DA)\s+/, '')
+      .replace(/[^A-Z ]/g, '')
+      .replace(/\bS\b/g, 'Z')
+      .replace(/S/g, 'Z')
+      .trim();
+  return !a || !b || nome(a) === nome(b);
+}
+
 // ---------------------------------------------------------------- planilha de referência e PDF
 
 const COLUNAS_CENTROS = [
@@ -181,17 +301,29 @@ const COLUNAS_CENTROS = [
   { titulo: 'Centro de custo', largura: 40 },
   { titulo: 'Base INSS', tipo: 'moeda', largura: 16 },
   { titulo: 'Segurados', tipo: 'moeda', largura: 15 },
-  { titulo: 'Patronal (20% + RAT×FAP)', tipo: 'moeda', largura: 24 },
+  { titulo: 'Patronal (empresa + RAT×FAP)', tipo: 'moeda', largura: 26 },
   { titulo: 'Outros valores da GPS', tipo: 'moeda', largura: 20 },
   { titulo: 'Salário-família (desconsiderado)', tipo: 'moeda', largura: 28 },
   { titulo: 'Salário-maternidade (desconsiderado)', tipo: 'moeda', largura: 32 },
   { titulo: 'Total líquido no relatório', tipo: 'moeda', largura: 24 },
   { titulo: 'Valor para a guia', tipo: 'moeda', largura: 18 },
+  { titulo: 'Alíquota empresa (%)', tipo: 'numero', largura: 18 },
+  { titulo: 'Alíquota RAT×FAP (%)', tipo: 'numero', largura: 18 },
+  { titulo: 'Código 1138-01 (patronal)', tipo: 'moeda', largura: 24 },
+  { titulo: 'Código 1646-01 (GILRAT)', tipo: 'moeda', largura: 22 },
+  { titulo: 'Código 1099-01 (contrib. individuais)', tipo: 'moeda', largura: 30 },
+  { titulo: 'Código 1138-04 (patronal contrib. individuais)', tipo: 'moeda', largura: 36 },
+  { titulo: 'Código 1141-01 (adicional aposent. especial)', tipo: 'moeda', largura: 36 },
 ];
+// coluna da aba de centros onde está a parte de cada código de receita
+const COLUNA_DO_CODIGO = { '1082-01': 'D', '1138-01': 'M', '1646-01': 'N', '1099-01': 'O', '1138-04': 'P', '1141-01': 'Q' };
 
 const temValor = (c) => c.valorGuia || c.base || c.liquido || c.salarioFamilia || c.maternidade;
 
-/** Aba de centros: dados do relatório + fórmulas (valor para a guia = líquido + deduções; outros = guia − segurados − patronal) e a linha de total */
+/**
+ * Aba de centros: dados do relatório + fórmulas (valor para a guia = líquido + deduções; outros = guia − segurados − patronal;
+ * patronal dividido entre os códigos 1138 e 1646 pelas alíquotas do relatório) e a linha de total
+ */
 function abaCentros(nome, lista) {
   const linhas = lista.filter(temValor).map((c, i) => {
     const r = i + 2;
@@ -206,24 +338,30 @@ function abaCentros(nome, lista) {
       c.maternidade,
       c.liquido,
       { f: `I${r}+G${r}+H${r}` },
+      c.aliqEmpresa,
+      c.aliqRat,
+      { f: `IF(K${r}+L${r}=0,E${r},ROUND(E${r}*K${r}/(K${r}+L${r}),2))` },
+      { f: `E${r}-M${r}` },
+      c.contribIndividuais,
+      c.patronalIndividuais,
+      c.adicionalEspecial,
     ];
   });
   const ultima = linhas.length + 1;
   const total = ultima + 1;
-  linhas.push([
-    'Total',
-    `${linhas.length} centros com valor`,
-    ...['C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'].map((col) => ({ f: ultima >= 2 ? `SUM(${col}2:${col}${ultima})` : '0' })),
-  ]);
+  const soma = (col) => ({ f: ultima >= 2 ? `SUM(${col}2:${col}${ultima})` : '0' });
+  linhas.push(['Total', `${linhas.length} centros com valor`, ...'CDEFGHIJ'.split('').map(soma), '', '', ...'MNOPQ'.split('').map(soma)]);
   return { aba: { nome, colunas: COLUNAS_CENTROS, linhas }, total };
 }
 
 /**
- * Abas do Excel de referência: Resumo (guia original, FUNDEB e restante em fórmulas), FUNDEB e, se houver, Restante.
+ * Abas do Excel de referência: Resumo (guia original, FUNDEB e restante em fórmulas), FUNDEB, Por código (com o DARF)
+ * e, se houver outros departamentos no relatório, Restante.
  * @param {ReturnType<typeof separarGuias>} g
  * @param {{ competencia: string, prefeitura: string, origemOriginal?: string }} info
+ * @param {ReturnType<typeof lerDarf>} [darf]
  */
-export function abasReferencia(g, info) {
+export function abasReferencia(g, info, darf = null) {
   const f = abaCentros('FUNDEB', g.fundeb);
   const abas = [f.aba];
   const t = f.total;
@@ -234,10 +372,41 @@ export function abasReferencia(g, info) {
     ['Guia do FUNDEB', { f: `FUNDEB!J${t}` }, 'Segurados + patronal dos centros do FUNDEB, sem salário-família e salário-maternidade (aba FUNDEB)'],
     ['Guia do restante', { f: 'IF(B4="","",B4-B5)' }, 'Guia original menos a guia do FUNDEB'],
     ['Segurados do FUNDEB', { f: `FUNDEB!D${t}` }, ''],
-    ['Patronal do FUNDEB (20% + RAT×FAP)', { f: `FUNDEB!E${t}` }, ''],
+    ['Patronal do FUNDEB (empresa + RAT×FAP)', { f: `FUNDEB!E${t}` }, ''],
     ['Salário-família desconsiderado no FUNDEB', { f: `FUNDEB!G${t}` }, 'Fica abatido na guia do restante'],
     ['Salário-maternidade desconsiderado no FUNDEB', { f: `FUNDEB!H${t}` }, 'Fica abatido na guia do restante'],
   ];
+  if (darf?.itens?.length) {
+    const linhas = darf.itens.map((it, i) => {
+      const r = i + 2;
+      const chave = `${it.codigo}-${it.detalhe}`;
+      const col = COLUNA_DO_CODIGO[chave];
+      return [
+        chave,
+        it.descricao,
+        it.total,
+        col ? { f: `FUNDEB!${col}${t}` } : 0,
+        { f: `C${r}-D${r}` },
+        col ? `Aba FUNDEB, coluna ${col} (total)` : 'Sem parte do FUNDEB: vai todo para o restante',
+      ];
+    });
+    const ult = linhas.length + 1;
+    linhas.push(['Total', '', ...'CDE'.split('').map((c) => ({ f: `SUM(${c}2:${c}${ult})` })), '']);
+    abas.push({
+      nome: 'Por código',
+      colunas: [
+        { titulo: 'Código', largura: 10 },
+        { titulo: 'Descrição', largura: 48 },
+        { titulo: 'Guia original', tipo: 'moeda', largura: 18 },
+        { titulo: 'Guia do FUNDEB', tipo: 'moeda', largura: 18 },
+        { titulo: 'Guia do restante', tipo: 'moeda', largura: 18 },
+        { titulo: 'De onde vem o valor do FUNDEB', largura: 46 },
+      ],
+      linhas,
+    });
+    resumo.push(["Conferência: soma dos códigos do FUNDEB (aba 'Por código')", { f: `'Por código'!D${ult + 1}` }, 'Tem que ser igual à guia do FUNDEB']);
+    resumo.push(["Conferência: soma dos códigos do restante (aba 'Por código')", { f: `'Por código'!E${ult + 1}` }, 'Tem que ser igual à guia do restante']);
+  }
   if (g.outros.some(temValor)) {
     const o = abaCentros('Restante', g.outros);
     abas.push(o.aba);
@@ -250,7 +419,7 @@ export function abasReferencia(g, info) {
   abas.unshift({
     nome: 'Resumo',
     colunas: [
-      { titulo: 'Item', largura: 46 },
+      { titulo: 'Item', largura: 52 },
       { titulo: 'Valor', tipo: 'moeda', largura: 18 },
       { titulo: 'Como chegou nesse valor', largura: 90 },
     ],
@@ -261,8 +430,13 @@ export function abasReferencia(g, info) {
 
 const brl = (v) => (v == null ? '—' : Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }));
 
-/** Blocos do relatório em PDF (layout Ágil CM, lib/pdfReport.ts) */
-export function blocosPdfGuias(g, info) {
+/**
+ * Blocos do relatório em PDF (layout Ágil CM, lib/pdfReport.ts)
+ * @param {ReturnType<typeof separarGuias>} g
+ * @param {{ competencia: string, prefeitura: string }} info
+ * @param {ReturnType<typeof lerDarf>} [darf]
+ */
+export function blocosPdfGuias(g, info, darf = null) {
   const linhasCentros = (lista) =>
     lista
       .filter(temValor)
@@ -292,6 +466,43 @@ export function blocosPdfGuias(g, info) {
       type: 'note',
       text: `Guia do FUNDEB = segurados ${brl(tf.segurados)} + patronal ${brl(tf.patronal)}${tf.outros ? ` + outros ${brl(tf.outros)}` : ''}. Salário-família (${brl(tf.salarioFamilia)}) e salário-maternidade (${brl(tf.maternidade)}) dos centros do FUNDEB não foram abatidos: ficam na guia do restante.`,
     },
+    ...(darf?.itens?.length
+      ? (() => {
+          const d = dividirPorCodigo(darf, tf);
+          const soma = (k) => d.linhas.reduce((s, l) => s + l[k], 0);
+          return [
+            { type: 'heading', text: 'Por código de receita (para emitir as guias no DCTFWeb)' },
+            {
+              type: 'table',
+              widths: [0.9, 3.2, 1.3, 1.3, 1.3],
+              header: ['Código', 'Descrição', 'Guia original', 'FUNDEB', 'Restante'],
+              headerAlign: ['left', 'left', 'right', 'right', 'right'],
+              rows: [
+                ...d.linhas.map((l) => [
+                  `${l.codigo}-${l.detalhe}`,
+                  l.descricao,
+                  { text: brl(l.total), align: 'right' },
+                  { text: brl(l.fundeb), align: 'right', bold: true },
+                  { text: brl(l.restante), align: 'right', bold: true },
+                ]),
+                [
+                  { text: 'Total', bold: true },
+                  '',
+                  { text: brl(soma('total')), align: 'right', bold: true },
+                  { text: brl(soma('fundeb')), align: 'right', bold: true },
+                  { text: brl(soma('restante')), align: 'right', bold: true },
+                ],
+              ],
+              totalRows: 1,
+              size: 8.5,
+            },
+            {
+              type: 'note',
+              text: `DARF ${darf.numero || ''} · ${darf.contribuinte || ''} · período ${darf.periodo || '—'} · vencimento ${darf.vencimento || '—'}`,
+            },
+          ];
+        })()
+      : []),
     { type: 'heading', text: 'Centros de custo do FUNDEB' },
     {
       type: 'table',
