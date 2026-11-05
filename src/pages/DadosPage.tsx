@@ -10,12 +10,14 @@ import { aliquotasPresumido, contaFatorR, criticarFatorR, faturamentosDe, folhaF
 import { dateText, downloadPdf } from '../lib/pdfReport.ts';
 import { blocosPdfSimples } from '../lib/simplesRelatorio.js';
 import { baixarXlsx } from '../lib/xlsx.js';
+import DonaEuzebiaGuias from './DonaEuzebiaGuias.tsx';
 
-type Aba = 'rh' | 'simples' | 'eleicao';
+type Aba = 'rh' | 'simples' | 'eleicao' | 'euzebia';
 const ABAS: { id: Aba; label: string; icon: string }[] = [
   { id: 'rh', label: 'Simulador de RH', icon: 'users' },
   { id: 'simples', label: 'Simples, pró-labore e regime', icon: 'chart' },
   { id: 'eleicao', label: 'Eleição', icon: 'check' },
+  { id: 'euzebia', label: 'Dona Euzébia', icon: 'calc' },
 ];
 
 const moeda = (v: number | null | undefined) => (v == null ? '—' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }));
@@ -576,7 +578,15 @@ function SimuladorSimplesProLabore() {
 
 // ---------------------------------------------------------------- página
 
-const HASH: Record<string, Aba> = { '#rh': 'rh', '#simples': 'simples', '#pro-labore': 'simples', '#comparativo': 'simples', '#eleicao': 'eleicao' };
+const HASH: Record<string, Aba> = {
+  '#rh': 'rh',
+  '#simples': 'simples',
+  '#pro-labore': 'simples',
+  '#comparativo': 'simples',
+  '#eleicao': 'eleicao',
+  '#euzebia': 'euzebia',
+  '#dona-euzebia': 'euzebia',
+};
 
 export default function DadosPage() {
   const [aba, setAba] = useState<Aba>('rh');
@@ -621,6 +631,7 @@ export default function DadosPage() {
           </div>
           <div role="tabpanel" className="mt-6">
             {aba === 'simples' && <SimuladorSimplesProLabore />}
+            {aba === 'euzebia' && <DonaEuzebiaGuias />}
             {aba === 'eleicao' && (
               <div className={card}>
                 <p className="text-lg font-bold text-[#0F2053]">Eleições em dados</p>

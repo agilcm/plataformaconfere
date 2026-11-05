@@ -4,6 +4,7 @@
 /**
  * @typedef {{ titulo: string, largura?: number, tipo?: 'texto' | 'numero' | 'moeda' | 'data' | 'dataHora' }} Coluna
  * @typedef {{ nome: string, colunas: Coluna[], linhas: any[][] }} Aba
+ * Uma célula pode ser uma fórmula: { f: 'SUM(B2:B9)' } (sem o "="), com o formato da coluna.
  */
 
 const CRC = (() => {
@@ -104,6 +105,7 @@ function planilha(aba) {
       if (r === 0) return `<c r="${ref}" s="1" t="inlineStr"><is><t>${esc(v)}</t></is></c>`;
       if (v == null || v === '') return '';
       const tipo = aba.colunas[c]?.tipo || 'texto';
+      if (typeof v === 'object' && typeof v.f === 'string') return `<c r="${ref}" s="${ESTILO[tipo] ?? 0}"><f>${esc(v.f.replace(/^=/, ''))}</f></c>`;
       if (tipo === 'data' || tipo === 'dataHora') {
         const n = serial(v);
         if (n != null) return `<c r="${ref}" s="${ESTILO[tipo]}"><v>${n}</v></c>`;
@@ -171,7 +173,7 @@ export function criarXlsx(abas) {
         nomes.map((n, i) => `<sheet name="${esc(n)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join('') +
         '</sheets><definedNames>' +
         abas.map((a, i) => `<definedName name="_xlnm._FilterDatabase" localSheetId="${i}" hidden="1">'${esc(nomes[i]).replace(/'/g, "''")}'!$A$1:$${letra(a.colunas.length - 1)}$${a.linhas.length + 1}</definedName>`).join('') +
-        '</definedNames></workbook>',
+        '</definedNames><calcPr calcId="191029" fullCalcOnLoad="1"/></workbook>',
     },
     {
       nome: 'xl/_rels/workbook.xml.rels',
