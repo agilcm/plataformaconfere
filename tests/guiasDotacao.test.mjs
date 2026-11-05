@@ -95,8 +95,16 @@ test('planilha de referência tem as fórmulas da conta', () => {
   const abas = abasReferencia(separarGuias(cs, new Set(['Fundeb']), 34513.41), { prefeitura: 'X', competencia: 'Outubro/2026', patronal: 16.4, rat: 3.384 });
   assert.deepEqual(
     abas.map((a) => a.nome),
-    ['Resumo', 'FUNDEB', 'Restante'],
+    ['Resumo', 'FUNDEB', 'Por código', 'Restante'],
   );
+  // sem a guia completa, a aba Por código traz os códigos do FUNDEB e o restante fica em branco
+  const cod = abas[2].linhas;
+  assert.deepEqual(
+    cod.map((l) => l[0]),
+    ['1082-01', '1138-01', '1646-01', 'Total'],
+  );
+  assert.deepEqual(cod[0][2], { f: 'FUNDEB!E4' });
+  assert.deepEqual(cod[0][4], { f: 'IF(D2="","",D2-C2)' });
   const fundeb = abas[1];
   // patronal e RAT = base patronal × alíquotas que ficam no Resumo
   assert.deepEqual(fundeb.linhas[0][5], { f: 'ROUND(D2*Resumo!$B$4/100,2)' });
@@ -173,4 +181,38 @@ test('lê o DARF do DCTFWeb por código e divide FUNDEB e restante', async () =>
   assert.equal(Math.round(d.linhas.reduce((s, x) => s + x.fundeb, 0) * 100) / 100, 31734.51); // = guia do FUNDEB
   assert.equal(mesmoMunicipio('MUNICIPIO DE DONA EUSEBIA', 'PREFEITURA MUNICIPAL DE DONA EUZEBIA'), true);
   assert.equal(mesmoMunicipio('MUNICIPIO DE ASTOLFO DUTRA', 'PREFEITURA MUNICIPAL DE DONA EUZEBIA'), false);
+});
+
+test('tabela de códigos: só FUNDEB e, com a guia completa, o restante (não FUNDEB) de cada código', async () => {
+  const { tabelaCodigos } = await import('../src/lib/guiasDotacao.js');
+  const tf = { segurados: 100, patronalEmpresa: 200, gilrat: 30, contribIndividuais: 0, patronalIndividuais: 0, adicionalEspecial: 5 };
+  const so = tabelaCodigos(tf);
+  assert.deepEqual(
+    so.linhas.map((l) => [l.chave, l.fundeb, l.restante]),
+    [
+      ['1082-01', 100, null],
+      ['1138-01', 200, null],
+      ['1646-01', 30, null],
+      ['1141-01', 5, null],
+    ],
+  );
+  assert.deepEqual(so.total, { fundeb: 335, completa: null, restante: null });
+  const darf = {
+    itens: [
+      { codigo: '1082', detalhe: '01', descricao: 'A', total: 1000 },
+      { codigo: '1138', detalhe: '01', descricao: 'B', total: 2000 },
+      { codigo: '1646', detalhe: '01', descricao: 'C', total: 300 },
+    ],
+  };
+  const com = tabelaCodigos(tf, darf);
+  assert.deepEqual(
+    com.linhas.map((l) => [l.chave, l.completa, l.fundeb, l.restante]),
+    [
+      ['1082-01', 1000, 100, 900],
+      ['1138-01', 2000, 200, 1800],
+      ['1646-01', 300, 30, 270],
+      ['1141-01', 0, 5, -5], // o FUNDEB tem 1141 mas a guia completa não: aparece para conferir
+    ],
+  );
+  assert.deepEqual(com.total, { fundeb: 335, completa: 3300, restante: 2965 });
 });

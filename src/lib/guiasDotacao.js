@@ -311,13 +311,74 @@ export function lerDarf(linhas) {
 
 /** Parte do FUNDEB em cada código de receita do DARF (o que vem do relatório de cada centro) */
 export const CODIGOS_FUNDEB = [
-  { chave: '1082-01', campo: 'segurados', nome: 'Segurados (empregados)' },
-  { chave: '1099-01', campo: 'contribIndividuais', nome: 'Segurados contribuintes individuais' },
-  { chave: '1138-01', campo: 'patronalEmpresa', nome: 'Patronal sobre empregados' },
-  { chave: '1138-04', campo: 'patronalIndividuais', nome: 'Patronal sobre contribuintes individuais' },
-  { chave: '1646-01', campo: 'gilrat', nome: 'GILRAT ajustado (RAT × FAP)' },
-  { chave: '1141-01', campo: 'adicionalEspecial', nome: 'Adicional para aposentadoria especial' },
+  { chave: '1082-01', campo: 'segurados', nome: 'Segurados (empregados)', descricao: 'CP SEGURADOS - EMPREGADOS/AVULSO' },
+  { chave: '1099-01', campo: 'contribIndividuais', nome: 'Segurados contribuintes individuais', descricao: 'CP SEGURADOS - CONTRIBUINTES INDIVIDUAIS - 11%' },
+  { chave: '1138-01', campo: 'patronalEmpresa', nome: 'Patronal sobre empregados', descricao: 'CP PATRONAL - EMPREGADOS/AVULSOS' },
+  { chave: '1138-04', campo: 'patronalIndividuais', nome: 'Patronal sobre contribuintes individuais', descricao: 'CP PATRONAL - CONTRIBUINTES INDIVIDUAIS' },
+  { chave: '1646-01', campo: 'gilrat', nome: 'GILRAT ajustado (RAT × FAP)', descricao: 'CP PATRONAL - GILRAT AJUSTADO' },
+  { chave: '1141-01', campo: 'adicionalEspecial', nome: 'Adicional para aposentadoria especial', descricao: 'CP PATRONAL - ADICIONAL GILRAT' },
 ];
+// códigos que sempre aparecem na guia do FUNDEB (os outros, só quando têm valor)
+const CODIGOS_SEMPRE = new Set(['1082-01', '1138-01', '1646-01']);
+
+/**
+ * Códigos de receita das guias. Sem a guia completa: os códigos da guia do FUNDEB.
+ * Com ela (DARF): cada código da guia completa com a parte do FUNDEB e o restante, o que não é FUNDEB.
+ * @param {any} totalFundeb  totais dos centros do FUNDEB (separarGuias(...).totalFundeb)
+ * @param {ReturnType<typeof lerDarf>} [darf]
+ */
+export function tabelaCodigos(totalFundeb, darf = null) {
+  const fundebDe = (chave) => {
+    const c = CODIGOS_FUNDEB.find((x) => x.chave === chave);
+    return c ? centavos(totalFundeb[c.campo]) : 0;
+  };
+  const partes = (chave) => chave.split('-');
+  let linhas;
+  if (!darf?.itens?.length) {
+    linhas = CODIGOS_FUNDEB.filter((c) => CODIGOS_SEMPRE.has(c.chave) || centavos(totalFundeb[c.campo])).map((c) => ({
+      chave: c.chave,
+      codigo: partes(c.chave)[0],
+      detalhe: partes(c.chave)[1],
+      descricao: c.descricao,
+      fundeb: fundebDe(c.chave),
+      completa: null,
+      restante: null,
+      faltaNaGuia: false,
+    }));
+  } else {
+    linhas = darf.itens.map((it) => {
+      const chave = `${it.codigo}-${it.detalhe}`;
+      const fundeb = fundebDe(chave);
+      return {
+        chave,
+        codigo: it.codigo,
+        detalhe: it.detalhe,
+        descricao: it.descricao,
+        fundeb,
+        completa: it.total,
+        restante: centavos(it.total - fundeb),
+        faltaNaGuia: false,
+      };
+    });
+    // parte do FUNDEB num código que a guia completa não tem: fica aqui, com restante negativo, para chamar a atenção
+    for (const c of CODIGOS_FUNDEB) {
+      const v = centavos(totalFundeb[c.campo]);
+      if (v && !linhas.some((l) => l.chave === c.chave))
+        linhas.push({
+          chave: c.chave,
+          codigo: partes(c.chave)[0],
+          detalhe: partes(c.chave)[1],
+          descricao: c.descricao,
+          fundeb: v,
+          completa: 0,
+          restante: -v,
+          faltaNaGuia: true,
+        });
+    }
+  }
+  const soma = (k) => (linhas.some((l) => l[k] != null) ? centavos(linhas.reduce((t, l) => t + (l[k] || 0), 0)) : null);
+  return { linhas, total: { fundeb: soma('fundeb'), completa: soma('completa'), restante: soma('restante') } };
+}
 
 /**
  * Divide cada código do DARF entre a guia do FUNDEB e a do restante (restante = original − FUNDEB).
@@ -441,40 +502,48 @@ export function abasReferencia(g, info, darf = null) {
     ['Salário-família desconsiderado', { f: `FUNDEB!M${t}` }, 'Não entra na guia do FUNDEB'],
     ['Salário-maternidade desconsiderado', { f: `FUNDEB!N${t}` }, 'Não entra na guia do FUNDEB'],
     ['Diferença para o relatório (patronal + RAT)', { f: `FUNDEB!Q${t}` }, 'Patronal + RAT com as alíquotas digitadas, menos o que o relatório calculou'],
-    ['Guia original (valor total)', g.guiaOriginal ?? '', info.origemOriginal || 'Opcional: digite aqui o valor da guia original para calcular o restante'],
-    ['Guia do restante', { f: 'IF(B13="","",B13-B6)' }, 'Guia original menos a guia do FUNDEB'],
+    ['Guia completa (valor total)', g.guiaOriginal ?? '', info.origemOriginal || 'Opcional: digite aqui o valor da guia completa para calcular o restante'],
+    ['Guia do restante (não FUNDEB)', { f: 'IF(B13="","",B13-B6)' }, 'Guia completa menos a guia do FUNDEB'],
   ];
-  if (darf?.itens?.length) {
-    const linhas = darf.itens.map((it, i) => {
-      const r = i + 2;
-      const chave = `${it.codigo}-${it.detalhe}`;
-      const col = COLUNA_DO_CODIGO[chave];
-      return [
-        chave,
-        it.descricao,
-        it.total,
-        col ? { f: `FUNDEB!${col}${t}` } : 0,
-        { f: `C${r}-D${r}` },
-        col ? `Aba FUNDEB, coluna ${col} (total)` : 'Sem parte do FUNDEB: vai todo para o restante',
-      ];
-    });
-    const ult = linhas.length + 1;
-    linhas.push(['Total', '', ...'CDE'.split('').map((c) => ({ f: `SUM(${c}2:${c}${ult})` })), '']);
-    abas.push({
-      nome: 'Por código',
-      colunas: [
-        { titulo: 'Código', largura: 10 },
-        { titulo: 'Descrição', largura: 48 },
-        { titulo: 'Guia original', tipo: 'moeda', largura: 18 },
-        { titulo: 'Guia do FUNDEB', tipo: 'moeda', largura: 18 },
-        { titulo: 'Guia do restante', tipo: 'moeda', largura: 18 },
-        { titulo: 'De onde vem o valor do FUNDEB', largura: 46 },
-      ],
-      linhas,
-    });
-    resumo.push(["Conferência: soma dos códigos do FUNDEB (aba 'Por código')", { f: `'Por código'!D${ult + 1}` }, 'Tem que ser igual à guia do FUNDEB']);
-    resumo.push(["Conferência: soma dos códigos do restante (aba 'Por código')", { f: `'Por código'!E${ult + 1}` }, 'Tem que ser igual à guia do restante']);
-  }
+  // códigos de receita: os do FUNDEB sempre; com a guia completa, também a guia completa e o restante de cada código
+  const tab = tabelaCodigos(g.totalFundeb, darf);
+  const linhasCod = tab.linhas.map((l, i) => {
+    const r = i + 2;
+    const col = COLUNA_DO_CODIGO[l.chave];
+    return [
+      l.chave,
+      l.descricao,
+      col ? { f: `FUNDEB!${col}${t}` } : 0,
+      l.completa ?? '',
+      { f: `IF(D${r}="","",D${r}-C${r})` },
+      col ? `Aba FUNDEB, coluna ${col} (total)` : 'Sem parte do FUNDEB: vai todo para o restante',
+    ];
+  });
+  const ultCod = linhasCod.length + 1;
+  const totCod = ultCod + 1;
+  linhasCod.push([
+    'Total',
+    'Guias a gerar',
+    { f: `SUM(C2:C${ultCod})` },
+    { f: `IF(COUNT(D2:D${ultCod})=0,"",SUM(D2:D${ultCod}))` },
+    { f: `IF(D${totCod}="","",D${totCod}-C${totCod})` },
+    '',
+  ]);
+  abas.push({
+    nome: 'Por código',
+    colunas: [
+      { titulo: 'Código', largura: 10 },
+      { titulo: 'Descrição', largura: 48 },
+      { titulo: 'Guia do FUNDEB', tipo: 'moeda', largura: 18 },
+      { titulo: 'Guia completa', tipo: 'moeda', largura: 18 },
+      { titulo: 'Guia do restante (não FUNDEB)', tipo: 'moeda', largura: 28 },
+      { titulo: 'De onde vem o valor do FUNDEB', largura: 46 },
+    ],
+    linhas: linhasCod,
+  });
+  resumo.push(["Conferência: soma dos códigos do FUNDEB (aba 'Por código')", { f: `'Por código'!C${totCod}` }, 'Tem que ser igual à guia do FUNDEB']);
+  if (darf?.itens?.length)
+    resumo.push(["Conferência: soma dos códigos do restante (aba 'Por código')", { f: `'Por código'!E${totCod}` }, 'Tem que ser igual à guia do restante']);
   if (g.outros.some(temValor)) {
     const o = abaCentros('Restante', g.outros);
     abas.push(o.aba);
@@ -527,8 +596,8 @@ export function blocosPdfGuias(g, info, darf = null) {
         ...(g.guiaOriginal == null
           ? []
           : [
-              ['Guia original (valor total)', { text: brl(g.guiaOriginal), align: 'right' }],
-              ['Guia do restante (original - FUNDEB)', { text: brl(g.guiaRestante), align: 'right', bold: true }],
+              ['Guia completa (valor total)', { text: brl(g.guiaOriginal), align: 'right' }],
+              ['Guia do restante, não FUNDEB (completa - FUNDEB)', { text: brl(g.guiaRestante), align: 'right', bold: true }],
             ]),
       ],
     },
@@ -540,46 +609,43 @@ export function blocosPdfGuias(g, info, darf = null) {
           : ''
       }. Salário-família (${brl(tf.salarioFamilia)}) e salário-maternidade (${brl(tf.maternidade)}) não foram abatidos.`,
     },
-    ...(darf?.itens?.length
-      ? (() => {
-          const d = dividirPorCodigo(darf, tf);
-          const soma = (k) => d.linhas.reduce((s, l) => s + l[k], 0);
-          return [
-            { type: 'heading', text: 'Por código de receita (para emitir as guias no DCTFWeb)' },
-            {
-              type: 'table',
-              widths: [0.9, 3.2, 1.3, 1.3, 1.3],
-              header: ['Código', 'Descrição', 'Guia original', 'FUNDEB', 'Restante'],
-              headerAlign: ['left', 'left', 'right', 'right', 'right'],
-              rows: [
-                ...d.linhas.map((l) => [
-                  `${l.codigo}-${l.detalhe}`,
-                  l.descricao,
-                  { text: brl(l.total), align: 'right' },
-                  { text: brl(l.fundeb), align: 'right', bold: true },
-                  { text: brl(l.restante), align: 'right', bold: true },
-                ]),
-                [
-                  { text: 'Total', bold: true },
-                  '',
-                  { text: brl(soma('total')), align: 'right', bold: true },
-                  { text: brl(soma('fundeb')), align: 'right', bold: true },
-                  { text: brl(soma('restante')), align: 'right', bold: true },
-                ],
-              ],
-              totalRows: 1,
-              size: 8.5,
-            },
-            {
-              type: 'note',
-              text: `DARF ${darf.numero || ''} · ${darf.contribuinte || ''} · período ${darf.periodo || '—'} · vencimento ${darf.vencimento || '—'}`,
-            },
-            ...(mesmoMunicipio(darf.contribuinte, info.prefeitura)
-              ? []
-              : [{ type: 'para', bold: true, text: `Atenção: a guia é de ${darf.contribuinte} e o relatório é de ${info.prefeitura}. Confira os arquivos.` }]),
-          ];
-        })()
-      : []),
+    ...(() => {
+      const tab = tabelaCodigos(tf, darf);
+      const comGuia = tab.total.completa != null;
+      const cel = (v, bold = false) => ({ text: brl(v), align: 'right', bold });
+      return [
+        { type: 'heading', text: comGuia ? 'Códigos das guias (FUNDEB e restante)' : 'Códigos da guia do FUNDEB' },
+        {
+          type: 'table',
+          widths: comGuia ? [0.9, 3.2, 1.3, 1.3, 1.3] : [0.9, 3.6, 1.4],
+          header: comGuia ? ['Código', 'Descrição', 'Guia completa', 'FUNDEB', 'Restante'] : ['Código', 'Descrição', 'Guia do FUNDEB'],
+          headerAlign: comGuia ? ['left', 'left', 'right', 'right', 'right'] : ['left', 'left', 'right'],
+          rows: [
+            ...tab.linhas.map((l) =>
+              comGuia ? [l.chave, l.descricao, cel(l.completa), cel(l.fundeb, true), cel(l.restante, true)] : [l.chave, l.descricao, cel(l.fundeb, true)],
+            ),
+            comGuia
+              ? [{ text: 'Total', bold: true }, '', cel(tab.total.completa, true), cel(tab.total.fundeb, true), cel(tab.total.restante, true)]
+              : [{ text: 'Total', bold: true }, '', cel(tab.total.fundeb, true)],
+          ],
+          totalRows: 1,
+          size: 8.5,
+        },
+        ...(darf
+          ? [
+              {
+                type: 'note',
+                text: `Guia completa: DARF ${darf.numero || ''} · ${darf.contribuinte || ''} · período ${darf.periodo || '—'} · vencimento ${darf.vencimento || '—'}`,
+              },
+              ...(mesmoMunicipio(darf.contribuinte, info.prefeitura)
+                ? []
+                : [
+                    { type: 'para', bold: true, text: `Atenção: a guia é de ${darf.contribuinte} e o relatório é de ${info.prefeitura}. Confira os arquivos.` },
+                  ]),
+            ]
+          : []),
+      ];
+    })(),
     { type: 'heading', text: 'Centros de custo do FUNDEB' },
     {
       type: 'table',

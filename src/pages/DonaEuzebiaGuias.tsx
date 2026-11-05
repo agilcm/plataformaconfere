@@ -8,7 +8,6 @@ import {
   aplicarAliquotas,
   blocosPdfGuias,
   departamentos,
-  dividirPorCodigo,
   ehFundeb,
   juntarCentros,
   lerDarf,
@@ -17,6 +16,7 @@ import {
   numeroBR,
   porcentagem,
   separarGuias,
+  tabelaCodigos,
   valorDaGuia,
 } from '../lib/guiasDotacao.js';
 import { dateText, downloadPdf, slug } from '../lib/pdfReport.ts';
@@ -62,7 +62,6 @@ export default function DonaEuzebiaGuias() {
   const [lendo, setLendo] = useState('');
   const [aviso, setAviso] = useState('');
   const [verZerados, setVerZerados] = useState(false);
-  const [verGuia, setVerGuia] = useState(false);
   const inputPdf = useRef<HTMLInputElement>(null);
   const inputGuia = useRef<HTMLInputElement>(null);
 
@@ -101,7 +100,6 @@ export default function DonaEuzebiaGuias() {
       setDarf(d);
       setOriginal(dinheiro(d.total));
       setOrigemOriginal(`DARF ${d.numero || nome} · ${d.contribuinte} · ${d.periodo} · vence em ${d.vencimento}`);
-      setVerGuia(true);
       return true;
     }
     const v = valorDaGuia(linhas);
@@ -109,7 +107,6 @@ export default function DonaEuzebiaGuias() {
     setDarf(null);
     setOriginal(dinheiro(v));
     setOrigemOriginal(`Lido do PDF ${nome}`);
-    setVerGuia(true);
     return true;
   };
 
@@ -182,10 +179,11 @@ export default function DonaEuzebiaGuias() {
   const nomeArquivo = `guia-inss-fundeb-${slug(info.competencia || 'competencia')}`;
   const baixarPlanilha = () => baixarXlsx(`${nomeArquivo}.xlsx`, abasReferencia(g, info, darf));
   const listaFundeb = g.fundeb.filter((c) => verZerados || c.valorGuia || c.liquido || c.base);
-  const porCodigo = darf ? dividirPorCodigo(darf, g.totalFundeb) : null;
   const outroMunicipio = darf && prefeitura && !mesmoMunicipio(darf.contribuinte, prefeitura);
   const outraCompetencia = darf && competencias.length > 0 && !competencias.some((c) => c.toLowerCase() === darf.periodo.toLowerCase());
   const tf = g.totalFundeb;
+  const codigos = tabelaCodigos(tf, darf);
+  const comGuia = g.guiaOriginal != null;
 
   return (
     <div className="space-y-6">
@@ -196,7 +194,7 @@ export default function DonaEuzebiaGuias() {
           o RAT ajustado (base patronal × alíquota), sem abater salário-família e salário-maternidade. O PDF é lido aqui no navegador; nada é enviado.
         </p>
 
-        <div className="mt-5 grid lg:grid-cols-2 gap-6">
+        <div className="mt-5 grid lg:grid-cols-3 gap-6">
           <div>
             <p className="text-sm font-bold text-slate-600">1. Alíquotas</p>
             <div className="mt-2 grid grid-cols-2 gap-3 max-w-md">
@@ -265,11 +263,59 @@ export default function DonaEuzebiaGuias() {
               </p>
             )}
           </div>
+
+          <div>
+            <p className="text-sm font-bold text-slate-600">3. Guia completa (opcional)</p>
+            <p className="text-sm text-slate-500">Anexe a guia completa (DARF do DCTFWeb) para gerar também a guia do restante, o que não é FUNDEB.</p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => inputGuia.current?.click()}
+                disabled={!!lendo}
+                className={`${botao} border-2 border-[#0F2053] text-[#0F2053] hover:bg-[#0F2053]/5`}
+              >
+                <Icon name="doc" className="w-5 h-5" /> {darf ? 'Trocar a guia completa' : 'Anexar a guia completa'}
+              </button>
+              <input
+                ref={inputGuia}
+                type="file"
+                accept="application/pdf,.pdf"
+                className="hidden"
+                onChange={(e) => e.target.files?.[0] && lerGuiaOriginal(e.target.files[0]).finally(() => (e.target.value = ''))}
+              />
+            </div>
+            <label className="mt-2 relative block w-56">
+              <span className="sr-only">Valor total da guia completa</span>
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">R$</span>
+              <input
+                value={original}
+                onChange={(e) => {
+                  setOriginal(e.target.value);
+                  setOrigemOriginal('');
+                  setDarf(null);
+                }}
+                inputMode="decimal"
+                placeholder="ou digite o valor total"
+                className="w-full pl-10 pr-3 py-2.5 rounded-xl border border-slate-300 text-base tabular-nums focus:outline-none focus:border-[#0478CA]"
+              />
+            </label>
+            {origemOriginal && <p className="mt-1 text-sm text-slate-500">{origemOriginal}</p>}
+          </div>
         </div>
         {lendo && <p className="mt-4 text-[15px] text-slate-700">{lendo}</p>}
         {aviso && <p className="mt-4 text-[15px] text-amber-900">{aviso}</p>}
         {competencias.length > 1 && (
           <p className="mt-4 text-[15px] text-red-700">Atenção: os PDFs são de competências diferentes ({competencias.join(', ')}).</p>
+        )}
+        {outroMunicipio && (
+          <p role="alert" className="mt-4 p-3 rounded-xl bg-red-50 border border-red-200 text-[15px] text-red-800">
+            Atenção: a guia completa é de <strong>{darf!.contribuinte}</strong> (CNPJ {darf!.cnpj}) e o relatório é de <strong>{prefeitura}</strong>.
+          </p>
+        )}
+        {outraCompetencia && (
+          <p role="alert" className="mt-4 text-[15px] text-red-700">
+            Atenção: a guia completa é de {darf!.periodo} e o relatório de {competencias.join(', ')}.
+          </p>
         )}
 
         {deps.length > 1 && (
@@ -318,6 +364,13 @@ export default function DonaEuzebiaGuias() {
               <p className="text-sm text-slate-500">Guia do FUNDEB</p>
               <p className="text-3xl font-extrabold tabular-nums text-[#0F2053]">{brl(g.guiaFundeb)}</p>
             </div>
+            {comGuia && (
+              <div>
+                <p className="text-sm text-slate-500">Guia do restante (não FUNDEB)</p>
+                <p className={`text-3xl font-extrabold tabular-nums ${g.guiaRestante! < 0 ? 'text-red-700' : 'text-[#0F2053]'}`}>{brl(g.guiaRestante)}</p>
+                <p className="text-xs text-slate-500">guia completa {brl(g.guiaOriginal)} − FUNDEB</p>
+              </div>
+            )}
             <dl className="grid grid-cols-3 gap-x-6 gap-y-1 text-[15px]">
               <dt className="text-sm text-slate-500">Segurados</dt>
               <dt className="text-sm text-slate-500">Patronal ({pctTexto(info.patronal)}%)</dt>
@@ -341,6 +394,55 @@ export default function DonaEuzebiaGuias() {
             )}{' '}
             Salário-família ({brl(tf.salarioFamilia)}) e salário-maternidade ({brl(tf.maternidade)}) não foram abatidos.
           </p>
+
+          <div className="mt-6">
+            <p className="font-bold text-[#0F2053]">{comGuia && darf ? 'Códigos das guias' : 'Códigos da guia do FUNDEB'}</p>
+            <p className="text-sm text-slate-500">
+              {darf
+                ? 'Ao emitir cada guia no DCTFWeb, informe em cada código o valor da coluna correspondente. A última linha é o total de cada guia.'
+                : 'O valor de cada código de receita na guia do FUNDEB. Anexe a guia completa (passo 3) para gerar também o restante de cada código.'}
+            </p>
+            <div className="mt-2 overflow-x-auto">
+              <table className="w-full min-w-[640px] text-[15px]">
+                <thead className="bg-[#F7FAFD] text-left text-sm text-slate-500">
+                  <tr>
+                    <th className="px-3 py-2 font-semibold">Código</th>
+                    <th className="px-3 py-2 font-semibold">Descrição</th>
+                    {darf && <th className="px-3 py-2 font-semibold text-right">Guia completa</th>}
+                    <th className="px-3 py-2 font-semibold text-right">Guia do FUNDEB</th>
+                    {darf && <th className="px-3 py-2 font-semibold text-right">Guia do restante (não FUNDEB)</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {codigos.linhas.map((l) => (
+                    <tr key={l.chave} className="border-t border-slate-100">
+                      <td className="px-3 py-2 tabular-nums font-semibold">{l.chave}</td>
+                      <td className="px-3 py-2">
+                        {l.descricao}
+                        {l.faltaNaGuia && <span className="ml-2 text-sm font-bold text-red-700">não está na guia completa</span>}
+                      </td>
+                      {darf && <td className="px-3 py-2 text-right tabular-nums">{brl(l.completa)}</td>}
+                      <td className="px-3 py-2 text-right tabular-nums font-bold">{brl(l.fundeb)}</td>
+                      {darf && <td className={`px-3 py-2 text-right tabular-nums font-bold ${l.restante! < 0 ? 'text-red-700' : ''}`}>{brl(l.restante)}</td>}
+                    </tr>
+                  ))}
+                  <tr className="border-t-2 border-slate-300 font-bold bg-[#F7FAFD]">
+                    <td className="px-3 py-2" colSpan={2}>
+                      Total {darf ? 'de cada guia' : 'da guia do FUNDEB'}
+                    </td>
+                    {darf && <td className="px-3 py-2 text-right tabular-nums">{brl(codigos.total.completa)}</td>}
+                    <td className="px-3 py-2 text-right tabular-nums">{brl(codigos.total.fundeb)}</td>
+                    {darf && <td className="px-3 py-2 text-right tabular-nums">{brl(codigos.total.restante)}</td>}
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            {comGuia && !darf && (
+              <p className="mt-2 text-sm text-slate-500">
+                Com o valor digitado dá o total do restante ({brl(g.guiaRestante)}); para o valor de cada código, anexe o PDF da guia completa.
+              </p>
+            )}
+          </div>
 
           <div className="mt-6 flex flex-wrap items-baseline justify-between gap-2">
             <p className="font-bold text-[#0F2053]">Centros de custo do FUNDEB</p>
@@ -384,96 +486,6 @@ export default function DonaEuzebiaGuias() {
                 </tr>
               </tbody>
             </table>
-          </div>
-
-          <div className="mt-6 pt-4 border-t border-slate-100">
-            <button type="button" onClick={() => setVerGuia((v) => !v)} aria-expanded={verGuia} className="text-[15px] font-bold text-[#0F2053] cursor-pointer">
-              <span className={`inline-block transition-transform ${verGuia ? 'rotate-90' : ''}`} aria-hidden="true">
-                ›
-              </span>{' '}
-              Opcional: guia do restante (com a guia original)
-            </button>
-            {verGuia && (
-              <div className="mt-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <label className="relative">
-                    <span className="sr-only">Valor da guia original</span>
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">R$</span>
-                    <input
-                      value={original}
-                      onChange={(e) => {
-                        setOriginal(e.target.value);
-                        setOrigemOriginal('');
-                        setDarf(null);
-                      }}
-                      inputMode="decimal"
-                      placeholder="valor total da guia"
-                      className="w-52 pl-10 pr-3 py-2.5 rounded-xl border border-slate-300 text-base tabular-nums focus:outline-none focus:border-[#0478CA]"
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => inputGuia.current?.click()}
-                    disabled={!!lendo}
-                    className={`${botao} border-2 border-slate-200 text-[#0F2053] hover:border-[#0478CA]`}
-                  >
-                    {darf ? 'trocar a guia (DARF)' : 'ou enviar o PDF da guia (DARF)'}
-                  </button>
-                  <input
-                    ref={inputGuia}
-                    type="file"
-                    accept="application/pdf,.pdf"
-                    className="hidden"
-                    onChange={(e) => e.target.files?.[0] && lerGuiaOriginal(e.target.files[0]).finally(() => (e.target.value = ''))}
-                  />
-                </div>
-                {origemOriginal && <p className="mt-1 text-sm text-slate-500">{origemOriginal}</p>}
-                {outroMunicipio && (
-                  <p role="alert" className="mt-3 p-3 rounded-xl bg-red-50 border border-red-200 text-[15px] text-red-800">
-                    Atenção: a guia é de <strong>{darf!.contribuinte}</strong> (CNPJ {darf!.cnpj}) e o relatório é de <strong>{prefeitura}</strong>.
-                  </p>
-                )}
-                {outraCompetencia && (
-                  <p role="alert" className="mt-3 text-[15px] text-red-700">
-                    Atenção: a guia é de {darf!.periodo} e o relatório de {competencias.join(', ')}.
-                  </p>
-                )}
-                {g.guiaRestante != null && (
-                  <p className="mt-3 text-[15px]">
-                    Guia original {brl(g.guiaOriginal)} − FUNDEB {brl(g.guiaFundeb)} ={' '}
-                    <strong className={g.guiaRestante < 0 ? 'text-red-700' : ''}>restante {brl(g.guiaRestante)}</strong>
-                  </p>
-                )}
-                {porCodigo && (
-                  <div className="mt-3 overflow-x-auto">
-                    <table className="w-full min-w-[640px] text-[15px]">
-                      <thead className="bg-[#F7FAFD] text-left text-sm text-slate-500">
-                        <tr>
-                          <th className="px-3 py-2 font-semibold">Código</th>
-                          <th className="px-3 py-2 font-semibold">Descrição</th>
-                          <th className="px-3 py-2 font-semibold text-right">Guia original</th>
-                          <th className="px-3 py-2 font-semibold text-right">FUNDEB</th>
-                          <th className="px-3 py-2 font-semibold text-right">Restante</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {porCodigo.linhas.map((l) => (
-                          <tr key={`${l.codigo}-${l.detalhe}`} className="border-t border-slate-100">
-                            <td className="px-3 py-2 tabular-nums font-semibold">
-                              {l.codigo}-{l.detalhe}
-                            </td>
-                            <td className="px-3 py-2">{l.descricao}</td>
-                            <td className="px-3 py-2 text-right tabular-nums">{brl(l.total)}</td>
-                            <td className="px-3 py-2 text-right tabular-nums font-bold">{brl(l.fundeb)}</td>
-                            <td className={`px-3 py-2 text-right tabular-nums font-bold ${l.restante < 0 ? 'text-red-700' : ''}`}>{brl(l.restante)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            )}
           </div>
 
           <div className="mt-6 flex flex-wrap gap-2">
