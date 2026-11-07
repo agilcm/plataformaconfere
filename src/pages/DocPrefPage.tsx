@@ -429,19 +429,19 @@ function Empresas({
           </div>
 
           <div className="mt-4 overflow-x-auto">
-            <table className="w-full min-w-[720px] text-[15px]">
+            <table className="w-full min-w-[720px] text-sm">
               <thead className="bg-[#F7FAFD] text-left text-sm text-slate-500">
                 <tr>
-                  <th className="px-3 py-2 font-semibold">Mês</th>
-                  <th className="px-3 py-2 font-semibold">Envio até</th>
-                  <th className="px-3 py-2 font-semibold text-right">Arquivos</th>
-                  <th className="px-3 py-2 font-semibold text-right">Recebidos</th>
-                  <th className="px-3 py-2 font-semibold text-right">% regular.</th>
-                  <th className="px-3 py-2 font-semibold text-right">Não localizados</th>
-                  <th className="px-3 py-2 font-semibold text-right">Divergências</th>
-                  <th className="px-3 py-2 font-semibold text-right">Certidões</th>
-                  <th className="px-3 py-2 font-semibold">Semáforo</th>
-                  <th className="px-3 py-2 font-semibold">Relatório</th>
+                  <th className="px-2 py-2 font-semibold">Mês</th>
+                  <th className="px-2 py-2 font-semibold">Envio até</th>
+                  <th className="px-2 py-2 font-semibold text-right">Arquivos</th>
+                  <th className="px-2 py-2 font-semibold text-right">Recebidos</th>
+                  <th className="px-2 py-2 font-semibold text-right">% regular.</th>
+                  <th className="px-2 py-2 font-semibold text-right">Não localizados</th>
+                  <th className="px-2 py-2 font-semibold text-right">Divergências</th>
+                  <th className="px-2 py-2 font-semibold text-right">Certidões</th>
+                  <th className="px-2 py-2 font-semibold">Semáforo</th>
+                  <th className="px-2 py-2 font-semibold">Relatório</th>
                 </tr>
               </thead>
               <tbody>
@@ -456,25 +456,25 @@ function Empresas({
                         onClick={() => setComp(a.comp)}
                         className={`border-t border-slate-100 cursor-pointer ${a.comp === compSel ? 'bg-[#0478CA]/5' : 'hover:bg-slate-50'}`}
                       >
-                        <td className="px-3 py-2 font-semibold text-[#0F2053]">
+                        <td className="px-2 py-2 font-semibold text-[#0F2053]">
                           <button type="button" onClick={() => setComp(a.comp)} className="underline-offset-2 hover:underline cursor-pointer">
                             {compBR(a.comp)}
                           </button>
                         </td>
-                        <td className="px-3 py-2 tabular-nums">{dataBR(a.prazo)}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">{a.resumo.arquivos}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">{n(a.resumo.recebidos)}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">{a.regularidade == null ? '-' : `${a.regularidade}%`}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">{n(a.resumo.naoLocalizados)}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">{n(a.resumo.divergencias)}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">{n(a.resumo.certPendentes)}</td>
-                        <td className="px-3 py-2">
-                          <span className="inline-flex items-center gap-2 whitespace-nowrap">
-                            <span className={`w-2.5 h-2.5 rounded-full ${SINAL[a.sinal as Sinal].ponto}`} aria-hidden="true" />
+                        <td className="px-2 py-2 tabular-nums">{dataBR(a.prazo)}</td>
+                        <td className="px-2 py-2 text-right tabular-nums">{a.resumo.arquivos}</td>
+                        <td className="px-2 py-2 text-right tabular-nums">{n(a.resumo.recebidos)}</td>
+                        <td className="px-2 py-2 text-right tabular-nums">{a.regularidade == null ? '-' : `${a.regularidade}%`}</td>
+                        <td className="px-2 py-2 text-right tabular-nums">{n(a.resumo.naoLocalizados)}</td>
+                        <td className="px-2 py-2 text-right tabular-nums">{n(a.resumo.divergencias)}</td>
+                        <td className="px-2 py-2 text-right tabular-nums">{n(a.resumo.certPendentes)}</td>
+                        <td className="px-2 py-2">
+                          <span className="inline-flex items-start gap-2">
+                            <span className={`mt-1 shrink-0 w-2.5 h-2.5 rounded-full ${SINAL[a.sinal as Sinal].ponto}`} aria-hidden="true" />
                             {nomeSinal(a.sinal)}
                           </span>
                         </td>
-                        <td className="px-3 py-2">
+                        <td className="px-2 py-2">
                           {!(a.sinal === 'fora') && (
                             <button
                               type="button"
