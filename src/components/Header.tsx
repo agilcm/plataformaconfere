@@ -16,7 +16,7 @@ export const LICITACOES_PAGE = ROUTES.licitacoes;
 
 interface HeaderProps {
   /** Página atual: na página de licitações os links apontam para a home (/#secao) */
-  page?: 'home' | 'licitacoes' | 'privado' | 'dados';
+  page?: 'home' | 'licitacoes' | 'privado' | 'dados' | 'bancodoc';
 }
 
 export default function Header({ page = 'home' }: HeaderProps) {
@@ -45,7 +45,7 @@ export default function Header({ page = 'home' }: HeaderProps) {
       }`}
     >
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between gap-3 h-[72px]">
+        <div className="flex items-center justify-between gap-2 sm:gap-3 h-[72px]">
           <a href={page === 'home' ? '#inicio' : ROUTES.home} aria-label="Ágil CM Soluções Integradas – página inicial" className="shrink-0">
             <BrandLogo size="md" theme="light" className="[&>img:last-child]:hidden sm:[&>img:last-child]:block" />
           </a>
@@ -67,6 +67,15 @@ export default function Header({ page = 'home' }: HeaderProps) {
               <span className="relative inline-flex w-2 h-2 rounded-full bg-[#0478CA]" />
             </span>
             LICITAÇÕES
+          </a>
+          <a
+            href={ROUTES.bancodoc}
+            aria-current={page === 'bancodoc' ? 'page' : undefined}
+            className={`inline-flex items-center px-4 py-2.5 text-sm font-extrabold tracking-wide rounded-xl border-2 transition-colors whitespace-nowrap ${
+              page === 'bancodoc' ? 'bg-[#0F2053] border-[#0F2053] text-white' : 'border-[#0F2053] text-[#0F2053] hover:bg-[#0F2053] hover:text-white'
+            }`}
+          >
+            BancoDoc
           </a>
           <a
             href={ROUTES.privado}
@@ -95,6 +104,9 @@ export default function Header({ page = 'home' }: HeaderProps) {
           >
             <span className="w-1.5 h-1.5 rounded-full bg-[#7cc4ff]" aria-hidden="true" />
             LICITAÇÕES
+          </a>
+          <a href={ROUTES.bancodoc} className="hidden min-[390px]:inline-flex sm:hidden items-center px-2 py-2 text-xs font-bold text-[#0F2053] border border-[#0F2053] rounded-lg">
+            BancoDoc
           </a>
           <a href={ROUTES.privado} className="sm:hidden inline-flex items-center px-2 py-2 text-xs font-bold text-[#0478CA] border border-[#0478CA] rounded-lg">
             Privado
@@ -132,6 +144,9 @@ export default function Header({ page = 'home' }: HeaderProps) {
               className="mb-2 inline-flex items-center justify-center gap-2 px-4 py-3 text-base font-extrabold tracking-wide text-white bg-[#0F2053] rounded-xl"
             >
               LICITAÇÕES · editais abertos em MG
+            </a>
+            <a href={ROUTES.bancodoc} className="mb-2 inline-flex items-center justify-center px-4 py-3 text-base font-bold text-[#0F2053] border-2 border-[#0F2053] rounded-xl">
+              BancoDoc · documentos das prestadoras
             </a>
             <a href={ROUTES.privado} className="mb-2 inline-flex items-center justify-center px-4 py-3 text-base font-bold text-[#0478CA] border-2 border-[#0478CA] rounded-xl">
               Privado
