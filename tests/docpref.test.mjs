@@ -551,3 +551,54 @@ test('relatório rápido em itens a), b), c) e "não se aplica nesta prestadora"
   assert.ok(tn.includes('Contratante: Prefeitura de Exemplo') && tn.includes('5 (cinco) dias úteis') && tn.includes('14.133/2021'));
   assert.ok(mensagemPendencias({ razao: 'Empresa Exemplo' }, av, { prazoRegularizacao: 5 }).includes(FUNDAMENTO_LEGAL));
 });
+
+test('modelos para baixar: arquivos no site, declarações sem escolha e "não se aplica"', async () => {
+  const fs = await import('node:fs');
+  const { MODELOS } = await import('../src/lib/docprefCartilha.js');
+  for (const m of MODELOS) assert.ok(fs.existsSync(new URL(`../public/docpref/modelos/${m.arquivo}`, import.meta.url)), m.arquivo);
+  assert.ok(fs.existsSync(new URL('../public/docpref/modelos/modelos-docpref.zip', import.meta.url)));
+
+  // "houve / não houve" sem apagar a opção: não dá para saber; a declaração volta como divergência
+  const sem = lerDocumento({
+    nome: 'Declaração de acidente.pdf',
+    categoria: 'declaracoes',
+    compPasta: '2026-07',
+    texto:
+      'DECLARAÇÃO DE REGISTRO DE ACIDENTE DE TRABALHO\nDeclaramos para os devidos fins, que EXEMPLO LTDA, declara que houve / não houve acidente de trabalho no mês de julho, vinculado ao contrato nº 1.',
+  });
+  assert.equal(sem.houve, null);
+  assert.equal(sem.semEscolha, true);
+  const m = mesCompleto('2026-07');
+  m.arquivos = m.arquivos.map((a) => (a.tipo === 'decl-acidente' ? { ...a, semEscolha: true, houve: null } : a));
+  assert.equal(avaliarMes(m, { hoje: '2026-08-10' }).itens.find((i) => i.id === 'decl-acidente').status, 'divergencia');
+
+  // declaração de não fornecimento de VT: "não se aplica" = não houve, e o grupo VT deixa de ser cobrado
+  const vt = lerDocumento({
+    nome: 'declaracao-nao-aplicacao-vt.pdf',
+    categoria: 'declaracoes',
+    compPasta: '2026-07',
+    texto:
+      'DECLARAÇÃO DE NÃO FORNECIMENTO DE VALE-TRANSPORTE\nDeclaramos para os devidos fins, que EXEMPLO LTDA, declara que, no mês de julho, não se aplica o vale-transporte aos empregados do contrato nº 1.',
+  });
+  assert.equal(vt.tipo, 'vt-relacao');
+  assert.equal(vt.houve, false);
+  assert.equal(vt.mesDeclarado, '2026-07');
+  // subcontratação escreve "na competência 07/2026"
+  const sub = lerDocumento({
+    nome: 'Declaração de subcontratação.pdf',
+    categoria: 'declaracoes',
+    compPasta: '2026-07',
+    texto: 'DECLARAÇÃO DE SUBCONTRATAÇÃO\nDeclaramos para os devidos fins, que EXEMPLO LTDA, que na competência 07/2026 não houve subcontratação de empresas.',
+  });
+  assert.equal(sub.tipo, 'decl-subcontratacao');
+  assert.equal(sub.mesDeclarado, '2026-07');
+  assert.equal(sub.houve, false);
+  // mobilização: "houve / haverá" é sempre mobilização
+  const mob = lerDocumento({
+    nome: 'Declaração de mobilização.pdf',
+    categoria: 'mobilizacao',
+    texto: 'DECLARAÇÃO DE MOBILIZAÇÃO DO CONTRATO\nDeclaramos que haverá mobilização no contrato de nº 1, a partir do dia 01/03/2026.',
+  });
+  assert.equal(mob.tipo, 'decl-mobilizacao');
+  assert.equal(mob.houve, true);
+});

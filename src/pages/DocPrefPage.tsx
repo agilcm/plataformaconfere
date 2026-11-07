@@ -30,7 +30,7 @@ import {
   relatorioRapido,
   vencimentos,
 } from '../lib/docpref.js';
-import { PASTAS_DO_MES, abasForcaDeTrabalho, blocosCartilha } from '../lib/docprefCartilha.js';
+import { MODELOS, PASTAS_DO_MES, blocosCartilha } from '../lib/docprefCartilha.js';
 import { norm } from '../lib/docprefLeitor.js';
 import {
   atualizarConferencia,
@@ -99,6 +99,7 @@ const SINAL: Record<Sinal, { cor: string; ponto: string }> = {
   futuro: { cor: 'bg-slate-50 border-slate-200 text-slate-700', ponto: 'bg-slate-300' },
   fora: { cor: 'bg-slate-50 border-slate-200 text-slate-500', ponto: 'bg-slate-200' },
 };
+const MODELOS_URL = `${import.meta.env.BASE_URL}docpref/modelos/`;
 const TOMADORA = { nome: COMPANY_PROFILE.name, email: COMPANY_PROFILE.email, phoneDisplay: COMPANY_PROFILE.phoneDisplay, domain: COMPANY_PROFILE.domain };
 const digitos = (s?: string | null) => String(s || '').replace(/\D/g, '');
 const hojeISO = () => new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 10);
@@ -1569,8 +1570,8 @@ function Cartilha({ config }: { config: ConfigDocPref }) {
       <div className={card}>
         <p className="text-lg font-bold text-[#0F2053]">Cartilha do fornecedor {COMPANY_PROFILE.name}</p>
         <p className="mt-1 max-w-3xl text-[15px] text-slate-600">
-          O que cada prestadora envia todo mês, o prazo, como montar as pastas no Drive, as certidões, os documentos de admissão, demissão e férias, os modelos
-          das oito declarações e a planilha de força de trabalho. Mande para a prestadora junto com o link da pasta.
+          O que cada prestadora envia todo mês, o prazo, como montar as pastas no Drive, as certidões, os documentos de admissão, demissão e férias e a base
+          legal. Logo abaixo, os modelos em Word e a planilha em Excel para baixar. Mande para a prestadora junto com o link da pasta.
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           <button
@@ -1585,14 +1586,46 @@ function Cartilha({ config }: { config: ConfigDocPref }) {
           >
             <Icon name="doc" className="w-5 h-5" /> Cartilha do fornecedor (PDF)
           </button>
-          <button
-            type="button"
-            onClick={() => baixarXlsx('FORCA DE TRABALHO - modelo.xlsx', abasForcaDeTrabalho({ nome: COMPANY_PROFILE.name, cnpj: COMPANY_PROFILE.cnpj }))}
-            className={botaoSec}
-          >
-            <Icon name="sheet" className="w-5 h-5" /> Planilha de força de trabalho (modelo .xlsx)
-          </button>
+          <a href={`${MODELOS_URL}modelos-docpref.zip`} download className={botaoSec}>
+            <Icon name="box" className="w-5 h-5" /> Todos os modelos (Word e Excel, .zip)
+          </a>
         </div>
+      </div>
+      <div className={card}>
+        <p className="text-lg font-bold text-[#0F2053]">Modelos para baixar</p>
+        <p className="mt-1 max-w-3xl text-[15px] text-slate-600">
+          As declarações mensais vão <strong>todo mês, tenha havido ou não</strong> o fato: quando não houve, a prestadora apaga “houve” e deixa “não houve”;
+          quando houve, apaga “não houve”, preenche a relação e envia os documentos do caso. Imprima no papel timbrado da empresa, assine e salve em PDF na
+          pasta indicada. Declaração com “houve / não houve” sem escolher volta como divergência.
+        </p>
+        <ul className="mt-4 grid lg:grid-cols-2 gap-3">
+          {MODELOS.map((m) => (
+            <li key={m.arquivo} className="p-4 rounded-xl border border-slate-200 flex flex-col gap-2">
+              <span className="flex flex-wrap items-start justify-between gap-2">
+                <strong className="text-[#0F2053]">{m.nome}</strong>
+                <span
+                  className={`shrink-0 px-2 py-0.5 rounded-full text-xs font-bold ${
+                    m.quando === 'Todo mês' ? 'bg-[#0478CA]/10 text-[#0F2053]' : 'bg-amber-50 text-amber-800'
+                  }`}
+                >
+                  {m.quando}
+                </span>
+              </span>
+              <span className="text-[15px] text-slate-700">{m.paraQue}</span>
+              <ul className="text-sm text-slate-600 list-disc pl-5 space-y-0.5">
+                {m.como.map((c) => (
+                  <li key={c}>{c}</li>
+                ))}
+              </ul>
+              <span className="text-sm text-slate-500">
+                <strong className="text-slate-600">Pasta:</strong> {m.pasta}. <strong className="text-slate-600">O DocPref:</strong> {m.docpref}
+              </span>
+              <a href={`${MODELOS_URL}${m.arquivo}`} download className="self-start text-sm font-bold text-[#0478CA] underline">
+                Baixar {m.arquivo.endsWith('.xlsx') ? 'planilha (.xlsx)' : 'modelo (.docx)'}
+              </a>
+            </li>
+          ))}
+        </ul>
       </div>
       <div className={card}>
         <p className="text-lg font-bold text-[#0F2053]">Pastas de cada mês (MM-AAAA)</p>

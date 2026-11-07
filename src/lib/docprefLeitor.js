@@ -194,9 +194,12 @@ const valorApos = (texto, rotulo, alcance = 120) => {
   return m ? valorBR(m[1]) : null;
 };
 
-/** Mês citado na declaração ("no mês de março") */
+/** Mês citado na declaração ("no mês de março", "na competência 07/2026", "competência de julho de 2026") */
 function mesDeclarado(texto, compPasta) {
-  const m = norm(texto).match(/no mes de ([a-z]+)(?: de (\d{4}))?/);
+  const nt = norm(texto);
+  const num = nt.match(/competencia\s*(?:de\s*)?:?\s*(\d{1,2})\s*\/\s*(20\d{2})/);
+  if (num) return comp(+num[2], +num[1]);
+  const m = nt.match(/(?:no mes de|na competencia(?: de)?|competencia de) ([a-z]+)(?:(?: de |\/)(\d{4}))?/);
   if (!m) return null;
   const mes = mesDoNome(m[1]);
   if (!mes) return null;
@@ -458,10 +461,20 @@ export function lerDocumento({ nome, categoria, texto = '', compPasta = null, oc
       const md = semTexto ? null : mesDeclarado(t, compPasta);
       // quantas pessoas a declaração relaciona (CPFs distintos); só a contagem sai daqui
       const pessoas = semTexto ? 0 : new Set(t.match(/\b\d{3}\.\d{3}\.\d{3}-\d{2}\b/g) || []).size;
-      const houve = semTexto ? null : /nao houve|nao ha |nao possui|nao teve|inexist/.test(nt) ? false : /houve|seguem|conforme relacao/.test(nt) ? true : null;
+      // modelo com "houve / não houve" (ou "houve / haverá") sem apagar a opção que não vale: não dá para saber
+      const semEscolha = !semTexto && /houve\s*\/\s*nao houve|nao houve\s*\/\s*houve/.test(nt);
+      const houve =
+        semTexto || semEscolha
+          ? null
+          : /nao houve|nao ha |nao possui|nao teve|inexist|nao se aplica|nao fornec|nao conced/.test(nt)
+            ? false
+            : /houve|haver[aá]|seguem|conforme relacao/.test(nt)
+              ? true
+              : null;
       return r(tipo, {
         mesDeclarado: md,
         houve,
+        ...(semEscolha ? { semEscolha: true } : {}),
         ...(pessoas ? { pessoas } : {}),
         evidencia: md ? `Declara o mês ${md.slice(5)}/${md.slice(0, 4)}` : semTexto ? '' : 'Sem mês da competência no corpo da declaração',
       });
@@ -645,7 +658,9 @@ export function lerForcaDeTrabalho(linhas) {
     admissoes: corpo.filter((l) => noMes(l, iAdm, iAloc)).length,
     demissoes: corpo.filter((l) => noMes(l, iDem, iDesv)).length,
     afastados: corpo.filter(
-      (l) => !(iDem >= 0 && dataCelula(l[iDem])) && ((iAfastado >= 0 && /^sim/.test(norm(l[iAfastado]))) || (iMotivo >= 0 && norm(l[iMotivo]).length > 2)),
+      (l) =>
+        !(iDem >= 0 && dataCelula(l[iDem])) &&
+        ((iAfastado >= 0 && /^sim/.test(norm(l[iAfastado]))) || (iMotivo >= 0 && norm(l[iMotivo]).length > 2 && !/transferid/.test(norm(l[iMotivo])))),
     ).length,
   };
 }

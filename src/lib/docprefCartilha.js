@@ -54,37 +54,37 @@ export const DECLARACOES = [
   [
     'Declaração de registro de acidente de trabalho',
     'Preencher com os dados da empresa e assinar pelo representante legal. Se houve acidente, enviar a CAT junto (pasta CAT). Acidente grave ou fatal deve ser comunicado imediatamente à Ágil CM, sem esperar o prazo do mês.',
-    'declara, para os devidos fins, que [ ] não houve  [ ] houve acidente de trabalho no mês de ____________ de 20____ (competência ____/20____), no contrato nº ______________.',
+    'declara, para os devidos fins, que houve / não houve acidente de trabalho no mês de ____________ de 20____ (competência ____/20____), no contrato nº ______________.',
     ['Nome do empregado', 'CPF', 'Data do acidente', 'Nº da CAT'],
   ],
   [
     'Declaração/relação de admissão e alocação no contrato',
     'Preencher com os dados da empresa e assinar. Se houve admissão ou alocação, relacionar os empregados e enviar os documentos admissionais na pasta Admissão-alocação.',
-    'declara, para os devidos fins, que [ ] não houve  [ ] houve admissão ou alocação de empregados no mês de ____________ de 20____ (competência ____/20____), no contrato nº ______________, conforme a relação abaixo.',
+    'declara, para os devidos fins, que houve / não houve admissão ou alocação de empregados no mês de ____________ de 20____ (competência ____/20____), no contrato nº ______________, conforme a relação abaixo.',
     ['Nome do empregado', 'CPF', 'Função', 'Data de admissão/alocação'],
   ],
   [
     'Declaração/relação de demissão',
     'Preencher com os dados da empresa e assinar. Se houve demissão, relacionar os empregados e enviar os documentos demissionais na pasta Demissão-transferência.',
-    'declara, para os devidos fins, que [ ] não houve  [ ] houve demissão de empregados no mês de ____________ de 20____ (competência ____/20____), no contrato nº ______________, conforme a relação abaixo.',
+    'declara, para os devidos fins, que houve / não houve demissão de empregados no mês de ____________ de 20____ (competência ____/20____), no contrato nº ______________, conforme a relação abaixo.',
     ['Nome do empregado', 'CPF', 'Data da demissão', 'Motivo'],
   ],
   [
     'Declaração/relação de transferência',
     'Preencher com os dados da empresa e assinar. Se algum empregado saiu deste contrato para outro serviço (sem ser demitido), relacioná-lo.',
-    'declara, para os devidos fins, que [ ] não houve  [ ] houve transferência de empregados deste contrato para outros serviços no mês de ____________ de 20____ (competência ____/20____), no contrato nº ______________.',
+    'declara, para os devidos fins, que houve / não houve transferência de empregados deste contrato para outros serviços no mês de ____________ de 20____ (competência ____/20____), no contrato nº ______________.',
     ['Nome do empregado', 'CPF', 'Data da transferência', 'Destino'],
   ],
   [
     'Declaração/relação de férias',
     'Preencher com os dados da empresa e assinar. O período aquisitivo vai com dia, mês e ano (dd/mm/aaaa a dd/mm/aaaa). Se houve férias, enviar os documentos na pasta Férias.',
-    'declara, para os devidos fins, que [ ] não houve  [ ] houve empregados em gozo de férias no mês de ____________ de 20____ (competência ____/20____), no contrato nº ______________.',
+    'declara, para os devidos fins, que houve / não houve empregados em gozo de férias no mês de ____________ de 20____ (competência ____/20____), no contrato nº ______________.',
     ['Nome do empregado', 'CPF', 'Período aquisitivo', 'Início', 'Término'],
   ],
   [
     'Declaração de subcontratação',
     'Preencher com os dados da empresa e assinar. Se houver subcontratada, informar e enviar todos os documentos dela, numa pasta para cada empresa.',
-    'declara, para os devidos fins, que [ ] não houve  [ ] houve subcontratação de empresas na prestação do serviço no mês de ____________ de 20____ (competência ____/20____), no contrato nº ______________.',
+    'declara, para os devidos fins, que houve / não houve subcontratação de empresas na prestação do serviço no mês de ____________ de 20____ (competência ____/20____), no contrato nº ______________.',
     ['Razão social da subcontratada', 'CNPJ', 'Serviço', 'Nº de empregados'],
   ],
   [
@@ -270,11 +270,18 @@ export function blocosCartilha(tomadora, { atualizada = '', contratante = '' } =
       rows: COLUNAS_FORCA.map(([t, o], i) => [String.fromCharCode(65 + i), t, o]),
       size: 8,
     },
+    { type: 'heading', text: 'Modelos em Word e Excel' },
+    {
+      type: 'para',
+      text: 'Os modelos editáveis estão no DocPref, em Cartilha do fornecedor (ou com a equipe de conferência). As declarações mensais vão todo mês, tenha havido ou não o fato.',
+      size: 9.5,
+    },
+    { type: 'table', widths: [3, 1.6, 2], header: ['Modelo', 'Quando', 'Pasta'], rows: MODELOS.map((m) => [m.nome, m.quando, m.pasta]), size: 8.5 },
     { type: 'pagebreak' },
     { type: 'title', text: 'Modelos de declaração' },
     {
       type: 'para',
-      text: 'Imprima em papel timbrado da sua empresa, preencha, assine e salve em PDF na pasta Declarações do mês. Marque "não houve" ou "houve" e escreva sempre o mês da competência.',
+      text: 'Imprima em papel timbrado da sua empresa, preencha, assine e salve em PDF na pasta Declarações do mês. Apague a opção que não vale (houve ou não houve) e escreva sempre o mês da competência. As declarações vão todo mês, mesmo quando não houve o fato.',
       color: 'muted',
     },
   ];
@@ -354,3 +361,150 @@ export function abasForcaDeTrabalho(tomadora) {
     },
   ];
 }
+
+/**
+ * Modelos para baixar (public/docpref/modelos, gerados por scripts/docpref-modelos.py).
+ * `quando`: todo mês | início | fim | não se aplica | se houver.
+ */
+export const MODELOS = [
+  {
+    arquivo: 'declaracao-acidente-de-trabalho.docx',
+    nome: 'Declaração de acidente de trabalho',
+    quando: 'Todo mês',
+    pasta: 'Declarações',
+    paraQue: 'Diz se houve ou não acidente de trabalho no mês do contrato.',
+    como: [
+      'Apague "houve" ou "não houve" (deixe só a opção certa) e escreva o mês por extenso.',
+      'Se houve acidente, envie também a CAT na pasta CAT. Acidente grave ou fatal: avisar na hora, sem esperar o prazo.',
+    ],
+    docpref: 'Confere o mês escrito e se houve acidente. "Houve" passa a cobrar a CAT.',
+  },
+  {
+    arquivo: 'declaracao-admissao-alocacao.docx',
+    nome: 'Declaração de admissão-alocação',
+    quando: 'Todo mês',
+    pasta: 'Declarações',
+    paraQue: 'Lista quem foi admitido ou passou a trabalhar no contrato no mês.',
+    como: [
+      'Apague "houve" ou "não houve" e escreva o mês.',
+      'Se houve, preencha nome, CPF e data de cada pessoa e envie os documentos admissionais na pasta Admissão-alocação (uma subpasta por pessoa).',
+    ],
+    docpref:
+      'Compara a quantidade de pessoas com a planilha de força de trabalho e com as subpastas; "houve" cobra contrato, ficha, CTPS/eSocial, ASO, EPI e opção de VT.',
+  },
+  {
+    arquivo: 'declaracao-demissao.docx',
+    nome: 'Declaração de demissão',
+    quando: 'Todo mês',
+    pasta: 'Declarações',
+    paraQue: 'Lista quem foi demitido no mês.',
+    como: [
+      'Apague "houve" ou "não houve" e escreva o mês.',
+      'Se houve, preencha nome, CPF e data e envie TRCT, comprovante da rescisão, aviso, guia e comprovante da multa, baixa e ASO demissional na pasta Demissão-transferência.',
+    ],
+    docpref: 'Compara com a planilha e as subpastas; "houve" cobra os documentos demissionais e o comprovante de pagamento da rescisão.',
+  },
+  {
+    arquivo: 'declaracao-transferencia.docx',
+    nome: 'Declaração de transferência',
+    quando: 'Todo mês',
+    pasta: 'Declarações',
+    paraQue: 'Lista quem saiu deste contrato para outro serviço sem ser demitido.',
+    como: ['Apague "houve" ou "não houve", escreva o mês e, se houve, preencha nome, CPF, data e destino.'],
+    docpref: 'Confere o mês escrito; na planilha, a pessoa transferida leva a data da desvinculação.',
+  },
+  {
+    arquivo: 'declaracao-ferias.docx',
+    nome: 'Declaração de férias',
+    quando: 'Todo mês',
+    pasta: 'Declarações',
+    paraQue: 'Lista quem esteve de férias no mês.',
+    como: [
+      'Apague "houve" ou "não houve" e escreva o mês.',
+      'Se houve, preencha o período aquisitivo com dia, mês e ano e envie aviso, recibo e comprovante de pagamento das férias na pasta Férias.',
+    ],
+    docpref: '"Houve" cobra aviso, recibo e comprovante de pagamento das férias.',
+  },
+  {
+    arquivo: 'declaracao-subcontratacao.docx',
+    nome: 'Declaração de subcontratação',
+    quando: 'Todo mês',
+    pasta: 'Declarações',
+    paraQue: 'Diz se há empresa subcontratada trabalhando no contrato.',
+    como: [
+      'Escreva a competência (ex.: 07/2026), apague "houve" ou "não houve" e preencha o contrato e o contratante.',
+      'Se houve, liste as subcontratadas e envie os documentos de cada uma numa pasta própria, com as mesmas subpastas.',
+    ],
+    docpref: '"Houve" cobra a pasta de cada subcontratada.',
+  },
+  {
+    arquivo: 'declaracao-mobilizacao.docx',
+    nome: 'Declaração de mobilização',
+    quando: 'Só no início do contrato',
+    pasta: 'Mobilização',
+    paraQue: 'Informa a data em que o contrato começou (ou vai começar) e quem foi alocado.',
+    como: ['Preencha o nº do contrato, a data de início e a relação de funcionários.', 'Envie junto os documentos admissionais de cada funcionário.'],
+    docpref: 'Com a pasta Mobilização, o mês passa a cobrar a declaração e os documentos de quem entrou.',
+  },
+  {
+    arquivo: 'declaracao-desmobilizacao.docx',
+    nome: 'Declaração de desmobilização',
+    quando: 'Só no fim do contrato',
+    pasta: 'Desmobilização',
+    paraQue: 'Informa a data efetiva em que o serviço terminou e o destino de cada funcionário.',
+    como: [
+      'Preencha a data efetiva do fim do serviço e as duas tabelas: demitidos e transferidos para outros contratos.',
+      'Envie junto os documentos demissionais.',
+    ],
+    docpref: 'Com a pasta Desmobilização, o mês passa a cobrar a declaração e os documentos de quem saiu.',
+  },
+  {
+    arquivo: 'declaracao-nao-aplicacao-ponto.docx',
+    nome: 'Declaração de não aplicação de ponto',
+    quando: 'Só se não houver ponto',
+    pasta: 'Ponto',
+    paraQue: 'Substitui as folhas de ponto quando o controle não se aplica.',
+    como: ['Escreva o mês e o motivo (trabalho externo, cargo de confiança, teletrabalho...).'],
+    docpref: 'Conta como o documento de ponto do mês.',
+  },
+  {
+    arquivo: 'declaracao-nao-aplicacao-va-vr.docx',
+    nome: 'Declaração de não fornecimento de VA/VR',
+    quando: 'Só se não houver VA/VR',
+    pasta: 'VA e VR',
+    paraQue: 'Explica por que não há vale-alimentação, refeição ou cesta no contrato.',
+    como: ['Escreva o mês e o motivo (ex.: não previsto na convenção; refeição no local).'],
+    docpref: 'Deixa de cobrar relação, nota e comprovante de VA/VR no mês.',
+  },
+  {
+    arquivo: 'declaracao-nao-aplicacao-vt.docx',
+    nome: 'Declaração de não fornecimento de VT',
+    quando: 'Só se não houver VT',
+    pasta: 'VT',
+    paraQue: 'Explica por que não há vale-transporte no contrato.',
+    como: ['Escreva o mês e o motivo (ex.: ninguém optou, com as declarações de opção; transporte da empresa).'],
+    docpref: 'Deixa de cobrar relação, recibo e comprovante de VT no mês.',
+  },
+  {
+    arquivo: 'declaracao-pagamento-em-especie.docx',
+    nome: 'Declaração de pagamento em espécie',
+    quando: 'Só se pagar em dinheiro',
+    pasta: 'FOPAG e Comp. de Pgto',
+    paraQue: 'Acompanha os holerites assinados quando o salário é pago em dinheiro.',
+    como: ['Liste quem recebeu em dinheiro, o valor líquido e a data, e anexe os holerites datados e assinados.'],
+    docpref: 'Conta como comprovação do salário de quem recebeu em espécie.',
+  },
+  {
+    arquivo: 'forca-de-trabalho-modelo.xlsx',
+    nome: 'Planilha de força de trabalho',
+    quando: 'Todo mês',
+    pasta: 'Pasta do mês (fora das subpastas)',
+    paraQue: 'Lista todos os empregados do contrato no mês: ativos, admitidos, demitidos, transferidos e afastados.',
+    como: [
+      'Atualize a competência (ano e mês) e o movimento do mês; as listas de opção (situação, gênero, vínculo, motivo do afastamento) já estão na planilha.',
+      'Nunca apague quem foi demitido: preencha a data e mantenha a linha. A aba "Como preencher" explica cada coluna.',
+    ],
+    docpref:
+      'Lê ativos, admissões, desligamentos e afastados e confere com as declarações, as subpastas de pessoas, os comprovantes de salário e as folhas de ponto.',
+  },
+];

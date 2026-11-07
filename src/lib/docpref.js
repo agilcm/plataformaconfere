@@ -718,6 +718,8 @@ export function situacoesDoMes(arquivos = [], manual = {}) {
 
 /** Status de uma exigência a partir das evidências (arquivos do tipo) e da competência esperada */
 function statusPorEvidencia(evid, comp) {
+  if (evid.some((a) => a.semEscolha))
+    return { status: 'divergencia', detalhe: 'A declaração não diz se houve ou não houve: apagar a opção que não se aplica e enviar de novo.' };
   const comComp = evid.filter((a) => a.comp);
   const certo = comComp.find((a) => a.comp === comp);
   if (certo) return { status: 'ok', detalhe: certo.vinculo || `Competência ${compBR(comp)} compatível com este mês.` };
