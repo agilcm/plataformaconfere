@@ -16,7 +16,7 @@ export const LICITACOES_PAGE = ROUTES.licitacoes;
 
 interface HeaderProps {
   /** Página atual: na página de licitações os links apontam para a home (/#secao) */
-  page?: 'home' | 'licitacoes' | 'privado' | 'dados' | 'bancodoc';
+  page?: 'home' | 'licitacoes' | 'privado' | 'dados' | 'docpref';
 }
 
 export default function Header({ page = 'home' }: HeaderProps) {
@@ -69,13 +69,13 @@ export default function Header({ page = 'home' }: HeaderProps) {
             LICITAÇÕES
           </a>
           <a
-            href={ROUTES.bancodoc}
-            aria-current={page === 'bancodoc' ? 'page' : undefined}
+            href={ROUTES.docpref}
+            aria-current={page === 'docpref' ? 'page' : undefined}
             className={`inline-flex items-center px-4 py-2.5 text-sm font-extrabold tracking-wide rounded-xl border-2 transition-colors whitespace-nowrap ${
-              page === 'bancodoc' ? 'bg-[#0F2053] border-[#0F2053] text-white' : 'border-[#0F2053] text-[#0F2053] hover:bg-[#0F2053] hover:text-white'
+              page === 'docpref' ? 'bg-[#0F2053] border-[#0F2053] text-white' : 'border-[#0F2053] text-[#0F2053] hover:bg-[#0F2053] hover:text-white'
             }`}
           >
-            BancoDoc
+            DocPref
           </a>
           <a
             href={ROUTES.privado}
@@ -105,8 +105,8 @@ export default function Header({ page = 'home' }: HeaderProps) {
             <span className="w-1.5 h-1.5 rounded-full bg-[#7cc4ff]" aria-hidden="true" />
             LICITAÇÕES
           </a>
-          <a href={ROUTES.bancodoc} className="hidden min-[390px]:inline-flex sm:hidden items-center px-2 py-2 text-xs font-bold text-[#0F2053] border border-[#0F2053] rounded-lg">
-            BancoDoc
+          <a href={ROUTES.docpref} className="hidden min-[390px]:inline-flex sm:hidden items-center px-2 py-2 text-xs font-bold text-[#0F2053] border border-[#0F2053] rounded-lg">
+            DocPref
           </a>
           <a href={ROUTES.privado} className="sm:hidden inline-flex items-center px-2 py-2 text-xs font-bold text-[#0478CA] border border-[#0478CA] rounded-lg">
             Privado
@@ -145,8 +145,8 @@ export default function Header({ page = 'home' }: HeaderProps) {
             >
               LICITAÇÕES · editais abertos em MG
             </a>
-            <a href={ROUTES.bancodoc} className="mb-2 inline-flex items-center justify-center px-4 py-3 text-base font-bold text-[#0F2053] border-2 border-[#0F2053] rounded-xl">
-              BancoDoc · documentos das prestadoras
+            <a href={ROUTES.docpref} className="mb-2 inline-flex items-center justify-center px-4 py-3 text-base font-bold text-[#0F2053] border-2 border-[#0F2053] rounded-xl">
+              DocPref · documentos das prestadoras
             </a>
             <a href={ROUTES.privado} className="mb-2 inline-flex items-center justify-center px-4 py-3 text-base font-bold text-[#0478CA] border-2 border-[#0478CA] rounded-xl">
               Privado

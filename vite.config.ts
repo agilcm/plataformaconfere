@@ -17,12 +17,12 @@ const apiDevServer = (): Plugin => ({
 });
 
 // Contador de visitas (Cloudflare Web Analytics, sem cookies): entra só se o token estiver configurado
-// na variável CF_WEB_ANALYTICS_TOKEN do GitHub Actions. As áreas Privado, Dados e BancoDoc ficam de fora.
+// na variável CF_WEB_ANALYTICS_TOKEN do GitHub Actions. As áreas Privado, Dados e DocPref ficam de fora.
 const contadorVisitas = (): Plugin => ({
   name: 'contador-visitas',
   transformIndexHtml(html, ctx) {
     const token = (process.env.CF_WEB_ANALYTICS_TOKEN || '').trim();
-    if (!/^[a-f0-9]{32}$/i.test(token) || /privado|dados|bancodoc/.test(ctx.path)) return html;
+    if (!/^[a-f0-9]{32}$/i.test(token) || /privado|dados|docpref|bancodoc/.test(ctx.path)) return html;
     return html.replace(
       '</body>',
       `  <script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "${token}"}'></script>\n  </body>`,
@@ -46,7 +46,7 @@ export default defineConfig(() => {
           licitacoes: path.resolve(import.meta.dirname, 'licitacoes/index.html'),
           privado: path.resolve(import.meta.dirname, 'privado/index.html'),
           dados: path.resolve(import.meta.dirname, 'dados/index.html'),
-          bancodoc: path.resolve(import.meta.dirname, 'bancodoc/index.html'),
+          docpref: path.resolve(import.meta.dirname, 'docpref/index.html'),
           eleicao: path.resolve(import.meta.dirname, 'dados/eleicao/index.html'),
         },
       },

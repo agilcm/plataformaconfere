@@ -3,7 +3,7 @@ name: Publicar site no GitHub Pages
 on:
   push:
     branches: [main]
-  # relê a pasta "Licitacoes - Agil" (área Privado) a cada 3 horas
+  # relê a pasta "Licitacoes - Agil" (área Privado) e a pasta do DocPref a cada 3 horas
   schedule:
     - cron: '23 */3 * * *'
   workflow_dispatch:
@@ -50,6 +50,29 @@ jobs:
             privado-cache.json
             public/privado/leitura.json
           key: privado-${{ github.run_id }}
+      - name: Recuperar a última leitura das pastas do DocPref
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            docpref-cache.json
+            public/docpref/leitura.json
+          key: docpref-${{ github.run_id }}
+          restore-keys: docpref-
+      - name: Ler a pasta do DocPref (prestadoras e meses) pelo link compartilhado
+        # sem o segredo DOCPREF_PASTA_ID o passo é pulado e vale a última leitura publicada
+        continue-on-error: true
+        timeout-minutes: 20
+        run: node scripts/docpref-dados.mjs
+        env:
+          DOCPREF_PASTA_ID: ${{ secrets.DOCPREF_PASTA_ID }}
+      - name: Guardar a leitura do DocPref
+        if: always() && hashFiles('docpref-cache.json') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            docpref-cache.json
+            public/docpref/leitura.json
+          key: docpref-${{ github.run_id }}
       - run: npm test
       - run: npm run lint
       - name: Compilar para o endereço do Pages

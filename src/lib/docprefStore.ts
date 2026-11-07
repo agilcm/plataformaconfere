@@ -1,5 +1,5 @@
-// BancoDoc: prestadoras e conferências guardadas neste navegador (com cópia de segurança em arquivo).
-// Próximo passo: ler as pastas do Google Drive e guardar a conferência numa planilha da equipe.
+// DocPref: prestadoras e conferências guardadas neste navegador (com cópia de segurança em arquivo).
+// A leitura automática das pastas vem de docpref/leitura.json (GitHub Actions); aqui ficam só as marcações da equipe.
 import { useSyncExternalStore } from 'react';
 
 export interface Prestadora {
@@ -9,27 +9,30 @@ export interface Prestadora {
   contrato: string;
   email: string;
   pasta: string; // link da pasta no Google Drive
-  dia: number; // dia do mês seguinte para enviar os documentos (padrão 25)
+  dia: number; // dia do mês seguinte para enviar os documentos (0 = último dia do mês seguinte)
+  drive?: string; // nome da pasta da prestadora dentro da pasta lida pelo DocPref (quando o nome não bate sozinho)
+  inicio?: string; // competência de início do contrato (AAAA-MM)
 }
 export interface Conferencia {
   situacoes: Record<string, boolean>;
   itens: Record<string, { status: 'pendente' | 'ok' | 'recusado' | 'na'; motivo?: string }>;
   atualizadoEm: string;
 }
-export interface DadosBancoDoc {
+export interface DadosDocPref {
   prestadoras: Prestadora[];
   conferencias: Record<string, Conferencia>; // chave: `${prestadora.id}|AAAA-MM`
 }
 
-const CHAVE = 'agilcm:bancodoc';
-const EVENTO = 'agilcm:bancodoc';
-const VAZIO: DadosBancoDoc = { prestadoras: [], conferencias: {} };
-let cache: DadosBancoDoc | null = null;
+const CHAVE = 'agilcm:docpref';
+const ANTIGA = 'agilcm:bancodoc'; // nome anterior do sistema
+const EVENTO = 'agilcm:docpref';
+const VAZIO: DadosDocPref = { prestadoras: [], conferencias: {} };
+let cache: DadosDocPref | null = null;
 
-function ler(): DadosBancoDoc {
+function ler(): DadosDocPref {
   if (cache) return cache;
   try {
-    const v = JSON.parse(localStorage.getItem(CHAVE) || 'null');
+    const v = JSON.parse(localStorage.getItem(CHAVE) || localStorage.getItem(ANTIGA) || 'null');
     cache = v && Array.isArray(v.prestadoras) ? { prestadoras: v.prestadoras, conferencias: v.conferencias || {} } : VAZIO;
   } catch {
     cache = VAZIO;
@@ -37,7 +40,7 @@ function ler(): DadosBancoDoc {
   return cache;
 }
 
-function gravar(novo: DadosBancoDoc) {
+function gravar(novo: DadosDocPref) {
   cache = novo;
   try {
     localStorage.setItem(CHAVE, JSON.stringify(novo));
@@ -62,14 +65,14 @@ function assinar(aviso: () => void) {
   };
 }
 
-export const useBancoDoc = () => useSyncExternalStore(assinar, ler, () => VAZIO);
+export const useDocPref = () => useSyncExternalStore(assinar, ler, () => VAZIO);
 
 export const chaveConferencia = (prestadoraId: string, comp: string) => `${prestadoraId}|${comp}`;
 
 export function salvarPrestadora(p: Omit<Prestadora, 'id'> & { id?: string }) {
   const d = ler();
   const id = p.id || `p${Date.now().toString(36)}`;
-  const nova = { ...p, id, dia: Number(p.dia) || 25 } as Prestadora;
+  const nova = { ...p, id, dia: Math.min(31, Math.max(0, Number(p.dia) || 0)) } as Prestadora;
   const existe = d.prestadoras.some((x) => x.id === id);
   gravar({ ...d, prestadoras: existe ? d.prestadoras.map((x) => (x.id === id ? nova : x)) : [...d.prestadoras, nova] });
   return id;
@@ -90,9 +93,9 @@ export function atualizarConferencia(prestadoraId: string, comp: string, mudar: 
   gravar({ ...d, conferencias: { ...d.conferencias, [k]: { ...mudar(atual), atualizadoEm: new Date().toISOString() } } });
 }
 
-export const exportarBancoDoc = () => JSON.stringify({ versao: 1, exportadoEm: new Date().toISOString(), ...ler() }, null, 1);
+export const exportarDocPref = () => JSON.stringify({ versao: 1, exportadoEm: new Date().toISOString(), ...ler() }, null, 1);
 
-export function importarBancoDoc(texto: string) {
+export function importarDocPref(texto: string) {
   const v = JSON.parse(texto);
   if (!Array.isArray(v?.prestadoras)) throw new Error('arquivo inválido');
   const d = ler();
