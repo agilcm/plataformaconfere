@@ -105,10 +105,11 @@ export const DECLARACOES = [
  * Blocos do PDF da cartilha.
  * @param {{ nome: string, email: string, phoneDisplay?: string, domain?: string }} tomadora
  */
-export function blocosCartilha(tomadora, { atualizada = '' } = {}) {
+export function blocosCartilha(tomadora, { atualizada = '', contratante = '' } = {}) {
   const T = tomadora.nome;
   const b = [
     { type: 'title', text: 'Cartilha do fornecedor' },
+    ...(contratante ? [{ type: 'para', text: `Contratante: ${contratante} · conferência dos documentos: ${T}`, bold: true }] : []),
     {
       type: 'para',
       text: `Documentos trabalhistas e previdenciários mensais · DocPref ${T}${atualizada ? ` · atualizada em ${atualizada}` : ''}`,
@@ -120,6 +121,15 @@ export function blocosCartilha(tomadora, { atualizada = '' } = {}) {
       text: `Esta cartilha orienta o envio dos documentos trabalhistas e previdenciários pedidos todo mês. O envio regular e correto garante o cumprimento das obrigações legais, a segurança jurídica das partes e uma relação transparente, e evita notificações administrativas e o bloqueio dos pagamentos. Aqui estão os documentos, o prazo, a forma de envio e os modelos.`,
     },
     { type: 'para', text: `Em caso de dúvida, fale com a equipe ${T}: ${tomadora.email}${tomadora.phoneDisplay ? ` · ${tomadora.phoneDisplay}` : ''}.` },
+    { type: 'heading', text: 'Base legal nos contratos públicos' },
+    {
+      type: 'para',
+      text: 'Nos serviços com dedicação exclusiva de mão de obra, o art. 50 da Lei nº 14.133/2021 obriga a contratada a comprovar, quando solicitado, o cumprimento das obrigações trabalhistas e com o FGTS dos empregados do contrato: registro de ponto; recibos de salários, adicionais, horas extras, repouso semanal remunerado e 13º; depósito do FGTS; concessão e pagamento de férias; quitação das verbas dos dispensados; e pagamento de vale-transporte e vale-alimentação.',
+    },
+    {
+      type: 'para',
+      text: 'O art. 121 da mesma lei faz a Administração responder solidariamente pelos encargos previdenciários e subsidiariamente pelos trabalhistas se falhar na fiscalização, e permite condicionar o pagamento à comprovação de quitação das obrigações trabalhistas vencidas, quando previsto no edital ou no contrato. Por isso a conferência é mensal e o pagamento fica condicionado aos documentos.',
+    },
     { type: 'heading', text: 'Prazo e forma de envio' },
     {
       type: 'bullets',

@@ -239,12 +239,13 @@ function validadeCertidao(texto) {
  *   transmissao?: string|null, vencimento?: string|null, saldo?: number|null, encargos?: number|null, mesDeclarado?: string|null,
  *   houve?: boolean|null, validade?: string|null, vigencia?: [string, string]|null, detalhes?: string, destino?: string, semTexto?: boolean }}
  */
-export function lerDocumento({ nome, categoria, texto = '', compPasta = null }) {
+export function lerDocumento({ nome, categoria, texto = '', compPasta = null, ocr = false }) {
   const t = String(texto || '');
   const n = norm(nome);
   const nt = norm(t);
   const semTexto = !temTexto(t);
-  const r = (tipo, extra = {}) => ({ tipo, semTexto, ...extra });
+  // texto vindo de OCR (digitalização ou foto): marcado para o relatório dizer que foi lido por imagem
+  const r = (tipo, extra = {}) => ({ tipo, semTexto, ...(ocr && !semTexto ? { ocr: true } : {}), ...extra });
 
   // ---- certidões (podem vir em qualquer pasta)
   if (/certificado de regularidade do fgts|\bcrf\b/.test(nt) || /\bcrf\b|regularidade.*fgts/.test(n))
@@ -309,9 +310,11 @@ export function lerDocumento({ nome, categoria, texto = '', compPasta = null }) 
   }
   if (/resumo de creditos - dctfweb/.test(nt) || /resumocreditos/.test(n.replace(/\s/g, ''))) {
     const c = compApos(t, /Per[ií]odo de Apura[cç][aã]o/i);
+    const ret = t.match(/Reten[cç][aã]o Lei 9711\/98[\s\S]{0,120}?(\d{1,3}(?:\.\d{3})*,\d{2})\s+(\d{1,3}(?:\.\d{3})*,\d{2})\s+(\d{1,3}(?:\.\d{3})*,\d{2})/i);
     return r('dctf-creditos', {
       comp: c,
       transmissao: dataApos(t, /Data\/Hora da Transmiss/i),
+      ...(ret ? { retencao: { informada: valorBR(ret[1]), usada: valorBR(ret[2]), saldo: valorBR(ret[3]) } } : {}),
       evidencia: c ? `Resumo de créditos: período ${c.slice(5)}/${c.slice(0, 4)}` : '',
     });
   }
@@ -383,10 +386,13 @@ export function lerDocumento({ nome, categoria, texto = '', compPasta = null }) 
     const ref = t.match(/(?:Ref\.?|Per[ií]odo|Compet[eê]ncia)\s*:?\s*\d{2}\/(\d{2})\/(\d{4})\s*a\s*\d{2}\/(\d{2})\/(\d{4})/i);
     if (ref) c = comp(+ref[2], +ref[1]);
     if (!c) c = compApos(t, /Compet[eê]ncia/i) || compApos(t, /M[eê]s\/Ano/i);
+    const tot = totaisDaFolha(t);
     return r('folha', {
       comp: c,
       evidencia: c ? `Folha de pagamento: período ${c.slice(5)}/${c.slice(0, 4)} no cabeçalho` : '',
       rubricas: /resumo/i.test(t),
+      ...(tot.liquido ? { liquido: tot.liquido } : {}),
+      ...(tot.funcionarios ? { funcionarios: tot.funcionarios } : {}),
     });
   }
   if (/consulta detalhes da folha/.test(nt)) {
@@ -404,6 +410,20 @@ export function lerDocumento({ nome, categoria, texto = '', compPasta = null }) 
       situacao: /Liquidado/i.test(t) ? 'efetivada' : null,
       lote: Number(t.match(/Quantidade de Pagamento:\s*(\d+)/i)?.[1]) || null,
       evidencia: c ? `Lote da conta salário: folha do mês ${c.slice(5)}/${c.slice(0, 4)}` : 'Lote de pagamento da conta salário',
+    });
+  }
+
+  // ---- declaração do banco de que os pagamentos da listagem foram creditados (apoio ao lote de salários)
+  if (/declaracao de pagamento/.test(nt) && /caixa|banco|instituicao/.test(nt) && /creditad|processad|efetivad/.test(nt)) {
+    const d = nt
+      .match(/(\d{1,2}) de ([a-z]+) de (20\d{2})/g)
+      ?.at(-1)
+      ?.match(/(\d{1,2}) de ([a-z]+) de (20\d{2})/);
+    const emitidaEm = d && mesDoNome(d[2]) ? isoDe(+d[1], mesDoNome(d[2]), +d[3]) : null;
+    return r('comp-salarios', {
+      declaracaoBanco: true,
+      ...(emitidaEm ? { emitidaEm } : {}),
+      evidencia: `Declaração do banco de pagamentos creditados${emitidaEm ? `, emitida em ${emitidaEm.split('-').reverse().join('/')}` : ''}`,
     });
   }
 
@@ -501,33 +521,54 @@ export function lerDocumento({ nome, categoria, texto = '', compPasta = null }) 
 
   // ---- admissão, demissão, férias e CAT: o tipo pelo texto ou pelo nome do arquivo
   const tn = `${n} ${nt.slice(0, 800)}`;
-  if (categoria === 'admissao' || categoria === 'mobilizacao') {
-    if (/atestado de saude ocupacional|\baso\b/.test(tn)) return r('adm-aso');
-    if (/contrato (individual )?de trabalho|contrato de experiencia/.test(tn)) return r('adm-contrato');
-    if (/ficha de registro|registro de empregado/.test(tn)) return r('adm-ficha');
-    if (/\bepi\b|equipamento de protecao/.test(tn)) return r('adm-epi');
-    if (/devolucao da ctps|entrega da ctps|recibo.*ctps/.test(tn)) return r('adm-entrega-ctps');
-    if (/vale.?transporte|\bvt\b/.test(tn)) return r('adm-vt');
-    if (/ctps|carteira de trabalho|esocial|s-2200|admissao/.test(tn)) return r('adm-ctps');
-    return r(null);
-  }
+  /** Tipos achados no texto (um PDF pode juntar vários documentos) ou, sem texto, pelo nome do arquivo */
+  const porTextoOuNome = (regras) => {
+    const doTexto = semTexto ? [] : regras.filter(([, reTexto]) => reTexto && reTexto.test(nt)).map(([tipo]) => tipo);
+    const tipos = doTexto.length
+      ? doTexto
+      : regras
+          .filter(([, , reNome]) => reNome && reNome.test(n))
+          .map(([tipo]) => tipo)
+          .slice(0, 1);
+    return tipos.length ? r(tipos[0], tipos.length > 1 ? { tambem: [...new Set(tipos.slice(1))] } : {}) : r(null);
+  };
+  if (categoria === 'admissao' || categoria === 'mobilizacao')
+    return porTextoOuNome([
+      ['adm-aso', /atestado de saude ocupacional|\baso\b.{0,40}admissional|exame admissional/, /\baso\b/],
+      ['adm-contrato', /contrato (individual )?de trabalho|contrato de experiencia/, /contrato/],
+      ['adm-ficha', /ficha de registro|registro de empregado/, /ficha|registro/],
+      ['adm-epi', /equipamento de protecao individual|ficha de (entrega de )?epi|\bepi\b/, /\bepi\b/],
+      ['adm-entrega-ctps', /devolucao da ctps|entrega da ctps|recibo de (entrega|devolucao).{0,20}ctps/, /devolucao|entrega.*ctps/],
+      ['adm-vt', /vale.?transporte/, /\bvt\b|transporte/],
+      ['adm-ctps', /carteira de trabalho|ctps digital|s-2200|admissao do trabalhador|esocial/, /ctps|carteira|esocial|admiss/],
+    ]);
   if (categoria === 'demissao' || categoria === 'desmobilizacao') {
-    if (/atestado de saude ocupacional|\baso\b/.test(tn)) return r('dem-aso');
-    if (/desligamento/.test(nt.slice(0, 600)) && /esocial|motivo|s-2299/.test(nt)) return r('dem-baixa');
-    if (/termo de rescisao|\btrct\b|termo de quitacao/.test(nt) || /rescis|trct/.test(n)) return r('dem-trct');
-    if (/seguro.?desemprego/.test(tn)) return r('dem-seguro');
-    if (/grrf|multa rescisoria|demonstrativo do trabalhador|fgts rescisorio/.test(tn)) return r('dem-multa');
-    if (/aviso previo|pedido de demissao|aviso de dispensa|comunicado de dispensa/.test(tn) && !/desligamento\s*\n/.test(nt)) return r('dem-aviso');
-    if (/desligamento|s-2299|baixa|ctps/.test(tn)) return r('dem-baixa');
-    return r(null);
+    if (!semTexto && /desligamento/.test(nt.slice(0, 600)) && /esocial|motivo|s-2299/.test(nt)) return r('dem-baixa');
+    return porTextoOuNome([
+      ['dem-trct', /termo de rescisao|\btrct\b|termo de quitacao/, /rescis|trct/],
+      [
+        'dem-aviso',
+        /aviso previo|pedido de demissao|aviso de dispensa|comunicado|rompido|termino do contrato de experiencia|nao existe interesse/,
+        /aviso|comunicad|pedido/,
+      ],
+      ['dem-aso', /atestado de saude ocupacional|exame demissional|\baso\b/, /\baso\b/],
+      ['dem-multa', /grrf|multa rescisoria|demonstrativo do trabalhador|fgts rescisorio/, /grrf|multa/],
+      ['dem-seguro', /seguro.?desemprego/, /seguro/],
+      ['dem-baixa', /s-2299|baixa na ctps|data de saida/, /deslig|esocial|baixa|ctps/],
+    ]);
   }
-  if (categoria === 'ferias') {
-    if (/aviso de ferias/.test(tn)) return r('fer-aviso');
-    if (/recibo de ferias/.test(tn)) return r('fer-recibo');
-    return r(null);
-  }
+  if (categoria === 'ferias')
+    return porTextoOuNome([
+      ['fer-aviso', /notificacao de ferias|aviso de ferias|comunicacao de ferias|comunicado de ferias/, /aviso|notifica|comunica/],
+      ['fer-recibo', /recibo de ferias/, /recibo/],
+    ]);
   if (categoria === 'cat') return r('cat');
-  if (categoria === 'ponto') return r('ponto');
+  if (categoria === 'ponto') {
+    // folha de ponto impressa traz o período ("Período de 01/02/2026 a 28/02/2026")
+    const per = t.match(/(?:Per[ií]odo|Refer[eê]ncia|M[eê]s)[^\n]{0,25}?\d{2}\/(\d{2})\/(20\d{2})\s*(?:a|at[eé])\s*\d{2}\/(\d{2})\/(20\d{2})/i);
+    const c = per ? comp(+per[2], +per[1]) : null;
+    return r('ponto', c ? { comp: c, evidencia: `Folha de ponto: período ${c.slice(5)}/${c.slice(0, 4)}` } : {});
+  }
   if (categoria === 'parcelamentos') return r(/requer|termo|adesao|confissao/.test(tn) ? 'parc-requerimento' : 'parc-parcela');
   if (categoria === 'subcontratadas') return r('sub-book');
   if (categoria === 'fopag') {
@@ -537,6 +578,25 @@ export function lerDocumento({ nome, categoria, texto = '', compPasta = null }) 
     if (/desconto|consentimento|autorizacao/.test(tn)) return r('desconto-parcelado');
   }
   return r(null);
+}
+
+/**
+ * Total líquido e quantidade de funcionários da folha analítica, somando os departamentos.
+ * Se o último bloco for o total geral (igual à soma dos anteriores), usa só ele.
+ */
+export function totaisDaFolha(texto) {
+  const t = String(texto || '');
+  const liq = [...t.matchAll(/\(\s*=\s*\)\s*Total L[ií]q[uü]ido\s*:?\s*\.*\s*(\d{1,3}(?:\.\d{3})*,\d{2})/gi)].map((m) => valorBR(m[1]));
+  const func = [...t.matchAll(/Total (?:de )?Funcion[aá]rios\s*:?\s*\.*\s*:?\s*(\d+)/gi)].map((m) => Number(m[1]));
+  const consolidar = (lista) => {
+    if (!lista.length) return null;
+    if (lista.length >= 3) {
+      const anteriores = lista.slice(0, -1).reduce((a, b) => a + b, 0);
+      if (Math.abs(anteriores - lista.at(-1)) < 0.01) return lista.at(-1);
+    }
+    return Math.round(lista.reduce((a, b) => a + b, 0) * 100) / 100;
+  };
+  return { liquido: consolidar(liq), funcionarios: consolidar(func) };
 }
 
 /** Data de uma célula do Excel: número de série (45678), "dd/mm/aaaa" ou "aaaa-mm-dd" → "aaaa-mm-dd" */

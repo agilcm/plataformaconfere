@@ -439,3 +439,115 @@ test('comprovante sem competência ligado à guia pelo valor e pessoas do mês',
   assert.ok(av.achados.some((x) => x.titulo === 'Comprovantes de salário não cobrem todos'));
   assert.ok(av.achados.some((x) => x.titulo === 'Desligamentos não batem'));
 });
+
+test('OCR e texto primeiro: comunicado de término, notificação de férias, declaração do banco e ponto com período', () => {
+  const aviso = lerDocumento({
+    nome: 'rescisão fulano.pdf',
+    categoria: 'demissao',
+    ocr: true,
+    texto:
+      'COMUNICADO\nComunicamos que o contrato de trabalho de Experiência, firmado por ambas as partes, fica rompido uma vez que não existe interesse desta empresa em continuá-lo.\nTERMO DE RESCISÃO DO CONTRATO DE TRABALHO\nVerbas rescisórias',
+  });
+  assert.equal(aviso.tipo, 'dem-trct');
+  assert.deepEqual(aviso.tambem, ['dem-aviso']); // o PDF junta os dois documentos
+  assert.equal(aviso.ocr, true);
+  const so = lerDocumento({
+    nome: 'rescisão fulano.pdf',
+    categoria: 'demissao',
+    texto: 'COMUNICADO\nComunicamos que o contrato de trabalho de experiência fica rompido, não existe interesse desta empresa em continuá-lo.',
+  });
+  assert.equal(so.tipo, 'dem-aviso'); // o nome diz "rescisão", mas o texto é o aviso
+  const ferias = lerDocumento({
+    nome: 'Ferias X.pdf',
+    categoria: 'ferias',
+    texto: 'NOTIFICAÇÃO DE FÉRIAS\nEmpresa: EXEMPLO LTDA\nPeríodo a ser gozado 18/05/2026 a 16/06/2026',
+  });
+  assert.equal(ferias.tipo, 'fer-aviso');
+  const banco = lerDocumento({
+    nome: 'Declaracao Caixa.pdf',
+    categoria: 'fopag',
+    texto:
+      'CAIXA\nDECLARAÇÃO DE PAGAMENTO\nDeclaramos, para os devidos fins, que os pagamentos constantes na listagem foram devidamente processados e creditados pela CAIXA ECONÔMICA FEDERAL.\nCataguases/MG, 13 de março de 2026.',
+  });
+  assert.equal(banco.tipo, 'comp-salarios');
+  assert.equal(banco.declaracaoBanco, true);
+  assert.equal(banco.emitidaEm, '2026-03-13');
+  const ponto = lerDocumento({
+    nome: 'Folha de Ponto.pdf',
+    categoria: 'ponto',
+    texto: 'Folha de Ponto\nEXEMPLO LTDA\nPeríodo de 01/02/2026 a 28/02/2026\nEntrada 08:30',
+  });
+  assert.equal(ponto.comp, '2026-02');
+  const cred = lerDocumento({
+    nome: 'ResumoCreditos_x.pdf',
+    categoria: 'inss',
+    texto:
+      'RELATÓRIO RESUMO DE CRÉDITOS - DCTFWeb\nPeríodo de Apuração   04/2026\nDescrição   Valor Informado/Importado   Valor Vinculado a Débito   Saldo disponível\nRetenção Lei 9711/98 ou\n6.741,91   3.508,44   3.233,47\nadiantamento de retenção',
+  });
+  assert.deepEqual(cred.retencao, { informada: 6741.91, usada: 3508.44, saldo: 3233.47 });
+});
+
+test('folha: total líquido de todos os departamentos × soma dos comprovantes', async () => {
+  const { totaisDaFolha } = await import('../src/lib/docprefLeitor.js');
+  const texto =
+    'Resumo da Folha\nTotal Geral da Folha   15.524,01   Total Funcionários ......................   7\n( = ) Total Líquido   13.460,00\n' +
+    '(=) Total Líqüido ..........................: *****************************\n' +
+    'Resumo da Folha\nTotal Geral da Folha   23.182,75   Total Funcionários ......................   9\n( = ) Total Líquido   20.734,00\n' +
+    'Resumo da Folha\nTotal Geral da Folha   8.183,73   Total Funcionários ......................   3\n( = ) Total Líquido   7.076,00\n';
+  assert.deepEqual(totaisDaFolha(texto), { liquido: 41270, funcionarios: 19 });
+  // com um bloco final de total geral (igual à soma dos anteriores), usa só ele
+  assert.deepEqual(totaisDaFolha(`${texto}( = ) Total Líquido   41.270,00\nTotal Funcionários ... 19`), { liquido: 41270, funcionarios: 19 });
+
+  const { pagamentosDoMes } = await import('../src/lib/docpref.js');
+  const base = [
+    { tipo: 'folha', liquido: 47632.77 },
+    { tipo: 'comp-salarios', valor: 24099, lote: 11 },
+    { tipo: 'comp-salarios', valor: 17696 },
+    { tipo: 'comp-salarios', declaracaoBanco: true, emitidaEm: '2026-03-13' },
+    { tipo: 'fgts-guia', comp: '2026-07', valor: 4754.78 },
+    { tipo: 'fgts-pagamento', valor: 4754.78, pagoEm: '2026-08-20' },
+    { tipo: 'vavr-guia', valor: 100 },
+  ];
+  const pg = Object.fromEntries(pagamentosDoMes(base, { darfDevido: false, situacoes: { demissoes: { valor: true } } }).map((x) => [x.id, x]));
+  assert.equal(pg.salarios.situacao, 'falta');
+  assert.match(pg.salarios.texto, /faltam R\$ 5\.837,77/);
+  assert.equal(pg.fgts.situacao, 'pago');
+  assert.equal(pg.inss.situacao, 'nao-devido');
+  assert.equal(pg.vavr.situacao, 'sem-comprovante');
+  assert.match(pg.vavr.texto, /colocar o comprovante do banco/);
+  assert.equal(pg.vt.situacao, 'sem-documentos');
+  assert.equal(pg.rescisoes.situacao, 'sem-comprovante');
+});
+
+test('relatório rápido em itens a), b), c) e "não se aplica nesta prestadora"', async () => {
+  const { relatorioRapido, pendenciasSinteticas, FUNDAMENTO_LEGAL, blocosNotificacao, mensagemPendencias } = await import('../src/lib/docpref.js');
+  const m = mesCompleto('2026-03');
+  m.arquivos = m.arquivos.filter((a) => !['crf', 'fgts-pagamento', 'folha'].includes(a.tipo));
+  const i = m.arquivos.findIndex((a) => a.tipo === 'decl-ferias');
+  m.arquivos[i] = { ...m.arquivos[i], mesDeclarado: '2026-02' };
+  const av = avaliarMes(m, { hoje: '2026-05-02' });
+  const itens = pendenciasSinteticas(av);
+  assert.ok(itens.includes('FOPAG e Comp. de Pgto: folha analítica'));
+  assert.ok(itens.includes('FGTS: comprovante'));
+  assert.ok(itens.includes('Certidões: CRF'));
+  assert.ok(itens.some((t) => t.startsWith('Divergência em férias: traz 02/2026')));
+  const r = relatorioRapido([{ nome: 'Empresa Exemplo', avs: [av], venc: [] }], { contratante: 'Prefeitura de Exemplo', hoje: '2026-05-02' });
+  assert.match(r.texto, /03\/2026 · Travar pagamento/);
+  assert.match(r.texto, /\na\) /);
+  assert.match(r.texto, /Contratante: Prefeitura de Exemplo/);
+  assert.ok(r.blocos.length > 4);
+
+  // VT não se aplica a esta prestadora: some de todos os meses
+  const semVt = mesCompleto('2026-03');
+  semVt.arquivos = semVt.arquivos.filter((a) => a.tipo !== 'vt-relacao');
+  assert.equal(avaliarMes(semVt, { hoje: '2026-04-10' }).itens.find((x) => x.id === 'vt-guia').status, 'faltando');
+  const ajustado = avaliarMes(semVt, { hoje: '2026-04-10', naoAplica: ['vt-relacao', 'vt-guia', 'vt-pagamento'] });
+  assert.equal(ajustado.itens.find((x) => x.id === 'vt-guia').status, 'na');
+  assert.equal(ajustado.sinal, 'pagar');
+
+  // notificação com o contratante, o fundamento legal e o prazo para regularizar
+  const n = blocosNotificacao({ razao: 'Empresa Exemplo LTDA' }, av, { contratante: 'Prefeitura de Exemplo', prazoRegularizacao: 5, fiscal: 'Fulano' });
+  const tn = JSON.stringify(n);
+  assert.ok(tn.includes('Contratante: Prefeitura de Exemplo') && tn.includes('5 (cinco) dias úteis') && tn.includes('14.133/2021'));
+  assert.ok(mensagemPendencias({ razao: 'Empresa Exemplo' }, av, { prazoRegularizacao: 5 }).includes(FUNDAMENTO_LEGAL));
+});

@@ -177,6 +177,69 @@ export const GRUPOS = [
   },
 ];
 
+/** Nomes curtos (relatório rápido): "Declarações: acidente, admissões" */
+export const CURTO = {
+  'decl-acidente': 'acidente',
+  'decl-admissoes': 'admissões',
+  'decl-demissoes': 'demissões',
+  'decl-transferencias': 'transferências',
+  'decl-ferias': 'férias',
+  'decl-subcontratacao': 'subcontratação',
+  folha: 'folha analítica',
+  'comp-salarios': 'comprovantes de salário',
+  'decl-especie': 'declaração de pagamento em espécie',
+  adiantamento: 'adiantamento',
+  'desconto-parcelado': 'desconto parcelado',
+  ponto: 'folhas de ponto',
+  'dctf-completa': 'DCTFWeb completa',
+  'dctf-recibo': 'recibo da DCTFWeb',
+  'dctf-debitos': 'resumo de débitos',
+  'dctf-creditos': 'resumo de créditos',
+  darf: 'DARF',
+  'darf-pagamento': 'pagamento do DARF ou PER/DCOMP',
+  'fgts-guia': 'guia',
+  'fgts-detalhe': 'detalhamento',
+  'fgts-pagamento': 'comprovante',
+  'vavr-relacao': 'relação',
+  'vavr-guia': 'nota/guia',
+  'vavr-pagamento': 'comprovante',
+  'vt-relacao': 'relação',
+  'vt-guia': 'nota/recibo',
+  'vt-pagamento': 'comprovante',
+  forca: 'planilha do mês',
+  convencao: 'convenção coletiva',
+  'adm-contrato': 'contrato',
+  'adm-ficha': 'ficha de registro',
+  'adm-ctps': 'CTPS/eSocial',
+  'adm-aso': 'ASO admissional',
+  'adm-epi': 'ficha de EPI',
+  'adm-entrega-ctps': 'entrega da CTPS',
+  'adm-vt': 'opção de VT',
+  'dem-trct': 'TRCT',
+  'dem-comp': 'pagamento da rescisão',
+  'dem-aviso': 'aviso/pedido',
+  'dem-multa': 'guia da multa',
+  'dem-multa-comp': 'pagamento da multa',
+  'dem-baixa': 'baixa CTPS/eSocial',
+  'dem-aso': 'ASO demissional',
+  'dem-seguro': 'seguro-desemprego',
+  'fer-aviso': 'aviso',
+  'fer-recibo': 'recibo',
+  'fer-pagamento': 'pagamento',
+  cat: 'CAT',
+  'parc-requerimento': 'requerimento',
+  'parc-parcela': 'parcela do mês',
+  'decl-mobilizacao': 'declaração',
+  'decl-desmobilizacao': 'declaração',
+  'sub-book': 'documentos da subcontratada',
+  crf: 'CRF',
+  'cert-federal': 'federal',
+  'cert-estadual': 'estadual',
+  'cert-municipal': 'municipal',
+  cndt: 'CNDT',
+  'cert-falencia': 'falência',
+};
+
 /** Certidões: `pares` = apresentação nos meses pares; as demais todo mês */
 export const CERTIDOES = [
   { id: 'crf', nome: 'Certificado de regularidade do FGTS (CRF)', pares: false },
@@ -434,6 +497,152 @@ export function vincularPorValor(arquivos = []) {
   return out;
 }
 
+export const PAGAMENTO = {
+  pago: { nome: 'Pago', cor: 'bg-emerald-50 text-emerald-800 border-emerald-300' },
+  'nao-devido': { nome: 'Não devido', cor: 'bg-slate-50 text-slate-600 border-slate-200' },
+  'sem-comprovante': { nome: 'Sem comprovante', cor: 'bg-red-50 text-red-800 border-red-300' },
+  falta: { nome: 'Pagamento incompleto', cor: 'bg-red-50 text-red-800 border-red-300' },
+  diferente: { nome: 'Valor diferente', cor: 'bg-orange-50 text-orange-800 border-orange-300' },
+  'sem-guia': { nome: 'Sem guia', cor: 'bg-amber-50 text-amber-800 border-amber-300' },
+  'sem-documentos': { nome: 'Sem documentos', cor: 'bg-red-50 text-red-800 border-red-300' },
+  conferir: { nome: 'Conferir', cor: 'bg-teal-50 text-teal-800 border-teal-300' },
+};
+
+/**
+ * Guias e pagamentos do mês: cada guia tem o comprovante do banco com o mesmo valor? Salários: os comprovantes
+ * cobrem o líquido da folha? Sem comprovante, a providência é "colocar o comprovante do banco" na pasta.
+ * @returns {{ id: string, nome: string, guia: number|null, pago: number|null, data: string|null, situacao: string, texto: string, ocr: boolean }[]}
+ */
+export function pagamentosDoMes(arquivos = [], { darfDevido = null, situacoes = {} } = {}) {
+  const linhas = [];
+  const soma = (l) => Math.round(l.reduce((s2, a) => s2 + (a.valor || 0), 0) * 100) / 100;
+  const igual = (a, b) => Math.abs(a - b) < 0.01;
+  const ultimo = (l) =>
+    l
+      .map((a) => a.pagoEm)
+      .filter(Boolean)
+      .sort()
+      .at(-1) || null;
+  const tipo = (t) => arquivos.filter((a) => a.tipo === t || a.tambem?.includes(t));
+  const linha = (id, nome, guias, pagos, pasta) => {
+    const vg = soma(guias);
+    const vp = soma(pagos);
+    const data = ultimo(pagos);
+    let situacao;
+    let texto;
+    if (!guias.length && !pagos.length) {
+      situacao = 'sem-documentos';
+      texto = `Sem guia e sem comprovante: colocar a guia e o comprovante do banco na pasta ${pasta}.`;
+    } else if (!pagos.length) {
+      situacao = 'sem-comprovante';
+      texto = `Guia${vg ? ` de ${moeda(vg)}` : ''} sem comprovante de pagamento: colocar o comprovante do banco na pasta ${pasta}.`;
+    } else if (!guias.length) {
+      situacao = 'sem-guia';
+      texto = `Comprovante${vp ? ` de ${moeda(vp)}` : ''}${data ? ` (${dataBR(data)})` : ''} sem a guia: colocar a guia na pasta ${pasta}.`;
+    } else if (vg && vp && (igual(vg, vp) || pagos.some((p) => guias.some((g) => igual(g.valor || 0, p.valor || 0))))) {
+      situacao = 'pago';
+      texto = `Pago: comprovante de ${moeda(vp)}${data ? ` em ${dataBR(data)}` : ''}, igual à guia.`;
+    } else if (vg && vp) {
+      situacao = 'diferente';
+      texto = `Guia de ${moeda(vg)} e comprovante de ${moeda(vp)}: valores diferentes, conferir.`;
+    } else {
+      situacao = 'conferir';
+      texto = 'Guia e comprovante localizados, mas sem valor legível: conferir.';
+    }
+    linhas.push({ id, nome, guia: vg || null, pago: vp || null, data, situacao, texto, ocr: [...guias, ...pagos].some((a) => a.ocr) });
+  };
+
+  // salários: o líquido da folha (todos os departamentos) × a soma dos comprovantes
+  const folha = arquivos.find((a) => a.tipo === 'folha');
+  const pagosSal = tipo('comp-salarios').filter((a) => !a.declaracaoBanco && !a.holerite);
+  const vp = soma(pagosSal);
+  const liq = folha?.liquido || null;
+  const data = ultimo(pagosSal);
+  let sal;
+  if (!folha && !pagosSal.length) sal = ['sem-documentos', 'Sem folha e sem comprovantes de salário: colocar a folha analítica e os comprovantes do banco.'];
+  else if (!pagosSal.length)
+    sal = [
+      'sem-comprovante',
+      `Folha${liq ? ` com líquido de ${moeda(liq)}` : ''} sem comprovantes de pagamento: colocar os comprovantes do banco na pasta da folha.`,
+    ];
+  else if (!liq) sal = ['conferir', `Comprovantes somam ${moeda(vp)}; a folha não traz o total líquido para comparar.`];
+  else if (vp + Math.max(1, liq * 0.005) >= liq)
+    sal = [
+      'pago',
+      `Comprovantes somam ${moeda(vp)} para o líquido da folha de ${moeda(liq)}${vp - liq > Math.max(1, liq * 0.005) ? ` (${moeda(vp - liq)} a mais: adiantamentos, férias ou rescisões?)` : ''}.`,
+    ];
+  else sal = ['falta', `Comprovantes somam ${moeda(vp)} de ${moeda(liq)} líquidos da folha: faltam ${moeda(liq - vp)}. Colocar os comprovantes do banco.`];
+  linhas.push({ id: 'salarios', nome: 'Salários', guia: liq, pago: vp || null, data, situacao: sal[0], texto: sal[1], ocr: pagosSal.some((a) => a.ocr) });
+
+  linha('fgts', 'FGTS', tipo('fgts-guia'), tipo('fgts-pagamento'), 'FGTS');
+  const darf = tipo('darf');
+  const pagosDarf = tipo('darf-pagamento');
+  if (darfDevido === false && !darf.length)
+    linhas.push({
+      id: 'inss',
+      nome: 'INSS (DARF)',
+      guia: null,
+      pago: null,
+      data: null,
+      situacao: 'nao-devido',
+      texto: 'A DCTFWeb não tem saldo a pagar: não há DARF no mês.',
+      ocr: false,
+    });
+  else if (darfDevido || darf.length) {
+    const perdcomp = pagosDarf.filter((a) => /PER\/DCOMP/.test(a.evidencia || ''));
+    linha(
+      'inss',
+      'INSS (DARF)',
+      darf,
+      pagosDarf.filter((a) => !perdcomp.includes(a)),
+      'INSS',
+    );
+    if (perdcomp.length && linhas.at(-1).situacao === 'sem-comprovante') {
+      linhas.at(-1).situacao = 'conferir';
+      linhas.at(-1).texto = 'DARF compensado por PER/DCOMP: conferir o recibo da compensação.';
+    }
+  }
+  for (const [id, nome, pre, pasta] of [
+    ['vavr', 'VA/VR', 'vavr', 'VA e VR'],
+    ['vt', 'Vale-transporte', 'vt', 'VT'],
+  ]) {
+    const naoSeAplica = arquivos.some((a) => a.tipo === `${pre}-relacao` && a.houve === false);
+    if (naoSeAplica) continue;
+    linha(id, nome, tipo(`${pre}-guia`), tipo(`${pre}-pagamento`), pasta);
+  }
+  if (situacoes.demissoes?.valor) {
+    const pagos = tipo('dem-comp');
+    linhas.push({
+      id: 'rescisoes',
+      nome: 'Rescisões',
+      guia: null,
+      pago: soma(pagos) || null,
+      data: ultimo(pagos),
+      situacao: pagos.length ? 'pago' : 'sem-comprovante',
+      texto: pagos.length
+        ? `${pagos.length} ${pagos.length === 1 ? 'comprovante' : 'comprovantes'} de pagamento de rescisão${soma(pagos) ? ` (${moeda(soma(pagos))})` : ''}.`
+        : 'Houve desligamento e não há comprovante de pagamento da rescisão: colocar o comprovante do banco.',
+      ocr: pagos.some((a) => a.ocr),
+    });
+  }
+  if (situacoes.ferias?.valor) {
+    const pagos = tipo('fer-pagamento');
+    linhas.push({
+      id: 'ferias',
+      nome: 'Férias',
+      guia: null,
+      pago: soma(pagos) || null,
+      data: ultimo(pagos),
+      situacao: pagos.length ? 'pago' : 'sem-comprovante',
+      texto: pagos.length
+        ? `Comprovante de pagamento de férias${soma(pagos) ? ` (${moeda(soma(pagos))})` : ''}.`
+        : 'Houve férias e não há comprovante de pagamento: colocar o comprovante do banco.',
+      ocr: pagos.some((a) => a.ocr),
+    });
+  }
+  return linhas;
+}
+
 /**
  * Pessoas do mês: empregados na planilha × comprovantes de salário × folhas de ponto, e admissões/desligamentos
  * pela planilha, pela declaração e pelas subpastas de pessoas. Só números.
@@ -442,9 +651,11 @@ export function coberturaDoMes(arquivos = [], pessoasPastas = {}) {
   const f = arquivos.find((a) => a.tipo === 'forca' && (a.ativos || a.linhas));
   const ativos = f ? f.ativos || 0 : null;
   const devidos = ativos == null ? null : Math.max(0, ativos - (f.afastados || 0));
-  const salario = arquivos.filter((a) => a.tipo === 'comp-salarios');
+  const salario = arquivos.filter((a) => a.tipo === 'comp-salarios' && !a.declaracaoBanco);
   const pagamentos = salario.reduce((s2, a) => s2 + (a.lote || (a.holerite ? 0 : 1)), 0);
   const holerites = salario.filter((a) => a.holerite).length;
+  const folha = arquivos.find((a) => a.tipo === 'folha' && a.liquido);
+  const somaSalarios = Math.round(salario.filter((a) => !a.holerite).reduce((s2, a) => s2 + (a.valor || 0), 0) * 100) / 100;
   const ponto = arquivos.filter((a) => a.tipo === 'ponto').length;
   const decl = (tipo) => {
     const d = arquivos.find((a) => a.tipo === tipo && a.houve != null);
@@ -457,6 +668,9 @@ export function coberturaDoMes(arquivos = [], pessoasPastas = {}) {
     pagamentos,
     holerites,
     ponto,
+    liquidoFolha: folha ? folha.liquido : null,
+    funcionariosFolha: folha ? folha.funcionarios || null : null,
+    somaSalarios,
     // subpastas só contam quando a prestadora organiza por pessoa; arquivos soltos na pasta não dizem quantas pessoas são
     admissoes: { planilha: f ? f.admissoes || 0 : null, declaracao: decl('decl-admissoes'), pastas: pessoasPastas.admissao || null },
     demissoes: { planilha: f ? f.demissoes || 0 : null, declaracao: decl('decl-demissoes'), pastas: pessoasPastas.demissao || null },
@@ -534,7 +748,8 @@ function statusPorEvidencia(evid, comp) {
  * Avalia um mês da prestadora.
  * @param {{ comp: string, arquivos?: any[] }} mes  arquivos lidos da pasta do mês (scripts/docpref-dados.mjs)
  * @param {{ hoje?: string, dia?: number, conf?: { situacoes?: Record<string, boolean>, itens?: Record<string, { status: string, motivo?: string }> },
- *   certAnteriores?: Record<string, string>, antesDoInicio?: boolean }} [o]
+ *   certAnteriores?: Record<string, string>, antesDoInicio?: boolean, naoAplica?: string[] }} [o]
+ *   naoAplica: exigências que não se aplicam a esta prestadora em nenhum mês (ajuste do cadastro)
  */
 export function avaliarMes(mes, o = {}) {
   const comp = mes.comp;
@@ -559,9 +774,10 @@ export function avaliarMes(mes, o = {}) {
     // VA/VR e VT: declaração de que não se aplica
     const declNa = g.naoSeAplica ? arquivos.some((a) => a.tipo === g.naoSeAplica && a.houve === false && a.categoria === 'declaracoes') : false;
     for (const i of g.itens) {
-      const evid = arquivos.filter((a) => a.tipo === i.id);
+      const evid = arquivos.filter((a) => a.tipo === i.id || a.tambem?.includes(i.id));
       let st;
-      if (evid.length) st = statusPorEvidencia(evid, comp);
+      if (o.naoAplica?.includes(i.id)) st = { status: 'na', detalhe: 'Não se aplica a esta prestadora (ajuste do cadastro).' };
+      else if (evid.length) st = statusPorEvidencia(evid, comp);
       else if (g.quando && situacao?.valor === false) st = { status: 'na', detalhe: `Não houve (${situacao.fonte}).` };
       else if (i.quando === 'darf' && darfDevido === false) st = { status: 'na', detalhe: 'A DCTFWeb não tem saldo a pagar no mês.' };
       else if (declNa) st = { status: 'na', detalhe: 'A prestadora declarou que não se aplica.' };
@@ -605,7 +821,10 @@ export function avaliarMes(mes, o = {}) {
         .filter(Boolean)
         .sort()
         .at(-1) || null;
-    if (evid.length) {
+    if (o.naoAplica?.includes(c.id)) {
+      status = 'na';
+      detalhe = 'Não se aplica a esta prestadora (ajuste do cadastro).';
+    } else if (evid.length) {
       if (validade && validade < fimDoMes(comp)) {
         status = 'vencida';
         detalhe = `Validade até ${dataBR(validade)}: vencida antes do fim da competência.`;
@@ -635,6 +854,23 @@ export function avaliarMes(mes, o = {}) {
     const manualC = !!(m && m.status && m.status !== 'pendente');
     return { ...c, exigida, status, auto, manual: manualC, marcadoEm: manualC ? m.em || null : null, detalhe, validade, evidencias: evid.map((a) => a.rotulo) };
   });
+
+  // guias e pagamentos; pagamento incompleto ou com valor diferente da guia vira divergência (a equipe pode marcar como conferido)
+  const pagamentos = pagamentosDoMes(arquivos, { darfDevido, situacoes: sit });
+  for (const [pagId, itemId] of [
+    ['salarios', 'comp-salarios'],
+    ['fgts', 'fgts-pagamento'],
+    ['inss', 'darf-pagamento'],
+    ['vavr', 'vavr-pagamento'],
+    ['vt', 'vt-pagamento'],
+  ]) {
+    const pg = pagamentos.find((x) => x.id === pagId);
+    const it = itens.find((x) => x.id === itemId);
+    if (!pg || !it || it.manual || !['falta', 'diferente'].includes(pg.situacao) || !['ok', 'conferir'].includes(it.status)) continue;
+    it.status = 'divergencia';
+    it.auto = 'divergencia';
+    it.detalhe = pg.texto;
+  }
 
   const todos = [...itens, ...certidoes];
   const travam = todos.filter((i) => STATUS[i.status]?.trava);
@@ -689,6 +925,7 @@ export function avaliarMes(mes, o = {}) {
     pastaExiste: true,
     cobertura: coberturaDoMes(arquivos, mes.pessoas || {}),
     prazosLegais: prazosLegais(comp, arquivos),
+    pagamentos,
     /** % de regularidade (exigências recebidas ÷ exigidas), como a "performance" das plataformas de terceiros */
     regularidade: null,
     indicadores: indicadoresDoMes(arquivos, sit),
@@ -774,15 +1011,7 @@ export function achadosDoMes(av) {
     const guia = arquivos.find((a) => a.tipo === guiaTipo && a.valor);
     const pagos = arquivos.filter((a) => a.tipo === compTipo && a.valor);
     if (!guia || !pagos.length) return;
-    const soma = Math.round(pagos.reduce((s, a) => s + a.valor, 0) * 100) / 100;
-    if (pagos.some((a) => Math.abs(a.valor - guia.valor) < 0.01) || Math.abs(soma - guia.valor) < 0.01) {
-      const efetivado = pagos.some((a) => a.situacao === 'efetivada');
-      add(
-        'info',
-        `${nome}: comprovante compatível com a guia`,
-        `Guia de ${moeda(guia.valor)} e comprovante de ${moeda(soma)}${efetivado ? ', com situação efetivada' : ''}.`,
-      );
-    } else add('alerta', `${nome}: comprovante diferente da guia`, `Guia de ${moeda(guia.valor)} e comprovante(s) somando ${moeda(soma)}.`);
+    // guia × comprovante (pago, sem comprovante, valor diferente) fica na seção "Guias e pagamentos"
     if (guia.vencimento) {
       const atrasado = pagos.filter((a) => a.pagoEm && a.pagoEm > guia.vencimento);
       if (atrasado.length)
@@ -802,10 +1031,36 @@ export function achadosDoMes(av) {
     if (p.situacao === 'atraso') add('alerta', `${p.nome.replace(/ \(.*\)$/, '')} fora do prazo legal`, p.texto);
     else if (p.situacao === 'retificadora') add('info', 'DCTFWeb retificadora', p.texto);
   }
+  for (const pg of av.pagamentos || []) {
+    if (pg.situacao === 'falta') add('alerta', `${pg.nome}: pagamento incompleto`, pg.texto);
+    else if (pg.situacao === 'diferente') add('alerta', `${pg.nome}: comprovante diferente da guia`, pg.texto);
+  }
+  // retenção de 11% sobre a nota fiscal (art. 31 da Lei 8.212/91): o contratante retém e a prestadora usa na DCTFWeb
+  const cred = arquivos.find((a) => a.tipo === 'dctf-creditos' && a.retencao);
+  if (cred) {
+    const { informada, usada, saldo } = cred.retencao;
+    const perdcomp = arquivos.find((a) => a.tipo === 'darf-pagamento' && a.valor && saldo && Math.abs(a.valor - saldo) < 0.01);
+    add(
+      'info',
+      'Retenção de 11% do INSS na nota fiscal',
+      `A DCTFWeb declara ${moeda(informada)} retidos pelos contratantes (Lei 9.711/98); ${moeda(usada)} quitaram o INSS do mês${saldo ? ` e sobraram ${moeda(saldo)}${perdcomp ? `, pedidos em restituição no PER/DCOMP` : ''}` : ''}. Conferir com as retenções feitas nas notas fiscais pagas pela contratante.`,
+    );
+  }
+  // declaração do banco reaproveitada de outro mês
+  for (const d of arquivos.filter((a) => a.declaracaoBanco && a.emitidaEm)) {
+    const mesDoc = d.emitidaEm.slice(0, 7);
+    if (![comp, proximaComp(comp), proximaComp(comp, 2)].includes(mesDoc))
+      add(
+        'alerta',
+        'Declaração do banco de outro mês',
+        `A declaração de pagamentos do banco foi emitida em ${dataBR(d.emitidaEm)}, mas está na pasta de ${compBR(comp)}. Pedir a declaração ou o extrato do pagamento desta competência.`,
+      );
+  }
   const cob = av.cobertura;
   if (cob?.devidos) {
     const digitalizados = arquivos.filter((a) => a.categoria === 'fopag' && !a.tipo).length;
-    if (cob.pagamentos < cob.devidos)
+    // sem nenhum comprovante, o item "comprovantes de salário" já aparece como não localizado
+    if (cob.pagamentos > 0 && cob.pagamentos < cob.devidos)
       add(
         'alerta',
         'Comprovantes de salário não cobrem todos',
@@ -866,13 +1121,19 @@ export function achadosDoMes(av) {
       }.`,
     );
 
-  const semTexto = arquivos.filter((a) => a.semTexto && !a.imagem && a.extensao === 'pdf').length;
-  const imagens = arquivos.filter((a) => a.imagem).length;
-  if (semTexto || imagens)
+  const porOcr = arquivos.filter((a) => a.ocr).length;
+  const semLeitura = arquivos.filter((a) => a.semTexto && (a.imagem || a.extensao === 'pdf')).length;
+  if (porOcr)
+    add(
+      'info',
+      'Documentos lidos por OCR',
+      `${porOcr} ${porOcr === 1 ? 'digitalização ou foto foi lida' : 'digitalizações ou fotos foram lidas'} por reconhecimento de texto: valores e datas podem ter erro de leitura; conferir no documento.`,
+    );
+  if (semLeitura)
     add(
       'info',
       'Digitalizações exigem conferência visual',
-      `${semTexto} ${semTexto === 1 ? 'PDF sem texto' : 'PDFs sem texto'} e ${imagens} ${imagens === 1 ? 'imagem' : 'imagens'}. A leitura automática não comprova conteúdo, assinatura nem cobertura de todas as pessoas.`,
+      `${semLeitura} ${semLeitura === 1 ? 'arquivo sem texto legível' : 'arquivos sem texto legível'} (fotos de ponto escritas à mão, imagens ruins). A leitura automática não comprova conteúdo, assinatura nem cobertura de todas as pessoas.`,
     );
   const crf = av.certidoes?.find((c) => c.id === 'crf');
   if (crf && crf.status === 'faltando' && arquivos.length)
@@ -887,7 +1148,7 @@ export function achadosDoMes(av) {
 /**
  * Avalia todos os meses de uma prestadora (as certidões dependem dos meses anteriores).
  * @param {{ meses: { comp: string, arquivos: any[] }[] }} empresa
- * @param {{ hoje?: string, dia?: number, inicio?: string, ate?: string, conferencias?: Record<string, any> }} [o]
+ * @param {{ hoje?: string, dia?: number, inicio?: string, ate?: string, conferencias?: Record<string, any>, naoAplica?: string[] }} [o]
  *   conferencias: { "AAAA-MM": conf }
  */
 export function avaliarEmpresa(empresa, o = {}) {
@@ -906,7 +1167,14 @@ export function avaliarEmpresa(empresa, o = {}) {
   const certAnteriores = {};
   return lista.map((comp) => {
     const mes = porComp.get(comp) || { comp, arquivos: [] };
-    const av = avaliarMes(mes, { hoje, dia: o.dia, conf: o.conferencias?.[comp], certAnteriores: { ...certAnteriores }, antesDoInicio: comp < inicio });
+    const av = avaliarMes(mes, {
+      hoje,
+      dia: o.dia,
+      conf: o.conferencias?.[comp],
+      certAnteriores: { ...certAnteriores },
+      antesDoInicio: comp < inicio,
+      naoAplica: o.naoAplica,
+    });
     av.pastaExiste = porComp.has(comp);
     for (const c of av.certidoes) if (c.validade) certAnteriores[c.id] = c.validade;
     return av;
@@ -1187,12 +1455,28 @@ const SINAL_NOME = {
 };
 export const nomeSinal = (s) => SINAL_NOME[s] || s;
 
+/**
+ * Base legal nos contratos públicos (Lei nº 14.133/2021): art. 50 (comprovação das obrigações trabalhistas e do FGTS nos
+ * serviços com dedicação exclusiva de mão de obra) e art. 121, §§ 2º e 3º (responsabilidade da Administração e pagamento
+ * condicionado à quitação das obrigações trabalhistas, quando previsto no edital ou no contrato).
+ */
+export const FUNDAMENTO_LEGAL =
+  'Fundamento: art. 50 da Lei nº 14.133/2021 (comprovação mensal das obrigações trabalhistas, previdenciárias e do FGTS) e art. 121, §§ 2º e 3º, II (responsabilidade do contratante e pagamento condicionado à comprovação de quitação das obrigações trabalhistas vencidas, quando previsto no edital ou no contrato).';
+
+/** "no prazo de 5 (cinco) dias úteis" */
+const prazoRegularizar = (dias) => {
+  const extenso = ['zero', 'um', 'dois', 'três', 'quatro', 'cinco', 'seis', 'sete', 'oito', 'nove', 'dez', 'onze', 'doze', 'treze', 'quatorze', 'quinze'];
+  return dias
+    ? `no prazo de ${dias}${extenso[dias] ? ` (${extenso[dias]})` : ''} ${dias === 1 ? 'dia útil' : 'dias úteis'} a contar do recebimento`
+    : 'no prazo previsto no contrato';
+};
+
 /** Texto da cobrança para e-mail ou WhatsApp */
-export function mensagemPendencias(prestadora, av) {
+export function mensagemPendencias(prestadora, av, cfg = {}) {
   const linhas = [
     `Prezados, ${prestadora?.razao || ''}${prestadora?.contrato ? ` (contrato ${prestadora.contrato})` : ''},`,
     '',
-    `Na conferência dos documentos da competência ${nomeCompetencia(av.comp)}, identificamos as pendências abaixo. O prazo de envio é ${dataBR(av.prazo)}; enquanto houver pendência, o pagamento fica bloqueado.`,
+    `${cfg.contratante ? `Em nome de ${cfg.contratante}, i` : 'I'}nformamos que, na conferência dos documentos da competência ${nomeCompetencia(av.comp)}, foram identificadas as pendências abaixo. Pedimos regularizar ${prazoRegularizar(cfg.prazoRegularizacao)}, colocando os documentos na pasta compartilhada. O prazo de envio da competência é ${dataBR(av.prazo)}; enquanto houver pendência, o pagamento fica condicionado à comprovação.`,
     '',
   ];
   if (av.recusados.length) {
@@ -1215,12 +1499,19 @@ export function mensagemPendencias(prestadora, av) {
     for (const p of l) linhas.push(`- [${p.pasta || 'Certidões'}] ${p.nome}${st === 'divergencia' ? `: ${p.detalhe}` : ''}`);
     linhas.push('');
   }
-  linhas.push('Após enviar, por favor nos avise por este canal.', '', 'Atenciosamente.');
+  linhas.push(
+    'Após enviar, por favor nos avise por este canal.',
+    '',
+    FUNDAMENTO_LEGAL,
+    '',
+    `Atenciosamente${cfg.fiscal ? `,\n${cfg.fiscal}\nFiscal do contrato` : '.'}`,
+  );
   return linhas.join('\n');
 }
 
 /** Blocos do PDF da notificação de pendências (layout Ágil CM, lib/pdfReport.ts) */
-export function blocosNotificacao(prestadora, av, tomadora = '') {
+export function blocosNotificacao(prestadora, av, cfg = {}) {
+  if (typeof cfg === 'string') cfg = { contratante: cfg };
   const linhas = [
     ...av.recusados.map((r) => [r.pasta || 'Certidões', `${r.nome} - recusado${r.motivo ? `: ${r.motivo}` : ''}`]),
     ...av.pendencias.map((p) => [
@@ -1230,17 +1521,129 @@ export function blocosNotificacao(prestadora, av, tomadora = '') {
   ];
   return [
     { type: 'title', text: 'Notificação de pendências documentais' },
+    ...(cfg.contratante ? [{ type: 'para', text: `Contratante: ${cfg.contratante}`, bold: true }] : []),
     {
       type: 'para',
-      text: `${tomadora ? `${tomadora} · ` : ''}Prestadora: ${prestadora?.razao || '-'}${prestadora?.cnpj ? ` (CNPJ ${prestadora.cnpj})` : ''}${prestadora?.contrato ? ` · contrato ${prestadora.contrato}` : ''}`,
+      text: `Contratada: ${prestadora?.razao || '-'}${prestadora?.cnpj ? ` (CNPJ ${prestadora.cnpj})` : ''}${prestadora?.contrato ? ` · contrato nº ${prestadora.contrato}` : ''}${cfg.objeto ? ` · objeto: ${cfg.objeto}` : ''}`,
     },
     {
       type: 'para',
-      text: `Na conferência dos documentos trabalhistas e previdenciários da competência ${nomeCompetencia(av.comp)}, foram identificadas as pendências abaixo. Prazo de envio: ${dataBR(av.prazo)}. Enquanto houver pendência, o pagamento permanece bloqueado, conforme o contrato.`,
+      text: `Na fiscalização dos documentos trabalhistas, previdenciários e do FGTS da competência ${nomeCompetencia(av.comp)}, foram identificadas as pendências abaixo. Fica a contratada notificada a regularizá-las ${prazoRegularizar(cfg.prazoRegularizacao)}, colocando os documentos na pasta compartilhada. Prazo de envio da competência: ${dataBR(av.prazo)}. Enquanto houver pendência, o pagamento fica condicionado à comprovação, nos termos do contrato.`,
     },
     { type: 'table', widths: [1.2, 4], header: ['Pasta', 'Documento'], rows: linhas.length ? linhas : [['-', 'Nenhuma pendência']], size: 9 },
     { type: 'note', text: `${av.conferidos} de ${av.total} exigências do mês recebidas.` },
+    { type: 'para', text: FUNDAMENTO_LEGAL, size: 8.5, color: 'muted', gapAfter: 26 },
+    { type: 'para', text: '__________________________________________' },
+    { type: 'para', text: cfg.fiscal || 'Fiscal do contrato', bold: true },
+    { type: 'para', text: cfg.fiscal ? 'Fiscal do contrato' : 'Nome e assinatura', color: 'muted', size: 9 },
   ];
+}
+
+// ---------------------------------------------------------------- relatório rápido
+
+const LETRAS = 'abcdefghijklmnopqrstuvwxyz';
+const letra = (i) => (i < 26 ? LETRAS[i] : `${LETRAS[Math.floor(i / 26) - 1]}${LETRAS[i % 26]}`);
+const PERGUNTA_CURTA = {
+  admissoes: 'admissões',
+  demissoes: 'demissões',
+  ferias: 'férias',
+  acidente: 'acidente de trabalho',
+  subcontratacao: 'subcontratação',
+  parcelamento: 'parcelamento',
+  mobilizacao: 'mobilização',
+  desmobilizacao: 'desmobilização',
+};
+
+/** Itens a), b), c)... do que falta num mês, em poucas palavras */
+export function pendenciasSinteticas(av) {
+  const out = [];
+  const curto = (i) => CURTO[i.id] || i.nome;
+  for (const g of GRUPOS) {
+    const doGrupo = av.itens.filter((i) => i.grupo === g.id);
+    const faltam = doGrupo.filter((i) => i.status === 'faltando' || i.status === 'candidato');
+    if (!faltam.length) continue;
+    const exigidos = doGrupo.filter((i) => !['na', 'eventual', 'ocorrencia'].includes(i.status));
+    const tudo = faltam.length === exigidos.length && exigidos.length >= 3;
+    const classificar = faltam.some((i) => i.status === 'candidato');
+    out.push(`${g.pasta}: ${tudo ? `tudo (${faltam.length})` : faltam.map(curto).join(', ')}${classificar ? ' (há arquivos sem identificação na pasta)' : ''}`);
+  }
+  const cert = av.certidoes.filter((c) => ['faltando', 'vencida', 'renovar'].includes(c.status));
+  if (cert.length)
+    out.push(
+      `Certidões: ${cert.map((c) => `${CURTO[c.id] || c.nome}${c.status === 'vencida' ? ' (vencida)' : c.status === 'renovar' ? ' (renovar)' : ''}`).join(', ')}`,
+    );
+  for (const i of [...av.itens, ...av.certidoes].filter((x) => x.status === 'divergencia')) {
+    const det =
+      i.competenciaLida && i.competenciaLida !== av.comp
+        ? `traz ${compBR(i.competenciaLida)}, mas está na pasta de ${compBR(av.comp)}`
+        : String(i.detalhe).split(/(?<=\.)\s/)[0];
+    out.push(`Divergência em ${curto(i)}: ${det.replace(/\.$/, '')}`);
+  }
+  for (const r of av.recusados) out.push(`Recusado: ${curto(r)}${r.motivo ? ` (${r.motivo})` : ''}`);
+  const informar = Object.entries(av.situacoes || {})
+    .filter(([id, s2]) => s2.valor == null && av.itens.some((i) => i.status === 'ocorrencia' && GRUPOS.find((g) => g.id === i.grupo)?.quando === id))
+    .map(([id]) => PERGUNTA_CURTA[id] || id);
+  if (informar.length) out.push(`Informar se houve: ${informar.join(', ')}`);
+  for (const p of av.prazosLegais || []) if (p.situacao === 'atraso') out.push(`${p.nome.replace(/ \(.*\)$/, '')} fora do prazo legal (${dataBR(p.prazo)})`);
+  const jaDito = /cita outro mês|CRF não identificado|pagamento incompleto|comprovante diferente|fora do prazo legal/;
+  for (const a of av.achados.filter((x) => x.nivel === 'alerta' && !jaDito.test(x.titulo))) out.push(`${a.titulo}`);
+  return out;
+}
+
+/**
+ * Relatório rápido: por prestadora, os meses que travam ou aguardam e, em cada um, o que falta em itens a), b), c).
+ * @param {{ nome: string, ident?: { razao?: string, cnpj?: string, contrato?: string }, avs: any[], venc?: any[] }[]} lista
+ * @param {{ atualizadoEm?: string, contratante?: string, hoje?: string }} [o]
+ * @returns {{ texto: string, blocos: any[] }}
+ */
+export function relatorioRapido(lista, o = {}) {
+  const hoje = o.hoje || hojeISO();
+  const linhas = [`RELATÓRIO RÁPIDO · DocPref · ${dataBR(hoje)}`];
+  if (o.contratante) linhas.push(`Contratante: ${o.contratante}`);
+  if (o.atualizadoEm) linhas.push(`Pasta do Drive lida em ${dataBR(o.atualizadoEm)}`);
+  const blocos = [
+    { type: 'title', text: lista.length === 1 ? `Relatório rápido - ${lista[0].nome}` : 'Relatório rápido - todas as prestadoras' },
+    {
+      type: 'para',
+      text: `${o.contratante ? `Contratante: ${o.contratante}. ` : ''}O que falta, em poucas palavras, nos meses que travam o pagamento ou aguardam envio.${o.atualizadoEm ? ` Pasta do Drive lida em ${dataBR(o.atualizadoEm)}.` : ''}`,
+      color: 'muted',
+    },
+  ];
+  for (const e of lista) {
+    const meses = e.avs.filter((a) => a.sinal === 'travar' || a.sinal === 'aguardando');
+    const p = performance(e.avs);
+    const travados = e.avs.filter((a) => a.sinal === 'travar').length;
+    const resumo = `${travados ? `${travados} ${travados === 1 ? 'mês travado' : 'meses travados'}` : 'nenhum mês travado'}${p.regularidade != null ? ` · regularidade ${p.regularidade}%` : ''}`;
+    const id = e.ident ? identificacao(e.ident) : '';
+    linhas.push('', `${e.nome.toUpperCase()}${id && id !== e.nome ? ` · ${id}` : ''}`, resumo);
+    blocos.push({ type: 'heading', text: e.nome }, ...(id ? [{ type: 'para', text: id, size: 9 }] : []), { type: 'para', text: resumo, bold: true });
+    if (!meses.length) {
+      linhas.push('Tudo em dia nos meses com prazo encerrado.');
+      blocos.push({ type: 'para', text: 'Tudo em dia nos meses com prazo encerrado.' });
+    }
+    for (const a of meses) {
+      const titulo = `${compBR(a.comp)} · ${nomeSinal(a.sinal)} (prazo ${dataBR(a.prazo)})`;
+      linhas.push('', titulo);
+      blocos.push({ type: 'para', text: titulo, bold: true, gapAfter: 2 });
+      if (!a.resumo.arquivos) {
+        const t = a.sinal === 'travar' ? 'Nada enviado: todos os documentos do mês.' : 'Aguardando o envio dos documentos.';
+        linhas.push(t);
+        blocos.push({ type: 'para', text: t, indent: true, size: 9.5 });
+        continue;
+      }
+      pendenciasSinteticas(a).forEach((t, k) => {
+        linhas.push(`${letra(k)}) ${t}`);
+        blocos.push({ type: 'para', text: `${letra(k)}) ${t}`, indent: true, size: 9.5, gapAfter: 2 });
+      });
+    }
+    const venc = (e.venc || []).filter((v) => v.status === 'vencido' || v.status === 'a-vencer');
+    if (venc.length) {
+      const t = `Vencimentos: ${venc.map((v) => `${v.nome} ${v.status === 'vencido' ? 'vencida' : 'vence'} em ${dataBR(v.validade)}`).join('; ')}`;
+      linhas.push('', t);
+      blocos.push({ type: 'para', text: t, size: 9.5 });
+    }
+  }
+  return { texto: linhas.join('\n'), blocos };
 }
 
 // ---------------------------------------------------------------- relatórios no modelo "AGIL ANÁLISE DOCUMENTAL"
@@ -1248,6 +1651,11 @@ export function blocosNotificacao(prestadora, av, tomadora = '') {
 const regraPrazo = (dia) => (dia ? `dia ${dia} do mês seguinte` : 'último dia do mês seguinte');
 /** "PILAR EMPREENDIMENTOS... · CNPJ ... · contrato ..." (o que a leitura achou nos documentos ou o cadastro) */
 const identificacao = (o) => [o.razao, o.cnpj && `CNPJ ${o.cnpj}`, o.contrato && `contrato ${o.contrato}`].filter(Boolean).join(' · ');
+/** "Contratante: Prefeitura ... · Fiscal do contrato: ... · Objeto: ..." */
+const linhaContrato = (o) =>
+  [o.contratante && `Contratante: ${o.contratante}`, o.fiscal && `Fiscal do contrato: ${o.fiscal}`, o.objeto && `Objeto: ${o.objeto}`]
+    .filter(Boolean)
+    .join(' · ');
 const PRAZO_NOME = { ok: 'No prazo', atraso: 'Fora do prazo', 'sem-data': 'Sem data', retificadora: 'Retificadora' };
 
 /** Linhas de "Pessoas do mês" (planilha × comprovantes × ponto × declarações × pastas) */
@@ -1286,6 +1694,7 @@ export function blocosRelatorioMensal(nomeEmpresa, av, o = {}) {
   const blocos = [
     { type: 'title', text: `${nomeEmpresa} - Relatório mensal ${compBR(av.comp)}` },
     ...(identificacao(o) ? [{ type: 'para', text: identificacao(o), bold: true }] : []),
+    ...(linhaContrato(o) ? [{ type: 'para', text: linhaContrato(o), size: 9.5 }] : []),
     {
       type: 'para',
       text: `Mês da pasta, competência dos documentos, prazos e certidões. Fonte: leitura da pasta compartilhada no Google Drive${o.atualizadoEm ? `, consultada em ${dataBR(o.atualizadoEm)}` : ''}.`,
@@ -1318,6 +1727,24 @@ export function blocosRelatorioMensal(nomeEmpresa, av, o = {}) {
             widths: [2, 1, 1, 1.1, 3.6],
             header: ['Obrigação', 'Prazo', 'Data lida', 'Situação', 'Detalhe'],
             rows: av.prazosLegais.map((p) => [p.nome, dataBR(p.prazo), dataBR(p.data) || '-', PRAZO_NOME[p.situacao] || p.situacao, p.texto]),
+            size: 8,
+          },
+        ]
+      : []),
+    ...(av.pagamentos?.length
+      ? [
+          { type: 'heading', text: 'Guias e pagamentos' },
+          {
+            type: 'table',
+            widths: [1.4, 1.1, 1.1, 1.3, 4],
+            header: ['Obrigação', 'Guia / folha', 'Comprovantes', 'Situação', 'Providência'],
+            rows: av.pagamentos.map((p) => [
+              p.nome,
+              p.guia ? moeda(p.guia) : '-',
+              p.pago ? moeda(p.pago) : '-',
+              PAGAMENTO[p.situacao]?.nome || p.situacao,
+              `${p.texto}${p.ocr ? ' (lido por OCR)' : ''}`,
+            ]),
             size: 8,
           },
         ]
@@ -1407,6 +1834,7 @@ export function blocosRelatorioGeral(nomeEmpresa, ano, avs, o = {}) {
   const blocos = [
     { type: 'title', text: `${nomeEmpresa} - Relatório geral ${ano}` },
     ...(identificacao(o) ? [{ type: 'para', text: identificacao(o), bold: true }] : []),
+    ...(linhaContrato(o) ? [{ type: 'para', text: linhaContrato(o), size: 9.5 }] : []),
     {
       type: 'para',
       text: `Visão consolidada dos meses das pastas, competências, prazos, presença documental e certidões. Fonte: leitura da pasta compartilhada no Google Drive${o.atualizadoEm ? `, consultada em ${dataBR(o.atualizadoEm)}` : ''}.`,

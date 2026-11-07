@@ -8,6 +8,8 @@
 // (arquivos pessoais viram "Tipo · código") nem o texto dos documentos.
 //
 // Os arquivos já lidos ficam em docpref-cache.json (cache do Actions): só os novos são baixados.
+// PDFs digitalizados e fotos passam por OCR (scripts/docpref-ocr.mjs) para conferir comprovantes de pagamento e
+// identificar TRCT, avisos, ASO e outros documentos escaneados.
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -16,8 +18,9 @@ import { CATEGORIAS_PESSOAIS, lerDocumento, lerForcaDeTrabalho, norm, organizarP
 import { lerXlsx } from '../src/lib/planilhaLeitura.js';
 import { linhasDoPdf } from '../src/lib/privado/pdfTexto.js';
 import { arvore, baixarPublico } from './drive-publico.mjs';
+import { lerPorOcr, ocrDisponivel } from './docpref-ocr.mjs';
 
-const VERSAO = 5; // muda quando o leitor muda: relê tudo
+const VERSAO = 6; // muda quando o leitor muda: relê tudo
 const PASTA = 'application/vnd.google-apps.folder';
 /** Documentos emitidos pela própria prestadora: deles saem CNPJ, razão social e contrato (comprovantes e notas trazem outros CNPJs) */
 const TIPOS_DA_EMPRESA = /^(dctf-|decl-|folha$|darf-pagamento$)/;
@@ -46,18 +49,44 @@ async function analisar(f, categoria, compPasta) {
   const ext = extensao(nome);
   const base = { extensao: ext };
   if (ehCompactado(nome)) return { ...base, tipo: null, compactado: true, semTexto: true };
-  if (ehImagem(nome)) return { ...base, ...semPessoais(lerDocumento({ nome, categoria, texto: '', compPasta })), imagem: true, semTexto: true };
+  if (ehImagem(nome)) {
+    // fotos: OCR (menos as folhas de ponto escritas à mão, que o OCR não lê; contam pela pasta)
+    let texto = '';
+    if (categoria !== 'ponto' && (await ocrDisponivel())) texto = await lerPorOcr(await baixarPublico(f.id), ext);
+    const a = lerDocumento({ nome, categoria, texto, compPasta, ocr: !!texto });
+    const terceiro = a.tipo === 'comp-salarios' && a.destino ? pagoATerceiro(nome, a.destino) : false;
+    return { ...base, ...semPessoais(a), ...(terceiro ? { terceiro: true } : {}), imagem: true, semTexto: a.semTexto };
+  }
   if (ext === 'pdf') {
     const bytes = await baixarPublico(f.id);
     const lib = await pdfjs();
     let texto = '';
+    let paginas = 0;
     try {
       const r = await linhasDoPdf(lib, bytes.slice(), { maxPaginas: 3 });
       texto = r.linhas.map((l) => l.texto).join('\n');
+      paginas = r.paginas;
     } catch {
       /* PDF protegido ou corrompido: fica sem texto */
     }
-    const a = lerDocumento({ nome, categoria, texto, compPasta });
+    let a = lerDocumento({ nome, categoria, texto, compPasta });
+    if (a.semTexto && (await ocrDisponivel())) {
+      // PDF digitalizado: lê as primeiras páginas por OCR
+      const porOcr = await lerPorOcr(bytes, 'pdf', { paginas: 2 });
+      if (porOcr.trim()) {
+        texto = porOcr;
+        a = lerDocumento({ nome, categoria, texto, compPasta, ocr: true });
+      }
+    } else if (a.tipo === 'folha' && paginas > 3) {
+      // a folha analítica tem os totais (líquido e funcionários de cada departamento) nas últimas páginas
+      try {
+        const r = await linhasDoPdf(lib, bytes.slice(), { maxPaginas: 80 });
+        texto = r.linhas.map((l) => l.texto).join('\n');
+        a = lerDocumento({ nome, categoria, texto, compPasta });
+      } catch {
+        /* fica com as primeiras páginas */
+      }
+    }
     const terceiro = a.tipo === 'comp-salarios' && a.destino ? pagoATerceiro(nome, a.destino) : false;
     return {
       ...base,

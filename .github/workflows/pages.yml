@@ -19,6 +19,8 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      TEM_DOCPREF: ${{ secrets.DOCPREF_PASTA_ID != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -58,6 +60,11 @@ jobs:
             public/docpref/leitura.json
           key: docpref-${{ github.run_id }}
           restore-keys: docpref-
+      - name: Instalar o OCR (Tesseract em português) para ler digitalizações e fotos do DocPref
+        if: env.TEM_DOCPREF == 'true'
+        continue-on-error: true
+        timeout-minutes: 6
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends tesseract-ocr tesseract-ocr-por poppler-utils
       - name: Ler a pasta do DocPref (prestadoras e meses) pelo link compartilhado
         # sem o segredo DOCPREF_PASTA_ID o passo é pulado e vale a última leitura publicada
         continue-on-error: true
