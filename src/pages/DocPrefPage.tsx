@@ -10,6 +10,10 @@ import {
   GRUPOS,
   SITUACOES,
   STATUS,
+  VENCIMENTO,
+  abasAno,
+  abasFarol,
+  abasMes,
   avaliarEmpresa,
   blocosNotificacao,
   blocosRelatorioGeral,
@@ -20,6 +24,8 @@ import {
   mensagemPendencias,
   nomeCompetencia,
   nomeSinal,
+  performance,
+  vencimentos,
 } from '../lib/docpref.js';
 import { PASTAS_DO_MES, abasForcaDeTrabalho, blocosCartilha } from '../lib/docprefCartilha.js';
 import { norm } from '../lib/docprefLeitor.js';
@@ -37,7 +43,8 @@ import {
 import { dateText, downloadPdf, slug } from '../lib/pdfReport.ts';
 import { baixarXlsx } from '../lib/xlsx.js';
 
-type Aba = 'empresas' | 'cadastro' | 'cartilha' | 'como';
+type Aba = 'empresas' | 'farol' | 'cadastro' | 'cartilha' | 'como';
+type Avaliacao = ReturnType<typeof avaliarEmpresa>[number];
 type Sinal = 'pagar' | 'aguardando' | 'travar' | 'futuro' | 'fora';
 interface ArquivoLido {
   rotulo: string;
@@ -139,6 +146,23 @@ export default function DocPrefPage() {
   }, []);
 
   const empresas = useMemo(() => unir(leitura, dados.prestadoras), [leitura, dados.prestadoras]);
+  const hoje = hojeISO();
+  const avaliacoes = useMemo(
+    () =>
+      new Map(
+        empresas.map((e) => {
+          const confs: Record<string, any> = {};
+          for (const [k, v] of Object.entries(dados.conferencias)) if (k.startsWith(`${e.chave}|`)) confs[k.slice(e.chave.length + 1)] = v;
+          return [
+            e.chave,
+            avaliarEmpresa(e.drive || { meses: [] }, { hoje, dia: e.prestadora?.dia || 0, inicio: e.prestadora?.inicio || undefined, conferencias: confs }),
+          ];
+        }),
+      ),
+    [empresas, dados.conferencias, hoje],
+  );
+  const [sel, setSel] = useState('');
+  const [comp, setComp] = useState('');
 
   return (
     <>
@@ -154,6 +178,7 @@ export default function DocPrefPage() {
             {(
               [
                 ['empresas', `Prestadoras e meses${empresas.length ? ` (${empresas.length})` : ''}`, 'calendar'],
+                ['farol', 'Farol e vencimentos', 'chart'],
                 ['cadastro', 'Cadastro', 'building'],
                 ['cartilha', 'Cartilha do fornecedor', 'doc'],
                 ['como', 'Como funciona', 'shield'],
@@ -178,10 +203,25 @@ export default function DocPrefPage() {
             {aba === 'empresas' && (
               <Empresas
                 empresas={empresas}
+                avaliacoes={avaliacoes}
                 leitura={leitura}
                 estadoLeitura={estadoLeitura}
-                conferencias={dados.conferencias}
+                sel={sel}
+                setSel={setSel}
+                comp={comp}
+                setComp={setComp}
                 irParaCadastro={() => setAba('cadastro')}
+              />
+            )}
+            {aba === 'farol' && (
+              <Farol
+                empresas={empresas}
+                avaliacoes={avaliacoes}
+                abrir={(chave, c) => {
+                  setSel(chave);
+                  setComp(c);
+                  setAba('empresas');
+                }}
               />
             )}
             {aba === 'cadastro' && <Cadastro prestadoras={dados.prestadoras} nomesDrive={(leitura?.empresas || []).map((e) => e.nome)} />}
@@ -198,37 +238,28 @@ export default function DocPrefPage() {
 
 function Empresas({
   empresas,
+  avaliacoes,
   leitura,
   estadoLeitura,
-  conferencias,
+  sel,
+  setSel,
+  comp,
+  setComp,
   irParaCadastro,
 }: {
   empresas: Unida[];
+  avaliacoes: Map<string, Avaliacao[]>;
   leitura: Leitura | null;
   estadoLeitura: 'carregando' | 'ok' | 'sem';
-  conferencias: Record<string, Conferencia>;
+  sel: string;
+  setSel: (s: string) => void;
+  comp: string;
+  setComp: (c: string) => void;
   irParaCadastro: () => void;
 }) {
-  const [sel, setSel] = useState('');
-  const [comp, setComp] = useState('');
   const atual = competenciaAtual();
-  const hoje = hojeISO();
   const escolhida = empresas.find((e) => e.chave === sel) || empresas[0] || null;
-
-  const avaliacoes = useMemo(
-    () =>
-      new Map(
-        empresas.map((e) => {
-          const confs: Record<string, any> = {};
-          for (const [k, v] of Object.entries(conferencias)) if (k.startsWith(`${e.chave}|`)) confs[k.slice(e.chave.length + 1)] = v;
-          return [
-            e.chave,
-            avaliarEmpresa(e.drive || { meses: [] }, { hoje, dia: e.prestadora?.dia || 0, inicio: e.prestadora?.inicio || undefined, conferencias: confs }),
-          ];
-        }),
-      ),
-    [empresas, conferencias, hoje],
-  );
+  const venc = useMemo(() => (escolhida?.drive ? vencimentos(escolhida.drive) : []), [escolhida]);
 
   const avs = escolhida ? avaliacoes.get(escolhida.chave) || [] : [];
   const anos = [...new Set(avs.map((a) => a.comp.slice(0, 4)))];
@@ -335,6 +366,13 @@ function Empresas({
               >
                 <Icon name="doc" className="w-5 h-5" /> Relatório geral {anoSel} (PDF)
               </button>
+              <button
+                type="button"
+                onClick={() => baixarXlsx(`docpref-${slug(escolhida.nome)}-${anoSel}.xlsx`, abasAno(escolhida.nome, anoSel, avs))}
+                className={botaoSec}
+              >
+                <Icon name="sheet" className="w-5 h-5" /> Excel {anoSel}
+              </button>
               {escolhida.prestadora?.pasta && (
                 <a href={escolhida.prestadora.pasta} target="_blank" rel="noopener noreferrer" className={botaoSec}>
                   Pasta no Drive <Icon name="arrow" className="w-4 h-4" />
@@ -351,6 +389,7 @@ function Empresas({
                   <th className="px-3 py-2 font-semibold">Envio até</th>
                   <th className="px-3 py-2 font-semibold text-right">Arquivos</th>
                   <th className="px-3 py-2 font-semibold text-right">Recebidos</th>
+                  <th className="px-3 py-2 font-semibold text-right">% regular.</th>
                   <th className="px-3 py-2 font-semibold text-right">Não localizados</th>
                   <th className="px-3 py-2 font-semibold text-right">Divergências</th>
                   <th className="px-3 py-2 font-semibold text-right">Certidões</th>
@@ -377,6 +416,7 @@ function Empresas({
                         <td className="px-3 py-2 tabular-nums">{dataBR(a.prazo)}</td>
                         <td className="px-3 py-2 text-right tabular-nums">{a.resumo.arquivos}</td>
                         <td className="px-3 py-2 text-right tabular-nums">{n(a.resumo.recebidos)}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{a.regularidade == null ? '-' : `${a.regularidade}%`}</td>
                         <td className="px-3 py-2 text-right tabular-nums">{n(a.resumo.naoLocalizados)}</td>
                         <td className="px-3 py-2 text-right tabular-nums">{n(a.resumo.divergencias)}</td>
                         <td className="px-3 py-2 text-right tabular-nums">{n(a.resumo.certPendentes)}</td>
@@ -392,7 +432,16 @@ function Empresas({
               </tbody>
             </table>
           </div>
-          <p className="mt-2 text-sm text-slate-500">Clique num mês para ver o que chegou, o que falta e os achados.</p>
+          <p className="mt-2 text-sm text-slate-500">
+            Clique num mês para ver o que chegou, o que falta e os achados.
+            {(() => {
+              const p = performance(avs.filter((a) => a.comp.startsWith(anoSel)));
+              return p.exigidos
+                ? ` Regularidade em ${anoSel}: ${p.regularidade}% (${p.recebidos} de ${p.exigidos} exigências, meses com prazo encerrado).`
+                : '';
+            })()}
+          </p>
+          {venc.length > 0 && <ListaVencimentos venc={venc} />}
         </div>
       )}
 
@@ -407,7 +456,10 @@ function MesDetalhe({ empresa, av, atualizadoEm }: { empresa: Unida; av: ReturnT
   const mudarItem = (id: string, status: string, motivo?: string) =>
     atualizarConferencia(chave, av.comp, (c) => ({
       ...c,
-      itens: { ...c.itens, [id]: { status: status as 'pendente', motivo: motivo ?? c.itens[id]?.motivo } },
+      itens: {
+        ...c.itens,
+        [id]: { status: status as 'pendente', motivo: motivo ?? c.itens[id]?.motivo, em: status === 'pendente' ? undefined : new Date().toISOString() },
+      },
     }));
   const mudarSituacao = (id: string, v: boolean | null) =>
     atualizarConferencia(chave, av.comp, (c) => {
@@ -446,6 +498,9 @@ function MesDetalhe({ empresa, av, atualizadoEm }: { empresa: Unida; av: ReturnT
         >
           <Icon name="doc" className="w-5 h-5" /> Relatório do mês (PDF)
         </button>
+        <button type="button" onClick={() => baixarXlsx(`docpref-${slug(empresa.nome)}-${av.comp}.xlsx`, abasMes(av))} className={botaoSec}>
+          <Icon name="sheet" className="w-5 h-5" /> Excel do mês
+        </button>
       </div>
 
       <p role="status" className={`mt-4 p-4 rounded-xl border text-[15px] font-bold ${SINAL[av.sinal as Sinal].cor}`}>
@@ -459,6 +514,29 @@ function MesDetalhe({ empresa, av, atualizadoEm }: { empresa: Unida; av: ReturnT
           </span>
         )}
       </p>
+
+      {av.indicadores.temPlanilha && (
+        <div className="mt-5">
+          <p className="text-sm font-bold text-slate-600 mb-2">Indicadores do mês (planilha de força de trabalho)</p>
+          <dl className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+            {(
+              [
+                ['Ativos', av.indicadores.ativos],
+                ['Admissões/alocações', av.indicadores.admissoes],
+                ['Desligamentos', av.indicadores.demissoes],
+                ['Afastados', av.indicadores.afastados],
+                ['Turnover', av.indicadores.turnover == null ? '-' : `${String(av.indicadores.turnover).replace('.', ',')}%`],
+                ['Acidente no mês', av.indicadores.acidente == null ? 'sem informação' : av.indicadores.acidente ? 'houve' : 'não houve'],
+              ] as const
+            ).map(([k, v]) => (
+              <div key={k} className="px-3 py-2 rounded-xl border border-slate-200">
+                <dt className="text-xs text-slate-500">{k}</dt>
+                <dd className="text-lg font-bold text-[#0F2053] tabular-nums">{v}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      )}
 
       {av.achados.length > 0 && (
         <div className="mt-5">
@@ -626,7 +704,7 @@ function ItemConferencia({
   manual,
   mudar,
 }: {
-  i: { id: string; nome: string; status: string; auto: string; detalhe: string; evidencias: string[] };
+  i: { id: string; nome: string; status: string; auto: string; detalhe: string; evidencias: string[]; marcadoEm?: string | null };
   manual?: { status: string; motivo?: string };
   mudar: (id: string, status: string, motivo?: string) => void;
 }) {
@@ -639,6 +717,7 @@ function ItemConferencia({
         <span className="block text-sm text-slate-500">
           {i.evidencias.length ? `${i.evidencias.length} ${i.evidencias.length === 1 ? 'arquivo' : 'arquivos'} · ` : ''}
           {i.detalhe}
+          {i.marcadoEm ? ` · marcado em ${dataBR(i.marcadoEm)}` : ''}
         </span>
       </span>
       <span className={`shrink-0 self-start px-2.5 py-1 rounded-lg border text-sm font-semibold ${st.cor}`}>{st.curto}</span>
@@ -665,6 +744,213 @@ function ItemConferencia({
         )}
       </span>
     </li>
+  );
+}
+
+// ---------------------------------------------------------------- farol e vencimentos
+
+function ListaVencimentos({ venc, compacto = false }: { venc: ReturnType<typeof vencimentos>; compacto?: boolean }) {
+  return (
+    <div className={compacto ? '' : 'mt-5'}>
+      {!compacto && <p className="text-sm font-bold text-slate-600 mb-2">Certidões e documentos com validade</p>}
+      <ul className="grid md:grid-cols-2 gap-2">
+        {venc.map((v) => (
+          <li key={v.id} className="px-3 py-2 rounded-xl border border-slate-200 flex items-start justify-between gap-3">
+            <span className="min-w-0 text-[15px] text-slate-800">
+              {v.nome}
+              <span className="block text-sm text-slate-500">
+                {v.validade
+                  ? `vence em ${dataBR(v.validade)}${v.dias != null ? ` (${v.dias < 0 ? `há ${-v.dias} dias` : `em ${v.dias} dias`})` : ''}`
+                  : v.status === 'nunca'
+                    ? 'nenhuma apresentada na pasta'
+                    : 'apresentada sem validade legível'}
+                {v.mes ? ` · pasta ${compBR(v.mes)}` : ''}
+              </span>
+            </span>
+            <span className={`shrink-0 px-2.5 py-1 rounded-lg border text-sm font-semibold ${VENCIMENTO[v.status as keyof typeof VENCIMENTO].cor}`}>
+              {VENCIMENTO[v.status as keyof typeof VENCIMENTO].nome}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function Farol({ empresas, avaliacoes, abrir }: { empresas: Unida[]; avaliacoes: Map<string, Avaliacao[]>; abrir: (chave: string, comp: string) => void }) {
+  const anos = [...new Set([...avaliacoes.values()].flat().map((a) => a.comp.slice(0, 4)))].sort();
+  const [ano, setAno] = useState('');
+  const anoSel = anos.includes(ano) ? ano : anos.at(-1) || String(new Date().getFullYear());
+  const comps = Array.from({ length: 12 }, (_, i) => `${anoSel}-${String(i + 1).padStart(2, '0')}`);
+  const [soPendentes, setSoPendentes] = useState(true);
+  const lista = empresas.map((e) => ({
+    e,
+    nome: e.nome,
+    avs: avaliacoes.get(e.chave) || [],
+    venc: e.drive ? vencimentos(e.drive) : [],
+  }));
+  const ranking = lista
+    .map((l) => ({ ...l, p: performance(l.avs.filter((a) => a.comp.startsWith(anoSel))) }))
+    .sort((a, b) => (a.p.regularidade ?? 101) - (b.p.regularidade ?? 101));
+  const vencTodos = lista.flatMap((l) => l.venc.map((v) => ({ ...v, nome: v.nome, empresa: l.nome })));
+  const vencVer = soPendentes ? vencTodos.filter((v) => v.status !== 'valido') : vencTodos;
+
+  if (!empresas.length)
+    return (
+      <div className={`${card} text-center`}>
+        <p className="text-lg font-bold text-[#0F2053]">Nenhuma prestadora ainda</p>
+        <p className="mt-1 text-[15px] text-slate-600">O farol aparece quando a pasta do Drive for lida ou quando houver prestadoras cadastradas.</p>
+      </div>
+    );
+
+  return (
+    <div className="space-y-6">
+      <div className={card}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-lg font-bold text-[#0F2053]">Farol de regularidade · {anoSel}</p>
+            <p className="text-sm text-slate-500">Uma linha por prestadora e uma coluna por mês. Clique num mês para abrir o detalhe.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {anos.length > 1 && (
+              <select value={anoSel} onChange={(e) => setAno(e.target.value)} aria-label="Ano" className={`${campo} w-28`}>
+                {anos.map((a) => (
+                  <option key={a}>{a}</option>
+                ))}
+              </select>
+            )}
+            <button type="button" onClick={() => baixarXlsx(`docpref-farol-${anoSel}.xlsx`, abasFarol(lista, comps))} className={botaoSec}>
+              <Icon name="sheet" className="w-5 h-5" /> Excel do farol
+            </button>
+          </div>
+        </div>
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full min-w-[900px] text-sm">
+            <thead className="bg-[#F7FAFD] text-left text-slate-500">
+              <tr>
+                <th className="px-2 py-2 font-semibold">Prestadora</th>
+                {comps.map((c) => (
+                  <th key={c} className="px-1 py-2 font-semibold text-center">
+                    {c.slice(5)}
+                  </th>
+                ))}
+                <th className="px-2 py-2 font-semibold text-right">Regularidade</th>
+              </tr>
+            </thead>
+            <tbody>
+              {lista.map(({ e, avs }) => {
+                const p = performance(avs.filter((a) => a.comp.startsWith(anoSel)));
+                return (
+                  <tr key={e.chave} className="border-t border-slate-100">
+                    <td className="px-2 py-2 font-semibold text-[#0F2053] max-w-[220px] truncate">{e.nome}</td>
+                    {comps.map((c) => {
+                      const a = avs.find((x) => x.comp === c);
+                      if (!a)
+                        return (
+                          <td key={c} className="px-1 py-2 text-center text-slate-300">
+                            ·
+                          </td>
+                        );
+                      return (
+                        <td key={c} className="px-1 py-1 text-center">
+                          <button
+                            type="button"
+                            onClick={() => abrir(e.chave, c)}
+                            title={`${compBR(c)}: ${nomeSinal(a.sinal)}${a.regularidade != null ? ` · ${a.regularidade}%` : ''}`}
+                            aria-label={`${e.nome}, ${compBR(c)}: ${nomeSinal(a.sinal)}`}
+                            className="inline-flex flex-col items-center gap-0.5 px-1.5 py-1 rounded-lg hover:bg-slate-100 cursor-pointer"
+                          >
+                            <span className={`w-3 h-3 rounded-full ${SINAL[a.sinal as Sinal].ponto}`} aria-hidden="true" />
+                            <span className="text-[11px] tabular-nums text-slate-500">{a.regularidade != null ? `${a.regularidade}%` : ''}</span>
+                          </button>
+                        </td>
+                      );
+                    })}
+                    <td className="px-2 py-2 text-right tabular-nums font-semibold">{p.regularidade == null ? '-' : `${p.regularidade}%`}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-500">
+          {(['pagar', 'aguardando', 'travar', 'futuro', 'fora'] as const).map((s) => (
+            <span key={s} className="inline-flex items-center gap-1.5">
+              <span className={`w-2.5 h-2.5 rounded-full ${SINAL[s].ponto}`} aria-hidden="true" /> {nomeSinal(s)}
+            </span>
+          ))}
+          <span>% = exigências recebidas ÷ exigidas no mês</span>
+        </p>
+      </div>
+
+      <div className={card}>
+        <p className="text-lg font-bold text-[#0F2053]">Performance por prestadora · {anoSel}</p>
+        <p className="text-sm text-slate-500">Exigências recebidas ÷ exigidas, só nos meses com prazo encerrado. As piores primeiro.</p>
+        <ul className="mt-3 space-y-2">
+          {ranking.map(({ e, p }) => (
+            <li key={e.chave} className="grid sm:grid-cols-[minmax(0,14rem)_1fr_auto] items-center gap-x-3 gap-y-1">
+              <span className="font-semibold text-[#0F2053] truncate">{e.nome}</span>
+              <span className="h-3 rounded-full bg-slate-100 overflow-hidden" aria-hidden="true">
+                <span
+                  className={`block h-full rounded-full ${p.regularidade == null ? '' : p.regularidade >= 95 ? 'bg-emerald-600' : p.regularidade >= 70 ? 'bg-amber-500' : 'bg-red-600'}`}
+                  style={{ width: `${p.regularidade ?? 0}%` }}
+                />
+              </span>
+              <span className="text-sm tabular-nums text-slate-700">
+                {p.regularidade == null
+                  ? 'sem mês encerrado'
+                  : `${p.regularidade}% · ${p.recebidos}/${p.exigidos}${p.travados ? ` · ${p.travados} ${p.travados === 1 ? 'mês travado' : 'meses travados'}` : ''}`}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className={card}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="text-lg font-bold text-[#0F2053]">Vencimentos</p>
+            <p className="text-sm text-slate-500">A última certidão (e documento da empresa) de cada prestadora e quando vence. A vencer = até 30 dias.</p>
+          </div>
+          <label className="inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+            <input type="checkbox" checked={soPendentes} onChange={(ev) => setSoPendentes(ev.target.checked)} className="w-4 h-4" />
+            Só vencidos, a vencer e faltando
+          </label>
+        </div>
+        {!vencVer.length ? (
+          <p className="mt-3 text-[15px] text-emerald-800">Nenhum vencimento pendente.</p>
+        ) : (
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full min-w-[640px] text-sm">
+              <thead className="text-left text-slate-500">
+                <tr>
+                  <th className="px-2 py-1.5 font-semibold">Prestadora</th>
+                  <th className="px-2 py-1.5 font-semibold">Documento</th>
+                  <th className="px-2 py-1.5 font-semibold">Validade</th>
+                  <th className="px-2 py-1.5 font-semibold">Situação</th>
+                </tr>
+              </thead>
+              <tbody>
+                {vencVer.map((v, k) => (
+                  <tr key={k} className="border-t border-slate-100">
+                    <td className="px-2 py-1.5 font-semibold text-[#0F2053]">{v.empresa}</td>
+                    <td className="px-2 py-1.5 text-slate-700">{v.nome}</td>
+                    <td className="px-2 py-1.5 tabular-nums">{v.validade ? dataBR(v.validade) : '-'}</td>
+                    <td className="px-2 py-1.5">
+                      <span
+                        className={`inline-block px-2 py-0.5 rounded-lg border text-xs font-semibold ${VENCIMENTO[v.status as keyof typeof VENCIMENTO].cor}`}
+                      >
+                        {VENCIMENTO[v.status as keyof typeof VENCIMENTO].nome}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -903,7 +1189,16 @@ function ComoFunciona() {
     ['Conferência da equipe', 'Cada exigência pode ser marcada como conferida, recusada (com o motivo) ou não se aplica.', true],
     ['Notificação e cobrança', 'PDF de pendências no padrão Ágil CM, mensagem pronta e e-mail para a prestadora.', true],
     ['Cartilha do fornecedor', 'Manual com prazos, pastas, documentos, certidões, modelos de declaração e planilha de força de trabalho.', true],
-    ['Cruzamento de pessoas', 'Força de trabalho × folha × comprovantes × ponto, empregado por empregado.', false],
+    ['Farol e performance', 'Todas as prestadoras × meses num quadro só, com a % de regularidade (recebidos ÷ exigidos) e o ranking das piores.', true],
+    ['Vencimentos', 'Certidões, PGR, PCMSO, LTCAT e alvará: válido, a vencer (30 dias) ou vencido, pela última apresentada.', true],
+    ['Indicadores da força de trabalho', 'Ativos, admissões, desligamentos, afastados e turnover do mês, conferidos com as declarações.', true],
+    ['Excel', 'Planilha do ano, do mês e do farol, como os "Exportar para o Excel" das plataformas de terceiros.', true],
+    [
+      'Cruzamento de pessoas',
+      'Força de trabalho × folha × comprovantes × ponto, empregado por empregado (exige área com login, por ter dados pessoais).',
+      false,
+    ],
+    ['Empregado liberado ou bloqueado', 'ASO, treinamentos e NRs com validade por empregado, para a portaria liberar o acesso.', false],
     ['Alerta no Telegram perto do prazo', 'Quem ainda não mandou, alguns dias antes do fim do prazo.', false],
   ];
   return (

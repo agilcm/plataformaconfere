@@ -10,19 +10,19 @@
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { GRUPOS, CERTIDOES } from '../src/lib/docpref.js';
+import { GRUPOS, CERTIDOES, DOCUMENTOS_EMPRESA } from '../src/lib/docpref.js';
 import { CATEGORIAS_PESSOAIS, categoriaDaPasta, compDaPasta, lerDocumento, lerForcaDeTrabalho, norm, pagoATerceiro } from '../src/lib/docprefLeitor.js';
 import { lerXlsx } from '../src/lib/planilhaLeitura.js';
 import { linhasDoPdf } from '../src/lib/privado/pdfTexto.js';
 import { arvore, baixarPublico } from './drive-publico.mjs';
 
-const VERSAO = 3; // muda quando o leitor muda: relê tudo
+const VERSAO = 4; // muda quando o leitor muda: relê tudo
 const PASTA = 'application/vnd.google-apps.folder';
 const SAIDA = process.env.DOCPREF_SAIDA || 'public/docpref/leitura.json';
 const CACHE = process.env.DOCPREF_CACHE || 'docpref-cache.json';
 const RAIZ = (process.env.DOCPREF_PASTA_ID || '').trim();
 
-const NOME_TIPO = Object.fromEntries([...GRUPOS.flatMap((g) => g.itens), ...CERTIDOES].map((i) => [i.id, i.nome]));
+const NOME_TIPO = Object.fromEntries([...GRUPOS.flatMap((g) => g.itens), ...CERTIDOES, ...DOCUMENTOS_EMPRESA].map((i) => [i.id, i.nome]));
 const ehImagem = (n) => /\.(jpe?g|png|heic|heif|webp|gif|bmp|tiff?)$/i.test(n);
 const ehRelatorioNosso = (n) => /^relatorio[_ ](geral[_ ])?agil/i.test(n);
 const extensao = (n) => (n.match(/\.([a-z0-9]{2,5})$/i)?.[1] || '').toLowerCase();
@@ -67,6 +67,9 @@ async function analisar(f, categoria, compPasta) {
         comp: fw.comp,
         ativos: fw.ativos,
         inativos: fw.inativos,
+        admissoes: fw.admissoes,
+        demissoes: fw.demissoes,
+        afastados: fw.afastados,
         semTexto: false,
         evidencia: fw.comp ? `Planilha: competência ${fw.comp.slice(5)}/${fw.comp.slice(0, 4)}` : '',
       };

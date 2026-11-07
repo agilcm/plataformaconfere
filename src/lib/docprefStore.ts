@@ -15,7 +15,7 @@ export interface Prestadora {
 }
 export interface Conferencia {
   situacoes: Record<string, boolean>;
-  itens: Record<string, { status: 'pendente' | 'ok' | 'recusado' | 'na'; motivo?: string }>;
+  itens: Record<string, { status: 'pendente' | 'ok' | 'recusado' | 'na'; motivo?: string; em?: string }>;
   atualizadoEm: string;
 }
 export interface DadosDocPref {

@@ -12,8 +12,8 @@
  * `padrao: false`: sem declaração nem pasta, entende-se que não houve (parcelamento, mobilização, desmobilização).
  */
 export const SITUACOES = [
-  { id: 'admissoes', pergunta: 'Houve admissões ou alocações no contrato?', declaracao: 'decl-admissoes', categoria: 'admissao' },
-  { id: 'demissoes', pergunta: 'Houve demissões?', declaracao: 'decl-demissoes', categoria: 'demissao' },
+  { id: 'admissoes', pergunta: 'Houve admissões ou alocações no contrato?', declaracao: 'decl-admissoes', categoria: 'admissao', forca: 'admissoes' },
+  { id: 'demissoes', pergunta: 'Houve demissões?', declaracao: 'decl-demissoes', categoria: 'demissao', forca: 'demissoes' },
   { id: 'ferias', pergunta: 'Houve empregados em férias?', declaracao: 'decl-ferias', categoria: 'ferias' },
   { id: 'acidente', pergunta: 'Houve acidente de trabalho?', declaracao: 'decl-acidente', categoria: 'cat' },
   { id: 'subcontratacao', pergunta: 'Há subcontratação?', declaracao: 'decl-subcontratacao', categoria: 'subcontratadas' },
@@ -187,6 +187,19 @@ export const CERTIDOES = [
   { id: 'cert-falencia', nome: 'Certidão de falência e concordata', pares: true },
 ];
 
+/**
+ * Documentos da empresa com validade (não mensais): entram no controle de vencimentos quando aparecem na pasta,
+ * como no relatório "A vencer" das plataformas de gestão de terceiros.
+ */
+export const DOCUMENTOS_EMPRESA = [
+  { id: 'pgr', nome: 'PGR - Programa de Gerenciamento de Riscos' },
+  { id: 'pcmso', nome: 'PCMSO - Programa de Controle Médico de Saúde Ocupacional' },
+  { id: 'ltcat', nome: 'LTCAT - Laudo Técnico das Condições Ambientais' },
+  { id: 'alvara', nome: 'Alvará de funcionamento' },
+  { id: 'cartao-cnpj', nome: 'Cartão CNPJ' },
+  { id: 'contrato-social', nome: 'Contrato social' },
+];
+
 /** Situação de cada exigência */
 export const STATUS = {
   ok: { nome: 'Recebido · competência correta', curto: 'Recebido', cor: 'bg-emerald-50 text-emerald-800 border-emerald-300', trava: false },
@@ -261,6 +274,12 @@ export function situacoesDoMes(arquivos = [], manual = {}) {
       v = true;
       fonte = decl.length ? 'pasta (a declaração diz que não houve)' : 'pasta';
     }
+    // a planilha de força de trabalho mostra admissões e demissões com data no mês
+    const naPlanilha = s.forca ? arquivos.some((a) => a.tipo === 'forca' && a[s.forca] > 0) : false;
+    if (naPlanilha && v !== true) {
+      v = true;
+      fonte = decl.length ? 'planilha de força de trabalho (a declaração diz que não houve)' : 'planilha de força de trabalho';
+    }
     if (v == null && s.padrao === false) {
       v = false;
       fonte = 'sem pasta no mês';
@@ -269,7 +288,7 @@ export function situacoesDoMes(arquivos = [], manual = {}) {
       v = manual[s.id];
       fonte = 'marcado pela equipe';
     }
-    out[s.id] = { valor: v, fonte, contraditorio: decl.length > 0 && !decl.some((a) => a.houve) && naPasta };
+    out[s.id] = { valor: v, fonte, contraditorio: decl.length > 0 && !decl.some((a) => a.houve) && (naPasta || naPlanilha) };
   }
   return out;
 }
@@ -352,6 +371,7 @@ export function avaliarMes(mes, o = {}) {
         status: st.status,
         auto,
         manual: !!(m && m.status && m.status !== 'pendente'),
+        marcadoEm: m && m.status && m.status !== 'pendente' ? m.em || null : null,
         detalhe: st.detalhe,
         evidencias: evid.map((a) => a.rotulo),
         competenciaLida: evid.find((a) => a.comp)?.comp || evid.find((a) => a.mesDeclarado)?.mesDeclarado || null,
@@ -400,7 +420,8 @@ export function avaliarMes(mes, o = {}) {
       status = m.status;
       detalhe = m.status === 'recusado' ? m.motivo || 'Recusada na conferência.' : 'Marcado pela equipe.';
     }
-    return { ...c, exigida, status, auto, manual: !!(m && m.status && m.status !== 'pendente'), detalhe, validade, evidencias: evid.map((a) => a.rotulo) };
+    const manualC = !!(m && m.status && m.status !== 'pendente');
+    return { ...c, exigida, status, auto, manual: manualC, marcadoEm: manualC ? m.em || null : null, detalhe, validade, evidencias: evid.map((a) => a.rotulo) };
   });
 
   const todos = [...itens, ...certidoes];
@@ -448,11 +469,15 @@ export function avaliarMes(mes, o = {}) {
     pendencias,
     recusados,
     arquivos,
-    total: todos.filter((i) => i.status !== 'na' && i.status !== 'eventual').length,
+    // "Definir ocorrência" trava, mas não entra na conta de exigidos: ainda não se sabe se o documento é devido
+    total: todos.filter((i) => !['na', 'eventual', 'ocorrencia'].includes(i.status)).length,
     conferidos: todos.filter((i) => ['ok', 'conferir'].includes(i.status)).length,
     /** @type {{ nivel: string, titulo: string, texto: string }[]} */
     achados: [],
     pastaExiste: true,
+    /** % de regularidade (exigências recebidas ÷ exigidas), como a "performance" das plataformas de terceiros */
+    regularidade: null,
+    indicadores: indicadoresDoMes(arquivos, sit),
     resumo: {
       arquivos: arquivos.length,
       recebidos,
@@ -463,8 +488,32 @@ export function avaliarMes(mes, o = {}) {
       aConferir: conta('conferir'),
     },
   };
+  av.regularidade = o.antesDoInicio || mesEmCurso ? null : av.total ? Math.round((av.conferidos / av.total) * 100) : 100;
   av.achados = achadosDoMes(av);
   return av;
+}
+
+/**
+ * Indicadores do mês tirados da planilha de força de trabalho e das declarações (só contagens):
+ * ativos, admissões/alocações, desligamentos, afastados, turnover e acidente.
+ */
+export function indicadoresDoMes(arquivos = [], sit = {}) {
+  const f = arquivos.find((a) => a.tipo === 'forca' && (a.ativos || a.linhas));
+  const acidente = sit.acidente?.valor ?? null;
+  if (!f) return { temPlanilha: false, acidente };
+  const ativos = f.ativos || 0;
+  const adm = f.admissoes || 0;
+  const dem = f.demissoes || 0;
+  return {
+    temPlanilha: true,
+    ativos,
+    inativos: f.inativos || 0,
+    admissoes: adm,
+    demissoes: dem,
+    afastados: f.afastados || 0,
+    turnover: ativos ? Math.round((((adm + dem) / 2) * 1000) / ativos) / 10 : null,
+    acidente,
+  };
 }
 
 /** O que a leitura encontrou de diferente no conteúdo (sem dados pessoais) */
@@ -493,7 +542,7 @@ export function achadosDoMes(av) {
     add(
       'alerta',
       `Declaração e pasta não batem (${s.pergunta.replace(/\?$/, '').toLowerCase()})`,
-      'A declaração diz que não houve, mas a pasta tem documentos do assunto.',
+      `A declaração diz que não houve, mas ${av.situacoes[id].fonte.startsWith('planilha') ? 'a planilha de força de trabalho tem datas' : 'a pasta tem documentos'} do assunto no mês.`,
     );
   }
 
@@ -554,7 +603,16 @@ export function achadosDoMes(av) {
   const forca = arquivos.find((a) => a.tipo === 'forca' && a.comp);
   if (forca && forca.comp !== comp)
     add('alerta', 'Força de trabalho de outro mês', `A planilha informa a competência ${compBR(forca.comp)}, mas está na pasta de ${compBR(comp)}.`);
-  if (forca && forca.ativos) add('info', 'Força de trabalho', `${forca.ativos} ativos e ${forca.inativos || 0} inativos na planilha.`);
+  if (forca && forca.ativos)
+    add(
+      'info',
+      'Força de trabalho',
+      `${forca.ativos} ativos e ${forca.inativos || 0} inativos na planilha${
+        forca.admissoes || forca.demissoes || forca.afastados
+          ? `; no mês: ${forca.admissoes || 0} ${forca.admissoes === 1 ? 'admissão/alocação' : 'admissões/alocações'}, ${forca.demissoes || 0} ${forca.demissoes === 1 ? 'desligamento' : 'desligamentos'} e ${forca.afastados || 0} ${forca.afastados === 1 ? 'afastado' : 'afastados'}`
+          : ''
+      }.`,
+    );
 
   const semTexto = arquivos.filter((a) => a.semTexto && !a.imagem && a.extensao === 'pdf').length;
   const imagens = arquivos.filter((a) => a.imagem).length;
@@ -601,6 +659,254 @@ export function avaliarEmpresa(empresa, o = {}) {
     for (const c of av.certidoes) if (c.validade) certAnteriores[c.id] = c.validade;
     return av;
   });
+}
+
+export const VENCIMENTO = {
+  vencido: { nome: 'Vencido', cor: 'bg-red-50 text-red-800 border-red-300' },
+  'a-vencer': { nome: 'A vencer', cor: 'bg-amber-50 text-amber-800 border-amber-300' },
+  valido: { nome: 'Válido', cor: 'bg-emerald-50 text-emerald-800 border-emerald-300' },
+  'sem-validade': { nome: 'Validade não identificada', cor: 'bg-slate-50 text-slate-600 border-slate-200' },
+  nunca: { nome: 'Nunca apresentado', cor: 'bg-red-50 text-red-800 border-red-300' },
+};
+
+/**
+ * Vencimentos da prestadora: a última certidão (e documento da empresa) apresentada em qualquer mês e quando vence.
+ * Válido / a vencer (até `dias` dias) / vencido, como o relatório "A vencer" das plataformas de terceiros.
+ * @param {{ meses?: { comp: string, arquivos: any[] }[] }} empresa
+ */
+export function vencimentos(empresa, { hoje = hojeISO(), dias = 30 } = {}) {
+  const todos = (empresa?.meses || []).flatMap((m) => (m.arquivos || []).map((a) => ({ ...a, mes: m.comp })));
+  const out = [];
+  for (const d of [...CERTIDOES.map((c) => ({ ...c, certidao: true })), ...DOCUMENTOS_EMPRESA]) {
+    const lista = todos.filter((a) => a.tipo === d.id);
+    if (!lista.length) {
+      if (d.certidao) out.push({ id: d.id, nome: d.nome, status: 'nunca', validade: null, mes: null, dias: null });
+      continue;
+    }
+    const comValidade = lista.filter((a) => a.validade).sort((a, b) => a.validade.localeCompare(b.validade));
+    const ultimo = comValidade.at(-1) || lista.sort((a, b) => a.mes.localeCompare(b.mes)).at(-1);
+    const validade = ultimo.validade || null;
+    const faltam = validade ? Math.round((Date.parse(validade) - Date.parse(hoje)) / 86400e3) : null;
+    const status = !validade ? 'sem-validade' : faltam < 0 ? 'vencido' : faltam <= dias ? 'a-vencer' : 'valido';
+    out.push({ id: d.id, nome: d.nome, status, validade, mes: ultimo.mes, dias: faltam });
+  }
+  const ordem = ['vencido', 'nunca', 'a-vencer', 'sem-validade', 'valido'];
+  return out.sort((a, b) => ordem.indexOf(a.status) - ordem.indexOf(b.status) || String(a.validade).localeCompare(String(b.validade)));
+}
+
+/** Performance do período: exigências exigidas × recebidas nos meses com prazo encerrado */
+export function performance(avs) {
+  const meses = avs.filter((a) => a.sinal !== 'futuro' && a.sinal !== 'fora' && a.prazoEncerrado);
+  const exigidos = meses.reduce((s, a) => s + a.total, 0);
+  const recebidos = meses.reduce((s, a) => s + a.conferidos, 0);
+  return {
+    meses: meses.length,
+    exigidos,
+    recebidos,
+    regularidade: exigidos ? Math.round((recebidos / exigidos) * 100) : null,
+    travados: meses.filter((a) => a.sinal === 'travar').length,
+  };
+}
+
+// ---------------------------------------------------------------- planilhas (Excel), como os "Exportar para o Excel"
+
+const pct = (v) => (v == null ? '' : { v, tipo: 'numero' });
+
+/** Excel do ano de uma prestadora: meses, cobranças e achados */
+export function abasAno(nomeEmpresa, ano, avs) {
+  const doAno = avs.filter((a) => a.comp.startsWith(String(ano)));
+  const neutro = (a) => a.sinal === 'futuro' || a.sinal === 'fora';
+  return [
+    {
+      nome: 'Meses',
+      colunas: [
+        { titulo: 'Mês', largura: 9 },
+        { titulo: 'Envio até', largura: 11 },
+        { titulo: 'Prazo', largura: 16 },
+        { titulo: 'Arquivos', largura: 9, tipo: 'numero' },
+        { titulo: 'Exigidos', largura: 9, tipo: 'numero' },
+        { titulo: 'Recebidos', largura: 10, tipo: 'numero' },
+        { titulo: '% regularidade', largura: 13, tipo: 'numero' },
+        { titulo: 'Não localizados', largura: 13, tipo: 'numero' },
+        { titulo: 'Divergências', largura: 12, tipo: 'numero' },
+        { titulo: 'A definir ou classificar', largura: 14, tipo: 'numero' },
+        { titulo: 'Certidões pendentes', largura: 13, tipo: 'numero' },
+        { titulo: 'Ativos', largura: 8, tipo: 'numero' },
+        { titulo: 'Admissões', largura: 10, tipo: 'numero' },
+        { titulo: 'Desligamentos', largura: 12, tipo: 'numero' },
+        { titulo: 'Turnover %', largura: 10, tipo: 'numero' },
+        { titulo: 'Semáforo', largura: 26 },
+      ],
+      linhas: doAno.map((a) => [
+        compBR(a.comp),
+        dataBR(a.prazo),
+        neutro(a) ? '' : a.prazoEncerrado ? 'Prazo encerrado' : 'Dentro do prazo',
+        a.resumo.arquivos,
+        neutro(a) ? '' : a.total,
+        neutro(a) ? '' : a.conferidos,
+        pct(a.regularidade),
+        neutro(a) ? '' : a.resumo.naoLocalizados,
+        neutro(a) ? '' : a.resumo.divergencias,
+        neutro(a) ? '' : a.resumo.aDefinir,
+        neutro(a) ? '' : a.resumo.certPendentes,
+        a.indicadores.temPlanilha ? a.indicadores.ativos : '',
+        a.indicadores.temPlanilha ? a.indicadores.admissoes : '',
+        a.indicadores.temPlanilha ? a.indicadores.demissoes : '',
+        a.indicadores.turnover == null ? '' : { v: a.indicadores.turnover, tipo: 'numero' },
+        nomeSinal(a.sinal),
+      ]),
+    },
+    {
+      nome: 'Cobranças',
+      colunas: [
+        { titulo: 'Mês', largura: 9 },
+        { titulo: 'Pasta', largura: 22 },
+        { titulo: 'Exigência', largura: 50 },
+        { titulo: 'Situação', largura: 22 },
+        { titulo: 'Providência', largura: 70 },
+        { titulo: 'Prazo', largura: 11 },
+      ],
+      linhas: doAno
+        .filter((a) => !neutro(a))
+        .flatMap((a) =>
+          [...a.recusados, ...a.pendencias].map((p) => [
+            compBR(a.comp),
+            p.pasta || 'Certidões',
+            p.nome,
+            STATUS[p.status]?.nome || p.status,
+            p.detalhe,
+            dataBR(a.prazo),
+          ]),
+        ),
+    },
+    {
+      nome: 'Achados',
+      colunas: [
+        { titulo: 'Mês', largura: 9 },
+        { titulo: 'Nível', largura: 9 },
+        { titulo: 'Achado', largura: 45 },
+        { titulo: 'Detalhe', largura: 90 },
+      ],
+      linhas: doAno.flatMap((a) => a.achados.map((x) => [compBR(a.comp), x.nivel === 'alerta' ? 'Atenção' : 'Info', x.titulo, x.texto])),
+    },
+  ].map((aba) => ({ ...aba, nome: aba.nome.slice(0, 31) }));
+}
+
+/** Excel de um mês: exigências, certidões, arquivos e achados */
+export function abasMes(av) {
+  const linhaItem = (i) => [
+    i.pasta || 'Certidões',
+    i.nome,
+    STATUS[i.status]?.nome || i.status,
+    STATUS[i.auto]?.nome || i.auto,
+    i.manual ? `Sim${i.marcadoEm ? ` (${dataBR(i.marcadoEm)})` : ''}` : '',
+    i.competenciaLida ? compBR(i.competenciaLida) : i.validade ? `validade ${dataBR(i.validade)}` : '',
+    (i.evidencias || []).length,
+    i.detalhe,
+  ];
+  return [
+    {
+      nome: 'Exigências',
+      colunas: [
+        { titulo: 'Pasta', largura: 22 },
+        { titulo: 'Exigência', largura: 50 },
+        { titulo: 'Situação', largura: 24 },
+        { titulo: 'Leitura automática', largura: 24 },
+        { titulo: 'Marcado pela equipe', largura: 16 },
+        { titulo: 'Competência / validade', largura: 18 },
+        { titulo: 'Arquivos', largura: 9, tipo: 'numero' },
+        { titulo: 'Evidência e providência', largura: 80 },
+      ],
+      linhas: [...av.itens, ...av.certidoes.filter((c) => c.exigida || c.status !== 'na')].map(linhaItem),
+    },
+    {
+      nome: 'Arquivos',
+      colunas: [
+        { titulo: 'Arquivo', largura: 50 },
+        { titulo: 'Pasta', largura: 22 },
+        { titulo: 'Competência', largura: 12 },
+        { titulo: 'Evidência', largura: 60 },
+        { titulo: 'Valor', largura: 14, tipo: 'moeda' },
+        { titulo: 'Pago em', largura: 11 },
+        { titulo: 'Transmissão', largura: 11 },
+      ],
+      linhas: av.arquivos.map((a) => [
+        a.rotulo,
+        a.pasta || '',
+        a.comp ? compBR(a.comp) : a.imagem ? 'imagem' : a.semTexto ? 'sem texto' : '',
+        a.evidencia || '',
+        typeof a.valor === 'number' ? a.valor : '',
+        dataBR(a.pagoEm),
+        dataBR(a.transmissao),
+      ]),
+    },
+    {
+      nome: 'Achados',
+      colunas: [
+        { titulo: 'Nível', largura: 9 },
+        { titulo: 'Achado', largura: 45 },
+        { titulo: 'Detalhe', largura: 90 },
+      ],
+      linhas: av.achados.map((x) => [x.nivel === 'alerta' ? 'Atenção' : 'Info', x.titulo, x.texto]),
+    },
+  ];
+}
+
+/**
+ * Excel do farol: uma linha por prestadora, uma coluna por mês (semáforo e % de regularidade) e os vencimentos.
+ * @param {{ nome: string, avs: any[], venc: any[] }[]} lista
+ */
+export function abasFarol(lista, comps, { dias = 30 } = {}) {
+  return [
+    {
+      nome: 'Farol',
+      colunas: [
+        { titulo: 'Prestadora', largura: 34 },
+        ...comps.map((c) => ({ titulo: compBR(c), largura: 18 })),
+        { titulo: 'Exigidos', largura: 9, tipo: 'numero' },
+        { titulo: 'Recebidos', largura: 10, tipo: 'numero' },
+        { titulo: '% regularidade', largura: 13, tipo: 'numero' },
+        { titulo: 'Meses travados', largura: 13, tipo: 'numero' },
+      ],
+      linhas: lista.map(({ nome, avs }) => {
+        const doPeriodo = avs.filter((a) => comps.includes(a.comp));
+        const p = performance(doPeriodo);
+        return [
+          nome,
+          ...comps.map((c) => {
+            const a = avs.find((x) => x.comp === c);
+            return a ? `${nomeSinal(a.sinal)}${a.regularidade != null ? ` (${a.regularidade}%)` : ''}` : '';
+          }),
+          p.exigidos,
+          p.recebidos,
+          pct(p.regularidade),
+          p.travados,
+        ];
+      }),
+    },
+    {
+      nome: 'Vencimentos',
+      colunas: [
+        { titulo: 'Prestadora', largura: 34 },
+        { titulo: 'Documento', largura: 50 },
+        { titulo: 'Situação', largura: 22 },
+        { titulo: 'Validade', largura: 11 },
+        { titulo: 'Dias', largura: 7, tipo: 'numero' },
+        { titulo: 'Pasta do mês', largura: 12 },
+      ],
+      linhas: lista.flatMap(({ nome, venc }) =>
+        venc.map((v) => [nome, v.nome, VENCIMENTO[v.status]?.nome || v.status, dataBR(v.validade), v.dias == null ? '' : v.dias, v.mes ? compBR(v.mes) : '']),
+      ),
+    },
+    {
+      nome: 'Leia-me',
+      colunas: [{ titulo: 'Como ler', largura: 120 }],
+      linhas: [
+        ['% regularidade = exigências recebidas ÷ exigidas, nos meses com prazo encerrado.'],
+        [`A vencer = vence em até ${dias} dias. Vencido = a última apresentada já venceu. Nunca apresentado = nenhuma na pasta.`],
+      ],
+    },
+  ];
 }
 
 const SINAL_NOME = {
@@ -793,6 +1099,18 @@ export function blocosRelatorioGeral(nomeEmpresa, ano, avs, o = {}) {
     { type: 'para', text: 'Visão consolidada dos meses das pastas, competências, prazos, presença documental e certidões.', color: 'muted' },
     { type: 'heading', text: 'Resumo do período' },
     { type: 'para', text: `Arquivos reunidos: ${arquivos} | Meses com documentos: ${comBase} / ${doAno.length}` },
+    ...(() => {
+      const p = performance(doAno);
+      return p.exigidos
+        ? [
+            {
+              type: 'para',
+              text: `Regularidade nos meses com prazo encerrado: ${p.regularidade}% (${p.recebidos} de ${p.exigidos} exigências recebidas em ${p.meses} ${p.meses === 1 ? 'mês' : 'meses'}) | Meses travados: ${p.travados}`,
+              bold: true,
+            },
+          ]
+        : [];
+    })(),
     {
       type: 'bullets',
       items: [
@@ -803,9 +1121,9 @@ export function blocosRelatorioGeral(nomeEmpresa, ano, avs, o = {}) {
     { type: 'heading', text: 'Meses das pastas: competências e prazos' },
     {
       type: 'table',
-      widths: [0.8, 0.95, 1.3, 0.7, 0.8, 0.9, 0.85, 0.85, 1.4],
-      header: ['Mês', 'Envio até', 'Prazo', 'Arquivos', 'Recebidos', 'Não localiz.', 'Divergên.', 'Certidões pend.', 'Semáforo'],
-      headerAlign: ['left', 'left', 'left', 'right', 'right', 'right', 'right', 'right', 'left'],
+      widths: [0.75, 0.95, 1.2, 0.7, 0.8, 0.7, 0.85, 0.8, 0.85, 1.35],
+      header: ['Mês', 'Envio até', 'Prazo', 'Arquivos', 'Recebidos', '% regul.', 'Não localiz.', 'Divergên.', 'Certidões pend.', 'Semáforo'],
+      headerAlign: ['left', 'left', 'left', 'right', 'right', 'right', 'right', 'right', 'right', 'left'],
       rows: doAno.map((a) => {
         const neutro = a.sinal === 'futuro' || a.sinal === 'fora';
         const n = (v) => ({ text: neutro ? '-' : String(v), align: 'right' });
@@ -815,6 +1133,7 @@ export function blocosRelatorioGeral(nomeEmpresa, ano, avs, o = {}) {
           neutro ? '-' : a.prazoEncerrado ? 'Prazo encerrado' : 'Dentro do prazo',
           { text: String(a.resumo.arquivos), align: 'right' },
           n(a.resumo.recebidos),
+          { text: a.regularidade == null ? '-' : `${a.regularidade}%`, align: 'right' },
           n(a.resumo.naoLocalizados),
           n(a.resumo.divergencias),
           n(a.resumo.certPendentes),

@@ -124,7 +124,7 @@ test('salário pago a outra pessoa e planilha de força de trabalho', () => {
     ['X', 1, 2026, 4, 'C D', 'A'],
     ['X', 1, 2026, 4, 'E F', 'I'],
   ]);
-  assert.deepEqual(fw, { comp: '2026-04', ativos: 2, inativos: 1, linhas: 3 });
+  assert.deepEqual(fw, { comp: '2026-04', ativos: 2, inativos: 1, linhas: 3, admissoes: 0, demissoes: 0, afastados: 0 });
 });
 
 /** Um mês completo, como a leitura do Actions entrega */
@@ -244,4 +244,77 @@ test('cartilha do fornecedor no padrão da Ágil CM', () => {
   assert.ok(!b.some((x) => x.type === 'signature')); // quem assina é a prestadora, não a Ágil CM
   const abas = abasForcaDeTrabalho({ nome: 'Ágil CM', cnpj: '00.000.000/0001-00' });
   assert.equal(abas[0].colunas.length, 21);
+});
+
+test('força de trabalho: movimento do mês e datas do Excel', async () => {
+  const { dataCelula } = await import('../src/lib/docprefLeitor.js');
+  assert.equal(dataCelula(46174), '2026-06-01'); // número de série do Excel
+  assert.equal(dataCelula('16/06/2026'), '2026-06-16');
+  assert.equal(dataCelula(''), null);
+  const fw = lerForcaDeTrabalho([
+    [
+      'Empresa',
+      'Ano competência',
+      'Mês competência',
+      'Nome do Colaborador',
+      'Situação',
+      'Data admissão',
+      'Data alocação',
+      'Data demissão',
+      'Motivo do Afastamento',
+    ],
+    ['X', 2026, 6, 'A', 'A', '01/02/2023', '', '', ''],
+    ['X', 2026, 6, 'B', 'A', 46189, '', '', ''], // admitida em 16/06/2026
+    ['X', 2026, 6, 'C', 'I', '23/02/2026', '', '20/06/2026', ''],
+    ['X', 2026, 6, 'D', 'I', '23/02/2026', '', '', 'Licença-maternidade'],
+  ]);
+  assert.deepEqual(fw, { comp: '2026-06', ativos: 2, inativos: 2, linhas: 4, admissoes: 1, demissoes: 1, afastados: 1 });
+});
+
+test('a planilha de força de trabalho também responde se houve admissão ou demissão', () => {
+  const m = mesCompleto('2026-06');
+  m.arquivos = m.arquivos.map((a) => (a.tipo === 'forca' ? { ...a, ativos: 20, admissoes: 2, demissoes: 0 } : a));
+  const av = avaliarMes(m, { hoje: '2026-08-02' });
+  assert.equal(av.situacoes.admissoes.valor, true);
+  assert.match(av.situacoes.admissoes.fonte, /planilha/);
+  assert.equal(av.situacoes.admissoes.contraditorio, true); // a declaração dizia que não houve
+  assert.ok(av.achados.some((a) => /não batem/.test(a.titulo)));
+  assert.equal(av.indicadores.turnover, 5); // ((2 + 0) / 2) / 20
+  assert.equal(av.itens.find((i) => i.id === 'adm-aso').status, 'faltando');
+});
+
+test('vencimentos, regularidade e planilhas do Excel', async () => {
+  const { vencimentos, performance, abasAno, abasMes, abasFarol } = await import('../src/lib/docpref.js');
+  const empresa = {
+    meses: [
+      { comp: '2026-02', arquivos: [{ tipo: 'cndt', validade: '2026-03-20' }, { tipo: 'crf', validade: '2026-12-01' }, { tipo: 'pgr' }] },
+      { comp: '2026-03', arquivos: [{ tipo: 'cert-federal', validade: '2026-04-10' }] },
+    ],
+  };
+  const v = vencimentos(empresa, { hoje: '2026-04-01' });
+  const st = Object.fromEntries(v.map((x) => [x.id, x.status]));
+  assert.equal(st.cndt, 'vencido');
+  assert.equal(st['cert-federal'], 'a-vencer');
+  assert.equal(st.crf, 'valido');
+  assert.equal(st.pgr, 'sem-validade');
+  assert.equal(st['cert-estadual'], 'nunca');
+  assert.equal(v[0].status, 'vencido'); // vencidos primeiro
+
+  const avs = avaliarEmpresa({ meses: [mesCompleto('2026-02'), { comp: '2026-03', arquivos: [] }] }, { hoje: '2026-05-10' });
+  assert.equal(avs[0].regularidade, 100);
+  assert.ok(avs[1].regularidade < 20);
+  const p = performance(avs);
+  assert.equal(p.meses, 2);
+  assert.equal(p.travados, 1);
+  assert.ok(p.regularidade > 40 && p.regularidade < 60);
+
+  const ano = abasAno('Empresa Exemplo', '2026', avs);
+  assert.deepEqual(
+    ano.map((a) => a.nome),
+    ['Meses', 'Cobranças', 'Achados'],
+  );
+  assert.ok(ano[0].linhas.every((l) => l.length === ano[0].colunas.length));
+  assert.ok(abasMes(avs[1])[0].linhas.length > 20);
+  const farol = abasFarol([{ nome: 'Empresa Exemplo', avs, venc: v }], ['2026-02', '2026-03']);
+  assert.equal(farol[0].linhas[0][1], 'Pode pagar (100%)');
 });

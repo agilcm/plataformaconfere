@@ -168,6 +168,19 @@ export function lerDocumento({ nome, categoria, texto = '', compPasta = null }) 
   if (/certid/.test(nt + n) && /municip|prefeitura/.test(nt + n))
     return r('cert-municipal', { validade: validadeCertidao(t), evidencia: 'Certidão municipal' });
 
+  // ---- documentos da empresa com validade (programas de SST, alvará, cartão CNPJ, contrato social)
+  const capa = `${n} ${nt.slice(0, 500)}`;
+  const vigenciaFim = () => {
+    const m = t.match(/(?:vig[eê]ncia|validade|v[aá]lid[oa] at[eé])[^\n]{0,60}?(\d{2})\/(\d{2})\/(\d{4})\s*(?:a|at[eé]|-)\s*(\d{2})\/(\d{2})\/(\d{4})/i);
+    return m ? isoDe(+m[4], +m[5], +m[6]) : validadeCertidao(t);
+  };
+  if (/programa de gerenciamento de riscos|\bpgr\b/.test(capa)) return r('pgr', { validade: vigenciaFim(), evidencia: 'Programa de Gerenciamento de Riscos' });
+  if (/programa de controle medico de saude ocupacional|\bpcmso\b/.test(capa)) return r('pcmso', { validade: vigenciaFim(), evidencia: 'PCMSO' });
+  if (/laudo tecnico das condicoes ambientais|\bltcat\b/.test(capa)) return r('ltcat', { validade: vigenciaFim(), evidencia: 'LTCAT' });
+  if (/alvara de (localizacao|funcionamento)|\balvara\b/.test(capa)) return r('alvara', { validade: vigenciaFim(), evidencia: 'Alvará de funcionamento' });
+  if (/comprovante de inscricao e de situacao cadastral|cartao cnpj/.test(capa)) return r('cartao-cnpj', { evidencia: 'Cartão CNPJ' });
+  if (/^contrato social|alteracao contratual|contrato social consolidado/.test(capa)) return r('contrato-social', { evidencia: 'Contrato social' });
+
   // ---- planilha de força de trabalho
   if (/forca de trabalho/.test(n) || categoria === 'forca') return r('forca', { semTexto: false });
 
@@ -429,9 +442,23 @@ export function lerDocumento({ nome, categoria, texto = '', compPasta = null }) 
   return r(null);
 }
 
-/** Linhas da planilha de força de trabalho → competência e quantos ativos/inativos */
+/** Data de uma célula do Excel: número de série (45678), "dd/mm/aaaa" ou "aaaa-mm-dd" → "aaaa-mm-dd" */
+export function dataCelula(v) {
+  if (v == null || v === '') return null;
+  if (typeof v === 'number' && v > 20000 && v < 80000) return new Date(Date.UTC(1899, 11, 30) + Math.floor(v) * 86400e3).toISOString().slice(0, 10);
+  const s = String(v).trim();
+  let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (m) return isoDe(+m[1], +m[2], +m[3]);
+  m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
+}
+
+/**
+ * Linhas da planilha de força de trabalho → competência, ativos/inativos e o movimento do mês
+ * (admissões ou alocações, demissões ou desvinculações, afastados). Só contagens: nenhum nome sai daqui.
+ */
 export function lerForcaDeTrabalho(linhas) {
-  if (!Array.isArray(linhas) || !linhas.length) return { comp: null, ativos: 0, inativos: 0, linhas: 0 };
+  if (!Array.isArray(linhas) || !linhas.length) return { comp: null, ativos: 0, inativos: 0, linhas: 0, admissoes: 0, demissoes: 0, afastados: 0 };
   const cab = (linhas[0] || []).map((c) => norm(c));
   const col = (re) => cab.findIndex((c) => re.test(c));
   const iAno = col(/^ano/);
@@ -446,11 +473,23 @@ export function lerForcaDeTrabalho(linhas) {
   }
   const compMaisComum = [...contagem.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || null;
   const sit = (l) => norm(l[iSit]);
+  const iAdm = col(/^data ?admiss/);
+  const iAloc = col(/^data ?aloca/);
+  const iDem = col(/^data ?demiss/);
+  const iDesv = col(/desvincula/);
+  const iAfastado = col(/^afastad/);
+  const iMotivo = col(/motivo/);
+  const noMes = (l, ...is) => !!compMaisComum && is.some((i) => i >= 0 && dataCelula(l[i])?.slice(0, 7) === compMaisComum);
   return {
     comp: compMaisComum,
     ativos: iSit >= 0 ? corpo.filter((l) => sit(l) === 'a' || sit(l).startsWith('ativ')).length : corpo.length,
     inativos: iSit >= 0 ? corpo.filter((l) => sit(l) === 'i' || sit(l).startsWith('inat')).length : 0,
     linhas: corpo.length,
+    admissoes: corpo.filter((l) => noMes(l, iAdm, iAloc)).length,
+    demissoes: corpo.filter((l) => noMes(l, iDem, iDesv)).length,
+    afastados: corpo.filter(
+      (l) => !(iDem >= 0 && dataCelula(l[iDem])) && ((iAfastado >= 0 && /^sim/.test(norm(l[iAfastado]))) || (iMotivo >= 0 && norm(l[iMotivo]).length > 2)),
+    ).length,
   };
 }
 
