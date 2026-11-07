@@ -602,3 +602,24 @@ test('modelos para baixar: arquivos no site, declarações sem escolha e "não s
   assert.equal(mob.tipo, 'decl-mobilizacao');
   assert.equal(mob.houve, true);
 });
+
+test('manual do operador: todas as seções, situações e pagamentos explicados', async () => {
+  const { MANUAL_OPERADOR, blocosManualOperador } = await import('../src/lib/docprefManual.js');
+  const { STATUS, PAGAMENTO } = await import('../src/lib/docpref.js');
+  assert.ok(MANUAL_OPERADOR.length >= 15);
+  const sit = MANUAL_OPERADOR.find((s) => s.id === 'situacoes');
+  assert.equal(sit.tabela.linhas.length, Object.keys(STATUS).length);
+  assert.ok(sit.tabela.linhas.every((l) => l[1] && l[2])); // cada situação tem "o que é" e "o que fazer"
+  const pag = MANUAL_OPERADOR.find((s) => s.id === 'pagamentos');
+  assert.equal(pag.tabela.linhas.length, Object.keys(PAGAMENTO).length);
+  assert.ok(pag.tabela.linhas.every((l) => l[1]));
+  const b = blocosManualOperador({ contratante: 'Prefeitura de Exemplo' });
+  const texto = JSON.stringify(b);
+  assert.ok(texto.includes('Contratante: Prefeitura de Exemplo'));
+  for (const s of MANUAL_OPERADOR)
+    assert.ok(
+      b.some((x) => x.type === 'heading' && x.text === s.titulo),
+      s.titulo,
+    );
+  assert.ok(!/energisa/i.test(texto));
+});

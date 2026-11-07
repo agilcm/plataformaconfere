@@ -31,6 +31,7 @@ import {
   vencimentos,
 } from '../lib/docpref.js';
 import { MODELOS, PASTAS_DO_MES, blocosCartilha } from '../lib/docprefCartilha.js';
+import { MANUAL_OPERADOR, blocosManualOperador } from '../lib/docprefManual.js';
 import { norm } from '../lib/docprefLeitor.js';
 import {
   atualizarConferencia,
@@ -49,7 +50,7 @@ import {
 import { dateText, downloadPdf, slug } from '../lib/pdfReport.ts';
 import { baixarXlsx } from '../lib/xlsx.js';
 
-type Aba = 'empresas' | 'farol' | 'cadastro' | 'cartilha' | 'como';
+type Aba = 'empresas' | 'farol' | 'cadastro' | 'cartilha' | 'manual' | 'como';
 type Avaliacao = ReturnType<typeof avaliarEmpresa>[number];
 type Sinal = 'pagar' | 'aguardando' | 'travar' | 'futuro' | 'fora';
 interface ArquivoLido {
@@ -133,7 +134,7 @@ function unir(leitura: Leitura | null, prestadoras: Prestadora[]): Unida[] {
 }
 
 export default function DocPrefPage() {
-  const [aba, setAba] = useState<Aba>(() => (location.hash === '#cartilha' ? 'cartilha' : 'empresas'));
+  const [aba, setAba] = useState<Aba>(() => (location.hash === '#cartilha' ? 'cartilha' : location.hash === '#manual' ? 'manual' : 'empresas'));
   const dados = useDocPref();
   const [leitura, setLeitura] = useState<Leitura | null>(null);
   const [estadoLeitura, setEstadoLeitura] = useState<'carregando' | 'ok' | 'sem'>('carregando');
@@ -185,6 +186,7 @@ export default function DocPrefPage() {
   useEffect(() => {
     const aoMudar = () => {
       if (location.hash === '#cartilha') return setAba('cartilha');
+      if (location.hash === '#manual') return setAba('manual');
       const q = doEndereco();
       if (!q.get('empresa')) return;
       setAba('empresas');
@@ -221,6 +223,7 @@ export default function DocPrefPage() {
                 ['farol', 'Farol e vencimentos', 'chart'],
                 ['cadastro', 'Cadastro', 'building'],
                 ['cartilha', 'Cartilha do fornecedor', 'doc'],
+                ['manual', 'Manual do operador', 'users'],
                 ['como', 'Como funciona', 'shield'],
               ] as const
             ).map(([id, nome, icone]) => (
@@ -270,6 +273,7 @@ export default function DocPrefPage() {
             )}
             {aba === 'cadastro' && <Cadastro prestadoras={dados.prestadoras} config={dados.config} nomesDrive={(leitura?.empresas || []).map((e) => e.nome)} />}
             {aba === 'cartilha' && <Cartilha config={dados.config} />}
+            {aba === 'manual' && <ManualOperador config={dados.config} />}
             {aba === 'como' && <ComoFunciona />}
           </div>
         </Container>
@@ -1639,6 +1643,97 @@ function Cartilha({ config }: { config: ConfigDocPref }) {
         </ul>
         <p className="mt-3 text-sm text-slate-500">A planilha FORÇA DE TRABALHO fica na própria pasta do mês.</p>
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- manual do operador
+
+function ManualOperador({ config }: { config: ConfigDocPref }) {
+  const ir = (id: string) => document.getElementById(`manual-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  return (
+    <div className="space-y-6">
+      <div className={card}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="max-w-3xl">
+            <p className="text-lg font-bold text-[#0F2053]">Manual do operador</p>
+            <p className="mt-1 text-[15px] text-slate-600">
+              Para quem opera o DocPref: fiscal do contrato, equipe da prefeitura ou da Ágil CM. Como configurar, a rotina do mês, como ler cada tela, como
+              conferir e quais relatórios usar.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() =>
+              downloadPdf('manual-do-operador-docpref.pdf', 'Manual do operador - DocPref', [
+                { type: 'date', text: dateText() },
+                ...(blocosManualOperador({ contratante: config.contratante }) as any),
+              ])
+            }
+            className={`${botao} bg-[#0F2053] hover:bg-[#13306f] text-white`}
+          >
+            <Icon name="doc" className="w-5 h-5" /> Manual do operador (PDF)
+          </button>
+        </div>
+        <nav aria-label="Sumário do manual" className="mt-4 grid sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-1">
+          {MANUAL_OPERADOR.map((sec) => (
+            <button key={sec.id} type="button" onClick={() => ir(sec.id)} className="text-left text-[15px] text-[#0478CA] hover:underline cursor-pointer">
+              {sec.titulo}
+            </button>
+          ))}
+        </nav>
+      </div>
+      {MANUAL_OPERADOR.map((sec) => (
+        <section key={sec.id} id={`manual-${sec.id}`} className={`${card} scroll-mt-24`}>
+          <h2 className="text-lg font-bold text-[#0F2053]">{sec.titulo}</h2>
+          {(sec.texto || []).map((t) => (
+            <p key={t} className="mt-2 max-w-4xl text-[15px] text-slate-700 leading-relaxed">
+              {t}
+            </p>
+          ))}
+          {sec.passos && (
+            <ol className="mt-3 space-y-2 text-[15px] text-slate-700 list-decimal pl-5 max-w-4xl">
+              {sec.passos.map((t) => (
+                <li key={t}>{t}</li>
+              ))}
+            </ol>
+          )}
+          {sec.itens && (
+            <ul className="mt-3 space-y-2 text-[15px] text-slate-700 list-disc pl-5 max-w-4xl">
+              {sec.itens.map((t) => (
+                <li key={t}>{t}</li>
+              ))}
+            </ul>
+          )}
+          {sec.tabela && (
+            <div className="mt-3 overflow-x-auto">
+              <table className="w-full min-w-[560px] text-sm">
+                <thead className="bg-[#F7FAFD] text-left text-slate-500">
+                  <tr>
+                    {sec.tabela.cabecalho.map((h) => (
+                      <th key={h} className="px-2.5 py-2 font-semibold">
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {sec.tabela.linhas.map((l) => (
+                    <tr key={l.join('|')} className="border-t border-slate-100 align-top">
+                      {l.map((c, k) => (
+                        <td key={k} className={`px-2.5 py-2 ${k === 0 ? 'font-semibold text-[#0F2053]' : 'text-slate-700'}`}>
+                          {c}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {sec.nota && <p className="mt-3 text-sm text-slate-500">{sec.nota}</p>}
+        </section>
+      ))}
     </div>
   );
 }
