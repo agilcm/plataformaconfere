@@ -1,6 +1,7 @@
-// DocPref: o GitHub Actions lê a pasta compartilhada "Documentos - Analise Documental" (uma pasta por prestadora,
-// dentro dela uma pasta por mês: 03-2026, 04-2026...), identifica cada documento e a competência escrita nele e grava
-// public/docpref/leitura.json, publicado com o site.
+// DocPref: o GitHub Actions lê a pasta compartilhada "Documentos - Analise Documental" pelo link (uma pasta por
+// prestadora, dentro dela uma pasta por mês: 03-2026, 04-2026...), identifica cada documento e a competência escrita
+// nele e grava public/docpref/leitura.json, publicado com o site. Nada é enviado pelo site: a fonte é só o Drive.
+// Arquivos fora das pastas de mês (PGR, contrato social, certidões guardadas na pasta da empresa) também são lidos.
 //
 // O que vai para o site: nome da prestadora, mês, pasta, tipo do documento, competência, valores das guias e os
 // achados. Não vão: o ID da pasta (fica no segredo DOCPREF_PASTA_ID), links dos arquivos, CPF, nomes de empregados
@@ -11,20 +12,22 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { GRUPOS, CERTIDOES, DOCUMENTOS_EMPRESA } from '../src/lib/docpref.js';
-import { CATEGORIAS_PESSOAIS, categoriaDaPasta, compDaPasta, lerDocumento, lerForcaDeTrabalho, norm, pagoATerceiro } from '../src/lib/docprefLeitor.js';
+import { CATEGORIAS_PESSOAIS, lerDocumento, lerForcaDeTrabalho, norm, organizarPasta, pagoATerceiro } from '../src/lib/docprefLeitor.js';
 import { lerXlsx } from '../src/lib/planilhaLeitura.js';
 import { linhasDoPdf } from '../src/lib/privado/pdfTexto.js';
 import { arvore, baixarPublico } from './drive-publico.mjs';
 
-const VERSAO = 4; // muda quando o leitor muda: relê tudo
+const VERSAO = 5; // muda quando o leitor muda: relê tudo
 const PASTA = 'application/vnd.google-apps.folder';
+/** Documentos emitidos pela própria prestadora: deles saem CNPJ, razão social e contrato (comprovantes e notas trazem outros CNPJs) */
+const TIPOS_DA_EMPRESA = /^(dctf-|decl-|folha$|darf-pagamento$)/;
 const SAIDA = process.env.DOCPREF_SAIDA || 'public/docpref/leitura.json';
 const CACHE = process.env.DOCPREF_CACHE || 'docpref-cache.json';
 const RAIZ = (process.env.DOCPREF_PASTA_ID || '').trim();
 
 const NOME_TIPO = Object.fromEntries([...GRUPOS.flatMap((g) => g.itens), ...CERTIDOES, ...DOCUMENTOS_EMPRESA].map((i) => [i.id, i.nome]));
 const ehImagem = (n) => /\.(jpe?g|png|heic|heif|webp|gif|bmp|tiff?)$/i.test(n);
-const ehRelatorioNosso = (n) => /^relatorio[_ ](geral[_ ])?agil/i.test(n);
+const ehCompactado = (n) => /\.(zip|rar|7z|tar|gz)$/i.test(n);
 const extensao = (n) => (n.match(/\.([a-z0-9]{2,5})$/i)?.[1] || '').toLowerCase();
 const codigo = (id) => createHash('sha1').update(String(id)).digest('hex').slice(0, 5);
 const slug = (s) =>
@@ -42,6 +45,7 @@ async function analisar(f, categoria, compPasta) {
   const nome = f.name;
   const ext = extensao(nome);
   const base = { extensao: ext };
+  if (ehCompactado(nome)) return { ...base, tipo: null, compactado: true, semTexto: true };
   if (ehImagem(nome)) return { ...base, ...semPessoais(lerDocumento({ nome, categoria, texto: '', compPasta })), imagem: true, semTexto: true };
   if (ext === 'pdf') {
     const bytes = await baixarPublico(f.id);
@@ -55,7 +59,12 @@ async function analisar(f, categoria, compPasta) {
     }
     const a = lerDocumento({ nome, categoria, texto, compPasta });
     const terceiro = a.tipo === 'comp-salarios' && a.destino ? pagoATerceiro(nome, a.destino) : false;
-    return { ...base, ...semPessoais(a), ...(terceiro ? { terceiro: true } : {}), _empresa: dadosDaEmpresa(texto) };
+    return {
+      ...base,
+      ...semPessoais(a),
+      ...(terceiro ? { terceiro: true } : {}),
+      _empresa: a.tipo && TIPOS_DA_EMPRESA.test(a.tipo) ? dadosDaEmpresa(texto) : null,
+    };
   }
   if ((ext === 'xlsx' || ext === 'xlsm') && (/forca/.test(norm(nome)) || categoria === 'forca')) {
     const bytes = await baixarPublico(f.id);
@@ -103,36 +112,6 @@ const maisComum = (lista) => {
   return [...c.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || null;
 };
 
-/** Pastas de mês dentro da pasta da prestadora (até 3 níveis: Prestadora/Documentos/03-2026) */
-function pastasDeMes(pasta, nivel = 0, out = []) {
-  for (const f of pasta.filhos || []) {
-    if (f.mimeType !== PASTA) continue;
-    const comp = compDaPasta(f.name);
-    if (comp) out.push({ comp, pasta: f });
-    else if (nivel < 2) pastasDeMes(f, nivel + 1, out);
-  }
-  return out;
-}
-
-/** Arquivos de uma pasta de mês com a categoria (1º nível) e se estão na subpasta de uma pessoa */
-function arquivosDoMes(pastaMes) {
-  const out = [];
-  const pessoas = {};
-  const anda = (p, categoria, nomeCategoria, nivel) => {
-    for (const f of p.filhos || []) {
-      if (f.mimeType === PASTA) {
-        if (nivel === 0) anda(f, categoriaDaPasta(f.name), f.name, 1);
-        else {
-          pessoas[categoria] = (pessoas[categoria] || 0) + 1;
-          anda(f, categoria, nomeCategoria, nivel + 1);
-        }
-      } else if (!ehRelatorioNosso(f.name)) out.push({ f, categoria, nomeCategoria, pessoa: nivel >= 2 });
-    }
-  };
-  anda(pastaMes, 'raiz', '', 0);
-  return { arquivos: out, pessoas };
-}
-
 async function main() {
   if (!RAIZ) {
     console.log('DocPref: segredo DOCPREF_PASTA_ID não configurado; a leitura da pasta foi pulada.');
@@ -150,25 +129,13 @@ async function main() {
     `Pasta "${raiz.name}": ${todos.filter((f) => f.mimeType === PASTA).length} pastas e ${todos.filter((f) => f.mimeType !== PASTA).length} arquivos.`,
   );
 
-  // prestadoras: as subpastas da raiz (ou a própria raiz, se já tiver as pastas dos meses)
-  const diretas = pastasDeMes(raiz).filter((m) => (raiz.filhos || []).includes(m.pasta));
-  const prestadoras = diretas.length ? [raiz] : (raiz.filhos || []).filter((f) => f.mimeType === PASTA);
-
+  // prestadoras → meses → arquivos (src/lib/docprefLeitor.js, testado com pastas de vários formatos)
+  const org = organizarPasta(raiz);
+  if (org.ignoradas.length) console.log(`Pastas na raiz que não são prestadoras: ${org.ignoradas.join(', ')}`);
   const tarefas = [];
-  const empresas = [];
-  for (const p of prestadoras) {
-    const meses = new Map();
-    for (const { comp, pasta } of pastasDeMes(p)) {
-      const { arquivos, pessoas } = arquivosDoMes(pasta);
-      const m = meses.get(comp) || { comp, pasta: pasta.name, pessoas: {}, itens: [] };
-      for (const [k, v] of Object.entries(pessoas)) m.pessoas[k] = (m.pessoas[k] || 0) + v;
-      for (const a of arquivos) {
-        m.itens.push(a);
-        tarefas.push({ ...a, comp });
-      }
-      meses.set(comp, m);
-    }
-    empresas.push({ p, meses });
+  for (const e of org.empresas) {
+    for (const m of e.meses) for (const a of m.arquivos) tarefas.push({ ...a, comp: m.comp });
+    for (const d of e.documentos) tarefas.push({ ...d, comp: null });
   }
 
   let lidos = 0;
@@ -190,39 +157,49 @@ async function main() {
   console.log(`${fila.length} arquivos lidos agora; ${tarefas.length - fila.length} já estavam lidos.`);
 
   const saida = {
-    versao: 1,
+    versao: 2,
     atualizadoEm: new Date().toISOString(),
     pasta: raiz.name,
-    empresas: empresas.map(({ p, meses }) => {
+    ignoradas: org.ignoradas,
+    empresas: org.empresas.map((e) => {
       const dados = [];
-      const lista = [...meses.values()]
-        .sort((a, b) => a.comp.localeCompare(b.comp))
-        .map((m) => ({
-          comp: m.comp,
-          pasta: m.pasta,
-          pessoas: m.pessoas,
-          arquivos: m.itens.map(({ f, categoria, nomeCategoria, pessoa }) => {
-            const { _empresa, ...a } = cache[f.id]?.a || { erro: true, extensao: extensao(f.name) };
-            if (_empresa) dados.push(_empresa);
-            const pessoal = pessoa || CATEGORIAS_PESSOAIS.has(categoria);
-            const rotulo = pessoal ? `${NOME_TIPO[a.tipo] || 'Documento'} · ${codigo(f.id)}${a.extensao ? `.${a.extensao}` : ''}` : f.name;
-            return { rotulo, categoria, pasta: nomeCategoria || 'Pasta do mês', ...(pessoa ? { pessoa: true } : {}), ...a };
-          }),
-        }));
+      /** O que pode ir para o site sobre um arquivo. Nome original só de documento reconhecido e não pessoal. */
+      const publico = ({ f, categoria, nomeCategoria, pessoa }, padraoPasta, vistos) => {
+        const { _empresa, ...a } = cache[f.id]?.a || { erro: true, extensao: extensao(f.name) };
+        if (_empresa) dados.push(_empresa);
+        const pessoal = pessoa || CATEGORIAS_PESSOAIS.has(categoria);
+        let rotulo =
+          !pessoal && a.tipo
+            ? f.name
+            : `${NOME_TIPO[a.tipo] || (a.compactado ? 'Arquivo compactado' : 'Documento')} · ${codigo(f.id)}${a.extensao ? `.${a.extensao}` : ''}`;
+        // dois arquivos com o mesmo nome no mesmo mês: acrescenta um número para diferenciar
+        let n = 2;
+        while (vistos.has(rotulo)) rotulo = rotulo.replace(/( \(\d+\))?(\.[a-z0-9]+)?$/, (_, __, x = '') => ` (${n++})${x}`);
+        vistos.add(rotulo);
+        return { rotulo, categoria, pasta: nomeCategoria || padraoPasta, ...(pessoa ? { pessoa: true } : {}), ...a };
+      };
+      const meses = e.meses.map((m) => ({
+        comp: m.comp,
+        pasta: m.pastas.join(' + '),
+        pessoas: m.pessoas,
+        arquivos: ((vistos) => m.arquivos.map((x) => publico(x, 'Pasta do mês', vistos)))(new Set()),
+      }));
+      const documentos = ((vistos) => e.documentos.map((x) => publico(x, 'Pasta da empresa', vistos)))(new Set());
       return {
-        id: slug(p.name),
-        nome: nomeBonito(p.name),
+        id: slug(e.nome),
+        nome: nomeBonito(e.nome),
         cnpj: maisComum(dados.map((d) => d.cnpj)),
         razao: maisComum(dados.map((d) => d.razao)),
         contrato: maisComum(dados.map((d) => d.contrato)),
-        meses: lista,
+        meses,
+        documentos,
       };
     }),
   };
   fs.mkdirSync(path.dirname(SAIDA), { recursive: true });
   fs.writeFileSync(SAIDA, JSON.stringify(saida));
-  const ids = new Set(tarefas.map((t) => t.f.id));
-  fs.writeFileSync(CACHE, JSON.stringify(Object.fromEntries(Object.entries(cache).filter(([id]) => ids.has(id)))));
+  const vivos = new Set(tarefas.map((t) => t.f.id));
+  fs.writeFileSync(CACHE, JSON.stringify(Object.fromEntries(Object.entries(cache).filter(([id]) => vivos.has(id)))));
   console.log(`${saida.empresas.length} prestadoras, ${tarefas.length} arquivos (${((Date.now() - t0) / 1000).toFixed(0)} s). Gravado em ${SAIDA}.`);
 }
 

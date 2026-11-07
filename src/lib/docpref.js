@@ -253,6 +253,215 @@ export function competenciaAtual(hoje = new Date()) {
 }
 
 const hojeISO = () => new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 10);
+const somaDias = (iso, n) => new Date(Date.parse(`${iso}T12:00:00Z`) + n * 86400e3).toISOString().slice(0, 10);
+
+/** Domingo de Páscoa (algoritmo de Meeus) */
+function pascoa(ano) {
+  const a = ano % 19;
+  const b = Math.floor(ano / 100);
+  const c = ano % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const mes = Math.floor((h + l - 7 * m + 114) / 31);
+  const dia = ((h + l - 7 * m + 114) % 31) + 1;
+  return `${ano}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
+}
+const cacheFeriados = new Map();
+/** Dias sem expediente bancário no país: feriados nacionais, Carnaval, Sexta-feira Santa e Corpus Christi */
+export function feriadosNacionais(ano) {
+  if (!cacheFeriados.has(ano)) {
+    const p = pascoa(ano);
+    cacheFeriados.set(
+      ano,
+      new Set([
+        `${ano}-01-01`,
+        somaDias(p, -48),
+        somaDias(p, -47),
+        somaDias(p, -2),
+        `${ano}-04-21`,
+        `${ano}-05-01`,
+        somaDias(p, 60),
+        `${ano}-09-07`,
+        `${ano}-10-12`,
+        `${ano}-11-02`,
+        `${ano}-11-15`,
+        `${ano}-11-20`,
+        `${ano}-12-25`,
+      ]),
+    );
+  }
+  return cacheFeriados.get(ano);
+}
+/** Dia útil: segunda a sexta, fora dos feriados nacionais */
+export const diaUtil = (iso) => {
+  const dow = new Date(`${iso}T12:00:00Z`).getUTCDay();
+  return dow !== 0 && dow !== 6 && !feriadosNacionais(+iso.slice(0, 4)).has(iso);
+};
+/** Dia `dia` do mês seguinte à competência; se não for dia útil, antecipa (FGTS e INSS dia 20, DCTFWeb dia 15) */
+export function vencimentoLegal(comp, dia) {
+  let d = `${proximaComp(comp)}-${String(dia).padStart(2, '0')}`;
+  while (!diaUtil(d)) d = somaDias(d, -1);
+  return d;
+}
+/** 5º dia útil do mês seguinte (prazo do salário, art. 459 da CLT), contando de segunda a sexta */
+export function quintoDiaUtil(comp) {
+  let d = `${proximaComp(comp)}-01`;
+  let n = diaUtil(d) ? 1 : 0;
+  while (n < 5) {
+    d = somaDias(d, 1);
+    if (diaUtil(d)) n++;
+  }
+  return d;
+}
+
+/**
+ * Prazos legais do mês, pelos documentos lidos: salário até o 5º dia útil, DCTFWeb até o dia 15, FGTS e INSS até o
+ * dia 20 do mês seguinte (antecipados se não houver expediente bancário).
+ * @returns {{ id: string, nome: string, prazo: string, data: string|null, situacao: 'ok'|'atraso'|'sem-data'|'retificadora', texto: string }[]}
+ */
+export function prazosLegais(comp, arquivos = []) {
+  const out = [];
+  const ultimo = (lista) => lista.sort().at(-1) || null;
+  const salario = arquivos.filter((a) => a.tipo === 'comp-salarios' && a.pagoEm);
+  if (arquivos.some((a) => a.tipo === 'comp-salarios')) {
+    const prazo = quintoDiaUtil(comp);
+    const atrasados = salario.filter((a) => a.pagoEm > prazo);
+    const data = ultimo(salario.map((a) => a.pagoEm));
+    out.push({
+      id: 'salario',
+      nome: 'Salários (5º dia útil)',
+      prazo,
+      data,
+      situacao: !data ? 'sem-data' : atrasados.length ? 'atraso' : 'ok',
+      texto: !data
+        ? 'Comprovantes sem data de pagamento legível.'
+        : atrasados.length
+          ? `${atrasados.length} ${atrasados.length === 1 ? 'pagamento depois' : 'pagamentos depois'} do 5º dia útil (${dataBR(prazo)}); último em ${dataBR(data)}.`
+          : `Pagos até ${dataBR(data)}, dentro do 5º dia útil (${dataBR(prazo)}).`,
+    });
+  }
+  const dctf = arquivos.filter((a) => (a.tipo === 'dctf-completa' || a.tipo === 'dctf-recibo') && (a.comp === comp || !a.comp));
+  if (dctf.length) {
+    const prazo = vencimentoLegal(comp, 15);
+    const retificadora = dctf.some((a) => a.retificadora);
+    const data = ultimo(dctf.map((a) => a.transmissao).filter(Boolean));
+    out.push({
+      id: 'dctfweb',
+      nome: 'DCTFWeb (dia 15)',
+      prazo,
+      data,
+      situacao: !data ? 'sem-data' : retificadora && data > prazo ? 'retificadora' : data > prazo ? 'atraso' : 'ok',
+      texto: !data
+        ? 'Data de transmissão não identificada.'
+        : retificadora && data > prazo
+          ? `Retificadora transmitida em ${dataBR(data)}; conferir se a original foi entregue até ${dataBR(prazo)}.`
+          : data > prazo
+            ? `Transmitida em ${dataBR(data)}, depois do prazo (${dataBR(prazo)}).`
+            : `Transmitida em ${dataBR(data)}, dentro do prazo (${dataBR(prazo)}).`,
+    });
+  }
+  for (const [id, nome, guiaTipo, pagoTipo] of [
+    ['fgts', 'FGTS (dia 20)', 'fgts-guia', 'fgts-pagamento'],
+    ['inss', 'DARF previdenciário (dia 20)', 'darf', 'darf-pagamento'],
+  ]) {
+    const guias = arquivos.filter((a) => a.tipo === guiaTipo && (a.comp === comp || !a.comp));
+    const pagos = arquivos.filter((a) => a.tipo === pagoTipo && a.pagoEm);
+    if (!guias.length && !pagos.length) continue;
+    const prazo = vencimentoLegal(comp, 20);
+    const data = ultimo(pagos.map((a) => a.pagoEm));
+    const venc = ultimo(guias.map((a) => a.vencimento).filter(Boolean));
+    const encargos = guias.reduce((s2, a) => s2 + (a.encargos || 0), 0);
+    const atraso = (data && data > prazo) || (venc && venc > prazo) || encargos > 0;
+    out.push({
+      id,
+      nome,
+      prazo,
+      data,
+      situacao: atraso ? 'atraso' : data ? 'ok' : 'sem-data',
+      texto: atraso
+        ? `Recolhimento fora do prazo legal (${dataBR(prazo)})${venc && venc > prazo ? `: guia com vencimento em ${dataBR(venc)}` : ''}${data ? `${venc && venc > prazo ? ',' : ':'} pago em ${dataBR(data)}` : ''}${encargos > 0 ? `, com ${moeda(encargos)} de encargos` : ''}.`
+        : data
+          ? `Pago em ${dataBR(data)}, dentro do prazo (${dataBR(prazo)}).`
+          : `Guia localizada; falta o comprovante para conferir o prazo (${dataBR(prazo)}).`,
+    });
+  }
+  return out;
+}
+
+/**
+ * Comprovantes e detalhamentos sem competência escrita são ligados à guia do mês pelo valor (mesmo valor = mesmo
+ * recolhimento). VA/VR e VT não têm competência: guia e comprovante com o mesmo valor ficam "vinculados".
+ */
+export function vincularPorValor(arquivos = []) {
+  const igual = (a, b) => a != null && b != null && Math.abs(a - b) < 0.01;
+  const out = arquivos.map((a) => ({ ...a }));
+  for (const [pagoTipo, guiaTipo, nome] of [
+    ['fgts-pagamento', 'fgts-guia', 'guia FGTS'],
+    ['darf-pagamento', 'darf', 'DARF'],
+  ]) {
+    const guias = out.filter((a) => a.tipo === guiaTipo && a.comp && a.valor);
+    for (const a of out.filter((x) => x.tipo === pagoTipo && !x.comp && x.valor)) {
+      const g = guias.find((x) => igual(x.valor, a.valor));
+      if (g) {
+        a.comp = g.comp;
+        a.vinculo = `Mesmo valor da ${nome} de ${compBR(g.comp)} (${moeda(g.valor)}).`;
+        if (!a.evidencia) a.evidencia = a.vinculo;
+      }
+    }
+  }
+  for (const [pagoTipo, guiaTipo] of [
+    ['vavr-pagamento', 'vavr-guia'],
+    ['vt-pagamento', 'vt-guia'],
+  ]) {
+    const guias = out.filter((a) => a.tipo === guiaTipo && a.valor);
+    for (const a of out.filter((x) => x.tipo === pagoTipo && x.valor)) {
+      const g = guias.find((x) => igual(x.valor, a.valor));
+      if (g) {
+        a.vinculado = g.vinculado = true;
+        a.vinculo = g.vinculo = `Guia/nota e comprovante com o mesmo valor (${moeda(a.valor)}).`;
+        if (!a.evidencia) a.evidencia = a.vinculo;
+        if (!g.evidencia) g.evidencia = g.vinculo;
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Pessoas do mês: empregados na planilha × comprovantes de salário × folhas de ponto, e admissões/desligamentos
+ * pela planilha, pela declaração e pelas subpastas de pessoas. Só números.
+ */
+export function coberturaDoMes(arquivos = [], pessoasPastas = {}) {
+  const f = arquivos.find((a) => a.tipo === 'forca' && (a.ativos || a.linhas));
+  const ativos = f ? f.ativos || 0 : null;
+  const devidos = ativos == null ? null : Math.max(0, ativos - (f.afastados || 0));
+  const salario = arquivos.filter((a) => a.tipo === 'comp-salarios');
+  const pagamentos = salario.reduce((s2, a) => s2 + (a.lote || (a.holerite ? 0 : 1)), 0);
+  const holerites = salario.filter((a) => a.holerite).length;
+  const ponto = arquivos.filter((a) => a.tipo === 'ponto').length;
+  const decl = (tipo) => {
+    const d = arquivos.find((a) => a.tipo === tipo && a.houve != null);
+    return d ? (d.houve ? d.pessoas || null : 0) : null;
+  };
+  return {
+    temPlanilha: !!f,
+    ativos,
+    devidos,
+    pagamentos,
+    holerites,
+    ponto,
+    // subpastas só contam quando a prestadora organiza por pessoa; arquivos soltos na pasta não dizem quantas pessoas são
+    admissoes: { planilha: f ? f.admissoes || 0 : null, declaracao: decl('decl-admissoes'), pastas: pessoasPastas.admissao || null },
+    demissoes: { planilha: f ? f.demissoes || 0 : null, declaracao: decl('decl-demissoes'), pastas: pessoasPastas.demissao || null },
+  };
+}
 const moeda = (v) => (v == null ? '' : `R$ ${Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
 export { moeda };
 
@@ -296,7 +505,10 @@ export function situacoesDoMes(arquivos = [], manual = {}) {
 /** Status de uma exigência a partir das evidências (arquivos do tipo) e da competência esperada */
 function statusPorEvidencia(evid, comp) {
   const comComp = evid.filter((a) => a.comp);
-  if (comComp.some((a) => a.comp === comp)) return { status: 'ok', detalhe: `Competência ${compBR(comp)} compatível com este mês.` };
+  const certo = comComp.find((a) => a.comp === comp);
+  if (certo) return { status: 'ok', detalhe: certo.vinculo || `Competência ${compBR(comp)} compatível com este mês.` };
+  const vinculado = evid.find((a) => a.vinculado);
+  if (vinculado) return { status: 'ok', detalhe: vinculado.vinculo };
   if (comComp.length) {
     const outra = comComp[0].comp;
     return { status: 'divergencia', detalhe: `O documento traz a competência ${compBR(outra)}, diferente da pasta ${compBR(comp)}.` };
@@ -326,7 +538,7 @@ function statusPorEvidencia(evid, comp) {
  */
 export function avaliarMes(mes, o = {}) {
   const comp = mes.comp;
-  const arquivos = mes.arquivos || [];
+  const arquivos = vincularPorValor(mes.arquivos || []);
   const hoje = o.hoje || hojeISO();
   const prazo = prazoDe(comp, o.dia || 0);
   const diasParaPrazo = Math.round((Date.parse(prazo) - Date.parse(hoje)) / 86400e3);
@@ -475,6 +687,8 @@ export function avaliarMes(mes, o = {}) {
     /** @type {{ nivel: string, titulo: string, texto: string }[]} */
     achados: [],
     pastaExiste: true,
+    cobertura: coberturaDoMes(arquivos, mes.pessoas || {}),
+    prazosLegais: prazosLegais(comp, arquivos),
     /** % de regularidade (exigências recebidas ÷ exigidas), como a "performance" das plataformas de terceiros */
     regularidade: null,
     indicadores: indicadoresDoMes(arquivos, sit),
@@ -489,6 +703,15 @@ export function avaliarMes(mes, o = {}) {
     },
   };
   av.regularidade = o.antesDoInicio || mesEmCurso ? null : av.total ? Math.round((av.conferidos / av.total) * 100) : 100;
+  const cob = av.cobertura;
+  if (cob.devidos) {
+    const sal = itens.find((i) => i.id === 'comp-salarios');
+    if (sal && sal.evidencias.length)
+      sal.detalhe = `${sal.detalhe} ${cob.pagamentos} ${cob.pagamentos === 1 ? 'pagamento' : 'pagamentos'} para ${cob.devidos} ${cob.devidos === 1 ? 'empregado' : 'empregados'} na planilha.`;
+    const pt = itens.find((i) => i.id === 'ponto');
+    if (pt && pt.evidencias.length)
+      pt.detalhe = `${pt.detalhe} ${cob.ponto} ${cob.ponto === 1 ? 'arquivo' : 'arquivos'} para ${cob.devidos} ${cob.devidos === 1 ? 'empregado' : 'empregados'}.`;
+  }
   av.achados = achadosDoMes(av);
   return av;
 }
@@ -563,7 +786,11 @@ export function achadosDoMes(av) {
     if (guia.vencimento) {
       const atrasado = pagos.filter((a) => a.pagoEm && a.pagoEm > guia.vencimento);
       if (atrasado.length)
-        add('alerta', `${nome}: pago depois do vencimento`, `Vencimento ${dataBR(guia.vencimento)}; pagamento em ${dataBR(atrasado[0].pagoEm)}.`);
+        add(
+          'alerta',
+          `${nome}: pago depois do vencimento da guia`,
+          `Vencimento da guia ${dataBR(guia.vencimento)}; pagamento em ${dataBR(atrasado[0].pagoEm)}.`,
+        );
     }
   };
   par('fgts-guia', 'fgts-pagamento', 'FGTS');
@@ -571,13 +798,38 @@ export function achadosDoMes(av) {
   par('vavr-guia', 'vavr-pagamento', 'VA/VR');
   par('vt-guia', 'vt-pagamento', 'VT');
 
-  const fg = arquivos.find((a) => a.tipo === 'fgts-guia' && a.encargos > 0);
-  if (fg)
-    add(
-      'alerta',
-      'FGTS com encargos de atraso',
-      `A guia FGTS Digital traz ${moeda(fg.encargos)} de encargos: o recolhimento ${fg.comp ? `de ${compBR(fg.comp)} ` : ''}saiu depois do vencimento normal.`,
-    );
+  for (const p of av.prazosLegais || []) {
+    if (p.situacao === 'atraso') add('alerta', `${p.nome.replace(/ \(.*\)$/, '')} fora do prazo legal`, p.texto);
+    else if (p.situacao === 'retificadora') add('info', 'DCTFWeb retificadora', p.texto);
+  }
+  const cob = av.cobertura;
+  if (cob?.devidos) {
+    const digitalizados = arquivos.filter((a) => a.categoria === 'fopag' && !a.tipo).length;
+    if (cob.pagamentos < cob.devidos)
+      add(
+        'alerta',
+        'Comprovantes de salário não cobrem todos',
+        `${cob.pagamentos} ${cob.pagamentos === 1 ? 'pagamento localizado' : 'pagamentos localizados'} para ${cob.devidos} empregados ativos na planilha${cob.holerites ? ` (e ${cob.holerites} holerite(s))` : ''}${digitalizados ? `; há ${digitalizados} arquivo(s) não identificado(s) na pasta da folha` : ''}.`,
+      );
+    if (cob.ponto > 1 && cob.ponto < cob.devidos)
+      add('alerta', 'Folhas de ponto não cobrem todos', `${cob.ponto} arquivos de ponto para ${cob.devidos} empregados ativos na planilha.`);
+    else if (cob.ponto === 1 && cob.devidos > 1)
+      add('info', 'Ponto em arquivo único', `Conferir se o arquivo cobre os ${cob.devidos} empregados ativos da planilha.`);
+  }
+  for (const [chave, nome] of [
+    ['admissoes', 'Admissões'],
+    ['demissoes', 'Desligamentos'],
+  ]) {
+    const c = cob?.[chave];
+    if (!c) continue;
+    const fontes = [
+      ['planilha', c.planilha],
+      ['declaração', c.declaracao],
+      ['subpastas de pessoas', c.pastas],
+    ].filter(([, v]) => v != null);
+    if (fontes.length >= 2 && new Set(fontes.map(([, v]) => v)).size > 1)
+      add('alerta', `${nome} não batem`, `${fontes.map(([k, v]) => `${k}: ${v}`).join(' · ')}. Conferir quem entrou ou saiu no mês.`);
+  }
   if (av.darfDevido === false) add('info', 'DCTFWeb sem saldo a pagar', 'O débito do mês foi coberto por retenções/compensações: não há DARF a pagar.');
   else if (av.darfDevido) add('info', 'DCTFWeb com saldo a pagar', 'Há DARF previdenciário a pagar: exigir a guia e o comprovante (ou o PER/DCOMP).');
 
@@ -675,7 +927,10 @@ export const VENCIMENTO = {
  * @param {{ meses?: { comp: string, arquivos: any[] }[] }} empresa
  */
 export function vencimentos(empresa, { hoje = hojeISO(), dias = 30 } = {}) {
-  const todos = (empresa?.meses || []).flatMap((m) => (m.arquivos || []).map((a) => ({ ...a, mes: m.comp })));
+  const todos = [
+    ...(empresa?.meses || []).flatMap((m) => (m.arquivos || []).map((a) => ({ ...a, mes: m.comp }))),
+    ...(empresa?.documentos || []).map((a) => ({ ...a, mes: '' })),
+  ];
   const out = [];
   for (const d of [...CERTIDOES.map((c) => ({ ...c, certidao: true })), ...DOCUMENTOS_EMPRESA]) {
     const lista = todos.filter((a) => a.tipo === d.id);
@@ -818,6 +1073,20 @@ export function abasMes(av) {
         { titulo: 'Evidência e providência', largura: 80 },
       ],
       linhas: [...av.itens, ...av.certidoes.filter((c) => c.exigida || c.status !== 'na')].map(linhaItem),
+    },
+    {
+      nome: 'Prazos e pessoas',
+      colunas: [
+        { titulo: 'Conferência', largura: 46 },
+        { titulo: 'Prazo', largura: 11 },
+        { titulo: 'Data lida', largura: 11 },
+        { titulo: 'Situação', largura: 14 },
+        { titulo: 'Detalhe', largura: 80 },
+      ],
+      linhas: [
+        ...(av.prazosLegais || []).map((p) => [p.nome, dataBR(p.prazo), dataBR(p.data), PRAZO_NOME[p.situacao] || p.situacao, p.texto]),
+        ...linhasCobertura(av.cobertura).map(([k, v]) => [k, '', '', '', v]),
+      ],
     },
     {
       nome: 'Arquivos',
@@ -977,6 +1246,28 @@ export function blocosNotificacao(prestadora, av, tomadora = '') {
 // ---------------------------------------------------------------- relatórios no modelo "AGIL ANÁLISE DOCUMENTAL"
 
 const regraPrazo = (dia) => (dia ? `dia ${dia} do mês seguinte` : 'último dia do mês seguinte');
+/** "PILAR EMPREENDIMENTOS... · CNPJ ... · contrato ..." (o que a leitura achou nos documentos ou o cadastro) */
+const identificacao = (o) => [o.razao, o.cnpj && `CNPJ ${o.cnpj}`, o.contrato && `contrato ${o.contrato}`].filter(Boolean).join(' · ');
+const PRAZO_NOME = { ok: 'No prazo', atraso: 'Fora do prazo', 'sem-data': 'Sem data', retificadora: 'Retificadora' };
+
+/** Linhas de "Pessoas do mês" (planilha × comprovantes × ponto × declarações × pastas) */
+function linhasCobertura(c) {
+  if (!c) return [];
+  const fonte = (x) =>
+    [x.planilha != null && `planilha ${x.planilha}`, x.declaracao != null && `declaração ${x.declaracao}`, x.pastas != null && `subpastas ${x.pastas}`]
+      .filter(Boolean)
+      .join(' · ') || '-';
+  return [
+    [
+      'Empregados ativos na planilha de força de trabalho',
+      c.ativos == null ? 'sem planilha' : `${c.ativos}${c.devidos !== c.ativos ? ` (${c.devidos} sem afastados)` : ''}`,
+    ],
+    ['Pagamentos de salário localizados', `${c.pagamentos}${c.holerites ? ` + ${c.holerites} holerite(s)` : ''}`],
+    ['Arquivos de ponto', String(c.ponto)],
+    ['Admissões/alocações no mês', fonte(c.admissoes)],
+    ['Desligamentos no mês', fonte(c.demissoes)],
+  ];
+}
 
 /** Relatório mensal de uma prestadora */
 export function blocosRelatorioMensal(nomeEmpresa, av, o = {}) {
@@ -994,9 +1285,10 @@ export function blocosRelatorioMensal(nomeEmpresa, av, o = {}) {
   ];
   const blocos = [
     { type: 'title', text: `${nomeEmpresa} - Relatório mensal ${compBR(av.comp)}` },
+    ...(identificacao(o) ? [{ type: 'para', text: identificacao(o), bold: true }] : []),
     {
       type: 'para',
-      text: `Mês da pasta, competência dos documentos, prazos e certidões.${o.atualizadoEm ? ` Base consultada em ${dataBR(o.atualizadoEm)}.` : ''}`,
+      text: `Mês da pasta, competência dos documentos, prazos e certidões. Fonte: leitura da pasta compartilhada no Google Drive${o.atualizadoEm ? `, consultada em ${dataBR(o.atualizadoEm)}` : ''}.`,
       color: 'muted',
     },
     { type: 'heading', text: 'Competências e prazo de envio' },
@@ -1018,6 +1310,24 @@ export function blocosRelatorioMensal(nomeEmpresa, av, o = {}) {
       type: 'note',
       text: 'Recebido significa localizado; cada evidência informa a conferência do período. Conteúdo, valores e cobertura das pessoas seguem em análise. O prazo de envio não é a data de vencimento das certidões.',
     },
+    ...(av.prazosLegais?.length
+      ? [
+          { type: 'heading', text: 'Prazos legais' },
+          {
+            type: 'table',
+            widths: [2, 1, 1, 1.1, 3.6],
+            header: ['Obrigação', 'Prazo', 'Data lida', 'Situação', 'Detalhe'],
+            rows: av.prazosLegais.map((p) => [p.nome, dataBR(p.prazo), dataBR(p.data) || '-', PRAZO_NOME[p.situacao] || p.situacao, p.texto]),
+            size: 8,
+          },
+        ]
+      : []),
+    ...(av.cobertura?.temPlanilha || av.cobertura?.pagamentos || av.cobertura?.ponto
+      ? [
+          { type: 'heading', text: 'Pessoas do mês' },
+          { type: 'table', widths: [3.4, 3.4], header: ['Conferência', 'Quantidade'], rows: linhasCobertura(av.cobertura), size: 8.5 },
+        ]
+      : []),
     { type: 'heading', text: 'O que precisa no mês da pasta' },
     {
       type: 'table',
@@ -1096,7 +1406,12 @@ export function blocosRelatorioGeral(nomeEmpresa, ano, avs, o = {}) {
   const comBase = doAno.filter((a) => a.resumo.arquivos > 0).length;
   const blocos = [
     { type: 'title', text: `${nomeEmpresa} - Relatório geral ${ano}` },
-    { type: 'para', text: 'Visão consolidada dos meses das pastas, competências, prazos, presença documental e certidões.', color: 'muted' },
+    ...(identificacao(o) ? [{ type: 'para', text: identificacao(o), bold: true }] : []),
+    {
+      type: 'para',
+      text: `Visão consolidada dos meses das pastas, competências, prazos, presença documental e certidões. Fonte: leitura da pasta compartilhada no Google Drive${o.atualizadoEm ? `, consultada em ${dataBR(o.atualizadoEm)}` : ''}.`,
+      color: 'muted',
+    },
     { type: 'heading', text: 'Resumo do período' },
     { type: 'para', text: `Arquivos reunidos: ${arquivos} | Meses com documentos: ${comBase} / ${doAno.length}` },
     ...(() => {

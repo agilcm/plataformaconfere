@@ -204,7 +204,7 @@ test('divergências, situações do mês e achados', () => {
   assert.equal(av.itens.find((x) => x.id === 'adm-aso').status, 'faltando');
   assert.equal(av.itens.find((x) => x.id === 'fer-aviso').status, 'na');
   assert.ok(av.achados.some((a) => /cita outro mês/.test(a.titulo)));
-  assert.ok(av.achados.some((a) => /encargos/.test(a.titulo)));
+  assert.ok(av.achados.some((a) => /FGTS fora do prazo legal/.test(a.titulo) && /encargos/.test(a.texto)));
   const pdf = blocosRelatorioMensal('Empresa Exemplo', av, { atualizadoEm: '2026-05-10' });
   assert.ok(pdf.some((b) => b.type === 'heading' && /Arquivos localizados/.test(b.text)));
 });
@@ -317,4 +317,125 @@ test('vencimentos, regularidade e planilhas do Excel', async () => {
   assert.ok(abasMes(avs[1])[0].linhas.length > 20);
   const farol = abasFarol([{ nome: 'Empresa Exemplo', avs, venc: v }], ['2026-02', '2026-03']);
   assert.equal(farol[0].linhas[0][1], 'Pode pagar (100%)');
+});
+
+test('organização da pasta: várias prestadoras, pastas de ano, documentos da empresa e pastas ignoradas', async () => {
+  const { organizarPasta, PASTA_MIME } = await import('../src/lib/docprefLeitor.js');
+  const pasta = (name, filhos = []) => ({ name, mimeType: PASTA_MIME, filhos });
+  const arq = (name) => ({ id: name, name, mimeType: 'application/pdf' });
+  const raiz = pasta('Documentos - Analise Documental', [
+    pasta('Empresa A', [
+      pasta('Documentos', [arq('Relatorio_Geral_Agil_A_2026.pdf'), pasta('03-2026', [arq('Relatorio_Agil_A_03_2026.pdf'), pasta('FGTS', [arq('guia.pdf')])])]),
+      arq('PGR 2026.pdf'),
+    ]),
+    pasta('Empresa B', [
+      pasta('2026', [pasta('04 - Abril', [pasta('Admissão-alocação', [pasta('Fulano', [arq('aso.pdf')]), pasta('Beltrano')]), arq('FORÇA DE TRABALHO.xlsx')])]),
+      pasta('Documentos da empresa', [arq('Contrato social.pdf')]),
+    ]),
+    pasta('Modelos', [arq('modelo.pdf')]),
+    arq('leia-me.pdf'),
+  ]);
+  const org = organizarPasta(raiz);
+  assert.deepEqual(
+    org.empresas.map((e) => e.nome),
+    ['Empresa A', 'Empresa B'],
+  );
+  assert.deepEqual(org.ignoradas, ['Modelos']);
+  assert.deepEqual(org.soltosRaiz, ['leia-me.pdf']);
+  const [a, b] = org.empresas;
+  assert.deepEqual(
+    a.meses.map((m) => m.comp),
+    ['2026-03'],
+  );
+  assert.deepEqual(
+    a.meses[0].arquivos.map((x) => [x.f.name, x.categoria]),
+    [['guia.pdf', 'fgts']],
+  ); // os relatórios da própria análise ficam de fora
+  assert.deepEqual(
+    a.documentos.map((x) => x.f.name),
+    ['PGR 2026.pdf'],
+  );
+  assert.equal(b.meses[0].comp, '2026-04');
+  assert.equal(b.meses[0].pessoas.admissao, 2); // duas subpastas de pessoas
+  assert.deepEqual(
+    b.meses[0].arquivos.map((x) => [x.f.name, x.categoria, x.pessoa]),
+    [
+      ['aso.pdf', 'admissao', true],
+      ['FORÇA DE TRABALHO.xlsx', 'raiz', false],
+    ],
+  );
+  assert.deepEqual(
+    b.documentos.map((x) => [x.f.name, x.nomeCategoria]),
+    [['Contrato social.pdf', 'Documentos da empresa']],
+  );
+  // uma prestadora só: a raiz já tem as pastas dos meses
+  const unica = organizarPasta(pasta('Pilar', [pasta('05-2026', [arq('x.pdf')])]));
+  assert.deepEqual(
+    unica.empresas.map((e) => [e.nome, e.meses.length]),
+    [['Pilar', 1]],
+  );
+});
+
+test('prazos legais: 5º dia útil, DCTFWeb dia 15, FGTS e INSS dia 20 (antecipados)', async () => {
+  const { quintoDiaUtil, vencimentoLegal, feriadosNacionais, prazosLegais } = await import('../src/lib/docpref.js');
+  assert.ok(feriadosNacionais(2026).has('2026-02-17')); // Carnaval
+  assert.ok(feriadosNacionais(2026).has('2026-04-03')); // Sexta-feira Santa
+  assert.ok(feriadosNacionais(2026).has('2026-06-04')); // Corpus Christi
+  assert.equal(quintoDiaUtil('2026-04'), '2026-05-08'); // 1º de maio é feriado
+  assert.equal(quintoDiaUtil('2026-07'), '2026-08-07');
+  assert.equal(vencimentoLegal('2026-05', 20), '2026-06-19'); // 20/06/2026 é sábado: antecipa
+  assert.equal(vencimentoLegal('2026-03', 15), '2026-04-15');
+  const p = prazosLegais('2026-04', [
+    { tipo: 'comp-salarios', pagoEm: '2026-05-07' },
+    { tipo: 'comp-salarios', pagoEm: '2026-05-11' },
+    { tipo: 'dctf-completa', comp: '2026-04', transmissao: '2026-06-08', retificadora: true },
+    { tipo: 'fgts-guia', comp: '2026-04', vencimento: '2026-06-17', valor: 100, encargos: 9 },
+    { tipo: 'fgts-pagamento', pagoEm: '2026-06-17', valor: 100 },
+  ]);
+  const por = Object.fromEntries(p.map((x) => [x.id, x]));
+  assert.equal(por.salario.situacao, 'atraso');
+  assert.match(por.salario.texto, /1 pagamento depois do 5º dia útil \(08\/05\/2026\)/);
+  assert.equal(por.dctfweb.situacao, 'retificadora');
+  assert.equal(por.fgts.situacao, 'atraso');
+  assert.match(por.fgts.texto, /20\/05\/2026.*17\/06\/2026.*encargos/);
+});
+
+test('comprovante sem competência ligado à guia pelo valor e pessoas do mês', async () => {
+  const { vincularPorValor, coberturaDoMes } = await import('../src/lib/docpref.js');
+  const v = vincularPorValor([
+    { tipo: 'fgts-guia', comp: '2026-04', valor: 3861.16 },
+    { tipo: 'fgts-pagamento', valor: 3861.16 },
+    { tipo: 'vavr-guia', valor: 50 },
+    { tipo: 'vavr-pagamento', valor: 50 },
+  ]);
+  assert.equal(v[1].comp, '2026-04');
+  assert.match(v[1].vinculo, /Mesmo valor da guia FGTS de 04\/2026/);
+  assert.ok(v[2].vinculado && v[3].vinculado);
+  const m = mesCompleto('2026-04');
+  m.arquivos = m.arquivos.filter((a) => a.tipo !== 'fgts-pagamento').concat({ rotulo: 'pix.pdf', categoria: 'fgts', tipo: 'fgts-pagamento', valor: 100 });
+  assert.equal(avaliarMes(m, { hoje: '2026-05-10' }).itens.find((i) => i.id === 'fgts-pagamento').status, 'ok');
+
+  const c = coberturaDoMes(
+    [
+      { tipo: 'forca', ativos: 19, afastados: 1, admissoes: 1, demissoes: 1 },
+      { tipo: 'comp-salarios' },
+      { tipo: 'comp-salarios', lote: 9 },
+      { tipo: 'ponto' },
+      { tipo: 'ponto' },
+      { tipo: 'decl-admissoes', houve: true, pessoas: 1 },
+      { tipo: 'decl-demissoes', houve: false },
+    ],
+    { admissao: 1 },
+  );
+  assert.equal(c.devidos, 18);
+  assert.equal(c.pagamentos, 10);
+  assert.equal(c.ponto, 2);
+  assert.deepEqual(c.admissoes, { planilha: 1, declaracao: 1, pastas: 1 });
+  assert.deepEqual(c.demissoes, { planilha: 1, declaracao: 0, pastas: null }); // sem subpastas de pessoas: não entra na conta
+
+  const mes = mesCompleto('2026-04');
+  mes.arquivos = mes.arquivos.map((a) => (a.tipo === 'forca' ? { ...a, ativos: 19, demissoes: 1 } : a));
+  const av = avaliarMes(mes, { hoje: '2026-05-10' });
+  assert.ok(av.achados.some((x) => x.titulo === 'Comprovantes de salário não cobrem todos'));
+  assert.ok(av.achados.some((x) => x.titulo === 'Desligamentos não batem'));
 });

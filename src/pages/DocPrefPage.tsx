@@ -61,10 +61,13 @@ interface EmpresaDrive {
   cnpj?: string | null;
   contrato?: string | null;
   meses: { comp: string; pasta: string; pessoas?: Record<string, number>; arquivos: ArquivoLido[] }[];
+  /** arquivos fora das pastas de mês (PGR, contrato social, certidões guardadas na pasta da empresa) */
+  documentos?: ArquivoLido[];
 }
 interface Leitura {
   atualizadoEm: string;
   pasta?: string;
+  ignoradas?: string[];
   empresas: EmpresaDrive[];
 }
 interface Unida {
@@ -161,8 +164,18 @@ export default function DocPrefPage() {
       ),
     [empresas, dados.conferencias, hoje],
   );
-  const [sel, setSel] = useState('');
-  const [comp, setComp] = useState('');
+  // o endereço guarda a prestadora e o mês abertos (#empresa=drive:pilar&mes=2026-07): dá para voltar direto ao relatório
+  const doEndereco = () => new URLSearchParams(location.hash.replace(/^#/, ''));
+  const [sel, setSel] = useState(() => doEndereco().get('empresa') || '');
+  const [comp, setComp] = useState(() => doEndereco().get('mes') || '');
+  useEffect(() => {
+    if (aba !== 'empresas') return;
+    const q = new URLSearchParams();
+    if (sel) q.set('empresa', sel);
+    if (comp) q.set('mes', comp);
+    const novo = q.toString() ? `#${q.toString()}` : '';
+    if (location.hash !== novo) history.replaceState(null, '', `${location.pathname}${location.search}${novo}`);
+  }, [aba, sel, comp]);
 
   return (
     <>
@@ -258,8 +271,15 @@ function Empresas({
   irParaCadastro: () => void;
 }) {
   const atual = competenciaAtual();
-  const escolhida = empresas.find((e) => e.chave === sel) || empresas[0] || null;
+  const [busca, setBusca] = useState('');
+  const [ordem, setOrdem] = useState<'pior' | 'nome'>('pior');
+  const travadosDe = (e: Unida) => (avaliacoes.get(e.chave) || []).filter((x) => x.sinal === 'travar').length;
+  const visiveis = empresas
+    .filter((e) => !busca.trim() || norm(`${e.nome} ${e.razao} ${e.cnpj}`).includes(norm(busca)) || digitos(e.cnpj).includes(digitos(busca) || '-'))
+    .sort((a, b) => (ordem === 'pior' ? travadosDe(b) - travadosDe(a) : 0) || a.nome.localeCompare(b.nome, 'pt-BR'));
+  const escolhida = empresas.find((e) => e.chave === sel) || visiveis[0] || empresas[0] || null;
   const venc = useMemo(() => (escolhida?.drive ? vencimentos(escolhida.drive) : []), [escolhida]);
+  const ident = escolhida ? { razao: escolhida.razao, cnpj: escolhida.cnpj, contrato: escolhida.contrato } : {};
 
   const avs = escolhida ? avaliacoes.get(escolhida.chave) || [] : [];
   const anos = [...new Set(avs.map((a) => a.comp.slice(0, 4)))];
@@ -276,9 +296,25 @@ function Empresas({
         {estadoLeitura === 'carregando'
           ? 'Lendo o resultado da pasta do Drive…'
           : estadoLeitura === 'ok' && leitura
-            ? `Leitura automática da pasta${leitura.pasta ? ` “${leitura.pasta}”` : ''}: ${new Date(leitura.atualizadoEm).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })} · o site relê a pasta a cada 3 horas.`
-            : 'A leitura automática da pasta do Drive ainda não foi publicada. Cadastre as prestadoras e confira manualmente enquanto isso (veja “Como funciona”).'}
+            ? `Fonte: a pasta compartilhada${leitura.pasta ? ` “${leitura.pasta}”` : ''} no Google Drive, lida em ${new Date(leitura.atualizadoEm).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })} · ${leitura.empresas.length} ${leitura.empresas.length === 1 ? 'prestadora' : 'prestadoras'} · o site relê a pasta a cada 3 horas.${leitura.ignoradas?.length ? ` Pastas que não são prestadoras: ${leitura.ignoradas.join(', ')}.` : ''}`
+            : 'A leitura da pasta do Drive ainda não foi publicada: falta configurar o segredo DOCPREF_PASTA_ID no GitHub (veja “Como funciona”).'}
       </p>
+
+      {empresas.length > 6 && (
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="block flex-1 min-w-[12rem]">
+            <span className="block text-sm font-bold text-slate-600 mb-1">Buscar prestadora</span>
+            <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Nome, razão social ou CNPJ" className={campo} />
+          </label>
+          <label className="block">
+            <span className="block text-sm font-bold text-slate-600 mb-1">Ordem</span>
+            <select value={ordem} onChange={(e) => setOrdem(e.target.value as 'pior' | 'nome')} className={campo}>
+              <option value="pior">Mais pendências primeiro</option>
+              <option value="nome">Nome</option>
+            </select>
+          </label>
+        </div>
+      )}
 
       {!empresas.length ? (
         <div className={`${card} text-center`}>
@@ -290,7 +326,8 @@ function Empresas({
         </div>
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {empresas.map((e) => {
+          {!visiveis.length && <p className="text-[15px] text-slate-600">Nenhuma prestadora com esse nome.</p>}
+          {visiveis.map((e) => {
             const lista = avaliacoes.get(e.chave) || [];
             const a = lista.find((x) => x.comp === atual) || lista.filter((x) => x.sinal !== 'futuro').at(-1);
             const travados = lista.filter((x) => x.sinal === 'travar').length;
@@ -343,7 +380,13 @@ function Empresas({
                   .join(' · ')}
               </p>
               <p className="text-sm text-slate-500">
-                Prazo: {escolhida.prestadora?.dia ? `dia ${escolhida.prestadora.dia}` : 'último dia'} do mês seguinte à competência.
+                Prazo: {escolhida.prestadora?.dia ? `dia ${escolhida.prestadora.dia}` : 'último dia'} do mês seguinte à competência ·{' '}
+                {(() => {
+                  const inicio = avs.find((a) => a.sinal !== 'fora')?.comp;
+                  return inicio
+                    ? `início considerado: ${compBR(inicio)}${escolhida.prestadora?.inicio ? ' (cadastro)' : ' (primeiro mês com arquivos; ajuste no Cadastro)'}`
+                    : '';
+                })()}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -359,7 +402,11 @@ function Empresas({
                 onClick={() =>
                   downloadPdf(`docpref-${slug(escolhida.nome)}-${anoSel}.pdf`, `${escolhida.nome} - Relatório geral ${anoSel}`, [
                     { type: 'date', text: dateText() },
-                    ...(blocosRelatorioGeral(escolhida.nome, anoSel, avs, { dia: escolhida.prestadora?.dia || 0 }) as any),
+                    ...(blocosRelatorioGeral(escolhida.nome, anoSel, avs, {
+                      dia: escolhida.prestadora?.dia || 0,
+                      atualizadoEm: leitura?.atualizadoEm,
+                      ...ident,
+                    }) as any),
                   ])
                 }
                 className={`${botao} bg-[#0F2053] hover:bg-[#13306f] text-white`}
@@ -394,6 +441,7 @@ function Empresas({
                   <th className="px-3 py-2 font-semibold text-right">Divergências</th>
                   <th className="px-3 py-2 font-semibold text-right">Certidões</th>
                   <th className="px-3 py-2 font-semibold">Semáforo</th>
+                  <th className="px-3 py-2 font-semibold">Relatório</th>
                 </tr>
               </thead>
               <tbody>
@@ -426,6 +474,28 @@ function Empresas({
                             {nomeSinal(a.sinal)}
                           </span>
                         </td>
+                        <td className="px-3 py-2">
+                          {!(a.sinal === 'fora') && (
+                            <button
+                              type="button"
+                              onClick={(ev) => {
+                                ev.stopPropagation();
+                                downloadPdf(`docpref-${slug(escolhida.nome)}-${a.comp}.pdf`, `${escolhida.nome} - Relatório mensal ${compBR(a.comp)}`, [
+                                  { type: 'date', text: dateText() },
+                                  ...(blocosRelatorioMensal(escolhida.nome, a, {
+                                    atualizadoEm: leitura?.atualizadoEm,
+                                    dia: escolhida.prestadora?.dia || 0,
+                                    ...ident,
+                                  }) as any),
+                                ]);
+                              }}
+                              aria-label={`Relatório de ${compBR(a.comp)} em PDF`}
+                              className="text-sm font-bold text-[#0478CA] underline cursor-pointer"
+                            >
+                              PDF
+                            </button>
+                          )}
+                        </td>
                       </tr>
                     );
                   })}
@@ -442,6 +512,20 @@ function Empresas({
             })()}
           </p>
           {venc.length > 0 && <ListaVencimentos venc={venc} />}
+          {(escolhida.drive?.documentos?.length || 0) > 0 && (
+            <details className="mt-4">
+              <summary className="cursor-pointer text-[15px] font-bold text-[#0478CA]">
+                Documentos fora das pastas de mês ({escolhida.drive!.documentos!.length})
+              </summary>
+              <ul className="mt-2 space-y-1 text-sm text-slate-700">
+                {escolhida.drive!.documentos!.map((d, k) => (
+                  <li key={k}>
+                    {d.rotulo} <span className="text-slate-500">· {d.pasta}</span>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
         </div>
       )}
 
@@ -491,7 +575,13 @@ function MesDetalhe({ empresa, av, atualizadoEm }: { empresa: Unida; av: ReturnT
           onClick={() =>
             downloadPdf(`docpref-${slug(empresa.nome)}-${av.comp}.pdf`, `${empresa.nome} - Relatório mensal ${compBR(av.comp)}`, [
               { type: 'date', text: dateText() },
-              ...(blocosRelatorioMensal(empresa.nome, av, { atualizadoEm, dia: empresa.prestadora?.dia || 0 }) as any),
+              ...(blocosRelatorioMensal(empresa.nome, av, {
+                atualizadoEm,
+                dia: empresa.prestadora?.dia || 0,
+                razao: empresa.razao,
+                cnpj: empresa.cnpj,
+                contrato: empresa.contrato,
+              }) as any),
             ])
           }
           className={`${botao} bg-[#0F2053] hover:bg-[#13306f] text-white`}
@@ -535,6 +625,89 @@ function MesDetalhe({ empresa, av, atualizadoEm }: { empresa: Unida; av: ReturnT
               </div>
             ))}
           </dl>
+        </div>
+      )}
+
+      {(av.prazosLegais.length > 0 || av.cobertura.temPlanilha) && (
+        <div className="mt-5 grid lg:grid-cols-2 gap-4">
+          {av.prazosLegais.length > 0 && (
+            <div>
+              <p className="text-sm font-bold text-slate-600 mb-2">Prazos legais</p>
+              <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200">
+                {av.prazosLegais.map((p) => (
+                  <li key={p.id} className="px-3 py-2 flex items-start justify-between gap-3">
+                    <span className="min-w-0 text-[15px] text-slate-800">
+                      {p.nome}
+                      <span className="block text-sm text-slate-500">{p.texto}</span>
+                    </span>
+                    <span
+                      className={`shrink-0 px-2.5 py-1 rounded-lg border text-sm font-semibold ${
+                        p.situacao === 'ok'
+                          ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                          : p.situacao === 'atraso'
+                            ? 'bg-red-50 text-red-800 border-red-300'
+                            : 'bg-slate-50 text-slate-600 border-slate-200'
+                      }`}
+                    >
+                      {p.situacao === 'ok'
+                        ? 'No prazo'
+                        : p.situacao === 'atraso'
+                          ? 'Fora do prazo'
+                          : p.situacao === 'retificadora'
+                            ? 'Retificadora'
+                            : 'Sem data'}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {av.cobertura.temPlanilha && (
+            <div>
+              <p className="text-sm font-bold text-slate-600 mb-2">Pessoas do mês</p>
+              <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200 text-[15px]">
+                {(
+                  [
+                    [
+                      'Empregados ativos na planilha',
+                      `${av.cobertura.ativos}${av.cobertura.devidos !== av.cobertura.ativos ? ` (${av.cobertura.devidos} sem afastados)` : ''}`,
+                      false,
+                    ],
+                    [
+                      'Pagamentos de salário',
+                      `${av.cobertura.pagamentos}${av.cobertura.holerites ? ` + ${av.cobertura.holerites} holerite(s)` : ''}`,
+                      av.cobertura.devidos != null && av.cobertura.pagamentos < av.cobertura.devidos,
+                    ],
+                    [
+                      'Arquivos de ponto',
+                      String(av.cobertura.ponto),
+                      av.cobertura.devidos != null && av.cobertura.ponto > 1 && av.cobertura.ponto < av.cobertura.devidos,
+                    ],
+                    ...(['admissoes', 'demissoes'] as const).map((k) => {
+                      const c = av.cobertura[k];
+                      const v = [c.planilha, c.declaracao, c.pastas].filter((x) => x != null);
+                      return [
+                        k === 'admissoes' ? 'Admissões/alocações' : 'Desligamentos',
+                        [
+                          c.planilha != null && `planilha ${c.planilha}`,
+                          c.declaracao != null && `declaração ${c.declaracao}`,
+                          c.pastas != null && `subpastas ${c.pastas}`,
+                        ]
+                          .filter(Boolean)
+                          .join(' · ') || '-',
+                        v.length >= 2 && new Set(v).size > 1,
+                      ] as [string, string, boolean];
+                    }),
+                  ] as [string, string, boolean][]
+                ).map(([k, v, alerta]) => (
+                  <li key={k} className="px-3 py-2 flex items-center justify-between gap-3">
+                    <span className="text-slate-700">{k}</span>
+                    <span className={`tabular-nums font-semibold ${alerta ? 'text-red-700' : 'text-[#0F2053]'}`}>{v}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
 
@@ -1176,7 +1349,17 @@ function ComoFunciona() {
   const etapas: [string, string, boolean][] = [
     [
       'Leitura automática da pasta',
-      'A cada 3 horas o site lê a pasta compartilhada: uma pasta por prestadora, uma subpasta por mês (03-2026, 04-2026...).',
+      'A cada 3 horas o site lê a pasta compartilhada no Drive: uma pasta por prestadora, uma subpasta por mês (03-2026, 2026/03, "Março 2026"...) e os documentos guardados fora das pastas de mês.',
+      true,
+    ],
+    [
+      'Prazos legais',
+      'Salários até o 5º dia útil, DCTFWeb até o dia 15, FGTS e INSS até o dia 20 (antecipados sem expediente bancário), pelas datas dos documentos.',
+      true,
+    ],
+    [
+      'Pessoas do mês',
+      'Empregados ativos da planilha × pagamentos de salário × folhas de ponto, e admissões/desligamentos pela planilha, declaração e subpastas.',
       true,
     ],
     [
@@ -1205,12 +1388,23 @@ function ComoFunciona() {
     <div className="space-y-6">
       <div className={card}>
         <p className="text-lg font-bold text-[#0F2053]">Como funciona</p>
+        <p className="mt-1 text-[15px] text-slate-600">
+          Nada é enviado pelo site: a única fonte é a pasta compartilhada no Google Drive. Dentro dela, uma pasta para cada empresa; cada empresa sobe os
+          documentos na sua pasta e o DocPref lê tudo pelo link.
+        </p>
         <ol className="mt-3 space-y-2 text-[15px] text-slate-700 list-decimal pl-5">
           <li>
-            A prestadora recebe a cartilha e o link de uma pasta no Google Drive. Todo mês cria a pasta da competência (MM-AAAA) com as subpastas do book.
+            Cada prestadora recebe a cartilha e acesso à pasta dela no Drive. Todo mês cria a pasta da competência (MM-AAAA) com as subpastas do book e sobe os
+            documentos até o último dia do mês seguinte (ou o dia combinado).
           </li>
-          <li>Até o último dia do mês seguinte (ou o dia combinado), ela sobe os documentos e avisa por e-mail.</li>
-          <li>O DocPref lê a pasta, identifica cada documento e a competência dele e monta o relatório do mês, com o semáforo do pagamento.</li>
+          <li>
+            O DocPref lê a pasta inteira a cada 3 horas, identifica cada documento, a competência escrita nele, os valores e as datas, e confere prazos legais,
+            certidões e pessoas.
+          </li>
+          <li>
+            Na aba Prestadoras e meses você escolhe a empresa e analisa mês a mês: o que foi entregue, o que falta, as divergências e os achados, com o
+            relatório em PDF ou Excel. O Farol mostra todas as empresas juntas.
+          </li>
           <li>A equipe confere o que precisa de olho humano (digitalizações, assinaturas) e marca recebido, recusado ou não se aplica.</li>
           <li>Faltou algo? O site gera a notificação e a cobrança. Depois do prazo, o pagamento fica travado até regularizar.</li>
         </ol>
@@ -1235,7 +1429,10 @@ function ComoFunciona() {
       <div className={card}>
         <p className="text-lg font-bold text-[#0F2053]">Configuração da leitura</p>
         <ul className="mt-3 space-y-2 text-[15px] text-slate-700 list-disc pl-5">
-          <li>A pasta principal precisa estar compartilhada como “qualquer pessoa com o link” (leitor). Dentro dela, uma pasta para cada prestadora.</li>
+          <li>
+            A pasta principal precisa estar compartilhada como “qualquer pessoa com o link” (leitor). Dentro dela, uma pasta para cada prestadora; pastas como
+            “Modelos”, “Manuais” ou “Relatórios” na raiz são ignoradas.
+          </li>
           <li>
             O ID da pasta fica no segredo <code className="px-1 rounded bg-slate-100">DOCPREF_PASTA_ID</code> do GitHub (Settings → Secrets and variables →
             Actions), fora do código público do site.
@@ -1244,6 +1441,7 @@ function ComoFunciona() {
             O site publica só o resultado da leitura: tipo do documento, competência, valores das guias e achados. Não publica links dos arquivos, CPF nem nomes
             de empregados.
           </li>
+          <li>Para ler a pasta na hora (sem esperar as 3 horas): no GitHub, Actions → “Publicar site no GitHub Pages” → Run workflow.</li>
         </ul>
       </div>
     </div>

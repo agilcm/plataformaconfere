@@ -33,18 +33,36 @@ export const valorBR = (s) => {
   return Number.isFinite(v) ? v : null;
 };
 
-/** Pasta do mês: "03-2026", "03.2026", "2026-03", "Março 2026", "03 - MARÇO - 2026" → "2026-03" */
-export function compDaPasta(nome) {
+const NOME_MES =
+  /\b(janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro|jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)\b/;
+
+/**
+ * Pasta do mês → competência "AAAA-MM". Aceita "03-2026", "03.2026", "3/2026", "2026-03", "Março 2026",
+ * "03 - MARÇO - 2026", "Competência 03-2026", "03-26" e, dentro de uma pasta de ano ("2026"), "03", "03 - Março" ou "Março".
+ * @param {string} nome
+ * @param {number|string|null} [anoContexto] ano da pasta de cima, quando ela é só o ano
+ */
+export function compDaPasta(nome, anoContexto = null) {
   const n = norm(nome);
-  let m = n.match(/^(\d{1,2})\s*[-_./ ]\s*(\d{4})$/);
-  if (m) return comp(+m[2], +m[1]);
-  m = n.match(/^(\d{4})\s*[-_./ ]\s*(\d{1,2})$/);
-  if (m) return comp(+m[1], +m[2]);
-  m = n.match(/(\d{4})/);
-  const nomeMes = n.match(/(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)[a-z]*/);
-  if (m && nomeMes) return comp(+m[1], mesDoNome(nomeMes[1]));
-  m = n.match(/^(\d{1,2})\s*[-_. ]+\s*[a-z]+\s*[-_. ]+\s*(\d{4})$/);
-  if (m) return comp(+m[2], +m[1]);
+  const valido = (a, m) => (m >= 1 && m <= 12 ? comp(a, m) : null);
+  let m = n.match(/(?:^|[^\d])(\d{1,2})\s*[-_./ ]\s*(20\d{2})(?!\d)/);
+  if (m && valido(+m[2], +m[1])) return valido(+m[2], +m[1]);
+  m = n.match(/(?:^|[^\d])(20\d{2})\s*[-_./ ]\s*(\d{1,2})(?!\d)/);
+  if (m && valido(+m[1], +m[2])) return valido(+m[1], +m[2]);
+  const nomeMes = n.match(NOME_MES);
+  const ano = n.match(/(?:^|[^\d])(20\d{2})(?!\d)/);
+  if (nomeMes && ano) return comp(+ano[1], mesDoNome(nomeMes[1]));
+  m = n.match(/^(\d{1,2})\s*[-_./]\s*(\d{2})$/);
+  if (m) return valido(2000 + +m[2], +m[1]);
+  if (nomeMes) {
+    const a2 = n.match(/[-_./ ](\d{2})$/);
+    if (a2) return comp(2000 + +a2[1], mesDoNome(nomeMes[1]));
+  }
+  if (anoContexto) {
+    if (nomeMes) return comp(+anoContexto, mesDoNome(nomeMes[1]));
+    m = n.match(/^(\d{1,2})(?:\s*[-_. ]|$)/);
+    if (m) return valido(+anoContexto, +m[1]);
+  }
   return null;
 }
 
@@ -76,6 +94,80 @@ export function categoriaDaPasta(nome) {
 
 /** Categorias com documentos de pessoas: no site o nome do arquivo vira "Tipo · código" */
 export const CATEGORIAS_PESSOAIS = new Set(['admissao', 'demissao', 'ferias', 'ponto', 'fopag', 'cat']);
+
+export const PASTA_MIME = 'application/vnd.google-apps.folder';
+/** Relatórios gerados pela própria análise (Relatorio_Agil_..., Relatorio_Geral_Agil_...): não são documentos da prestadora */
+export const ehRelatorioNosso = (nome) => /^relatorio[_ ](geral[_ ])?agil/i.test(String(nome || ''));
+/** Pastas na raiz que não são prestadoras */
+const NAO_E_PRESTADORA = /^(modelos?|cartilhas?|manua(l|is)|relatorios?|arquivo morto|lixeira|backup|_|\.)/;
+
+/**
+ * Organiza a árvore lida do Drive: prestadoras → pastas de mês → arquivos.
+ * - Raiz com pastas de mês direto dentro → a própria raiz é a prestadora; senão, cada subpasta é uma prestadora.
+ * - Dentro da prestadora, as pastas de mês podem estar em até 3 níveis (Prestadora/Documentos/03-2026,
+ *   Prestadora/2026/03 - Março). Arquivos fora das pastas de mês viram documentos da empresa.
+ * - Na pasta do mês, a 1ª subpasta é a categoria do book; subpastas abaixo dela são de pessoas.
+ * @param {{ name: string, mimeType?: string, filhos?: any[] }} raiz
+ */
+export function organizarPasta(raiz) {
+  const ehPasta = (f) => f.mimeType === PASTA_MIME;
+  const filhos = (p) => p.filhos || [];
+  const temMesDireto = filhos(raiz).some((f) => ehPasta(f) && compDaPasta(f.name));
+  const ignoradas = [];
+  const candidatas = temMesDireto
+    ? [raiz]
+    : filhos(raiz).filter((f) => {
+        if (!ehPasta(f)) return false;
+        if (NAO_E_PRESTADORA.test(norm(f.name))) {
+          ignoradas.push(f.name);
+          return false;
+        }
+        return true;
+      });
+  const soltosRaiz = temMesDireto
+    ? []
+    : filhos(raiz)
+        .filter((f) => !ehPasta(f) && !ehRelatorioNosso(f.name))
+        .map((f) => f.name);
+
+  const empresas = candidatas.map((p) => {
+    /** @type {Map<string, { comp: string, pastas: string[], pessoas: Record<string, number>, arquivos: any[] }>} */
+    const meses = new Map();
+    const documentos = [];
+    const lerMes = (pastaMes, compMes) => {
+      const m = meses.get(compMes) || { comp: compMes, pastas: [], pessoas: {}, arquivos: [] };
+      m.pastas.push(pastaMes.name);
+      const anda = (q, categoria, nomeCategoria, nivel) => {
+        for (const f of filhos(q)) {
+          if (ehPasta(f)) {
+            if (nivel === 0) anda(f, categoriaDaPasta(f.name), f.name, 1);
+            else {
+              if (nivel === 1) m.pessoas[categoria] = (m.pessoas[categoria] || 0) + 1;
+              anda(f, categoria, nomeCategoria, nivel + 1);
+            }
+          } else if (!ehRelatorioNosso(f.name)) m.arquivos.push({ f, categoria, nomeCategoria, pessoa: nivel >= 2 });
+        }
+      };
+      anda(pastaMes, 'raiz', '', 0);
+      meses.set(compMes, m);
+    };
+    const anda = (q, nivel, ano, nomePasta) => {
+      for (const f of filhos(q)) {
+        if (!ehPasta(f)) {
+          if (!ehRelatorioNosso(f.name)) documentos.push({ f, categoria: categoriaDaPasta(nomePasta || ''), nomeCategoria: nomePasta || 'Pasta da empresa' });
+          continue;
+        }
+        const c = compDaPasta(f.name, ano);
+        if (c) lerMes(f, c);
+        else if (/^20\d{2}$/.test(norm(f.name))) anda(f, nivel + 1, +norm(f.name), nomePasta);
+        else if (nivel < 3) anda(f, nivel + 1, ano, f.name);
+      }
+    };
+    anda(p, 0, null, '');
+    return { nome: p.name, pasta: p, meses: [...meses.values()].sort((a, b) => a.comp.localeCompare(b.comp)), documentos };
+  });
+  return { empresas, ignoradas, soltosRaiz };
+}
 
 const temTexto = (t) => norm(t).replace(/[^a-z0-9]/g, '').length > 40;
 
@@ -191,6 +283,7 @@ export function lerDocumento({ nome, categoria, texto = '', compPasta = null }) 
     return r('dctf-completa', {
       comp: c,
       transmissao: dataApos(t, /Data\/Hora da/i),
+      retificadora: /Recibo da Declara[cç][aã]o Retificada\s+\d/i.test(t),
       saldo: saldos.length ? Math.round(saldos.reduce((a, b) => a + b, 0) * 100) / 100 : null,
       evidencia: c ? `DCTFWeb: período de apuração ${c.slice(5)}/${c.slice(0, 4)}` : '',
     });
@@ -200,6 +293,7 @@ export function lerDocumento({ nome, categoria, texto = '', compPasta = null }) 
     const tot = t.match(/TOTAL\s+R\$\s*([\d.,]+)\s+R\$\s*([\d.,]+)/);
     return r('dctf-recibo', {
       comp: c,
+      retificadora: /Declara[cç][aã]o Retificadora\s+Sim/i.test(t),
       saldo: tot ? valorBR(tot[2]) : null,
       valor: tot ? valorBR(tot[1]) : null,
       evidencia: c ? `Recibo DCTFWeb: período de apuração ${c.slice(5)}/${c.slice(0, 4)}` : '',
@@ -342,10 +436,13 @@ export function lerDocumento({ nome, categoria, texto = '', compPasta = null }) 
                             : null;
     if (tipo) {
       const md = semTexto ? null : mesDeclarado(t, compPasta);
+      // quantas pessoas a declaração relaciona (CPFs distintos); só a contagem sai daqui
+      const pessoas = semTexto ? 0 : new Set(t.match(/\b\d{3}\.\d{3}\.\d{3}-\d{2}\b/g) || []).size;
       const houve = semTexto ? null : /nao houve|nao ha |nao possui|nao teve|inexist/.test(nt) ? false : /houve|seguem|conforme relacao/.test(nt) ? true : null;
       return r(tipo, {
         mesDeclarado: md,
         houve,
+        ...(pessoas ? { pessoas } : {}),
         evidencia: md ? `Declara o mês ${md.slice(5)}/${md.slice(0, 4)}` : semTexto ? '' : 'Sem mês da competência no corpo da declaração',
       });
     }
