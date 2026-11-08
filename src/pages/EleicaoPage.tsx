@@ -1,5 +1,6 @@
-// Painel eleitoral (/dados/eleicao/): resultado, votos por local e seção, comparecimento, perfil do eleitorado,
-// histórico de candidatos e relatórios (Excel e PDF). Dados do TSE recortados em public/dados-eleicao/.
+// Painel eleitoral (/dados/eleicao/): resultado, votos por local e seção, votos por urna (até 3 candidatos, com o
+// botão "Traçar perfil"), comparecimento, perfil do eleitorado, histórico de candidatos e relatórios (Excel e PDF).
+// Dados do TSE recortados em public/dados-eleicao/.
 import { useEffect, useMemo, useState } from 'react';
 import Header from '../components/Header.tsx';
 import { Container, Icon } from '../components/ui.tsx';
@@ -21,11 +22,13 @@ import {
 } from '../lib/eleicao.js';
 import { abasCandidatosPorSecao, abasExcelCompleto, blocosPdf } from '../lib/eleicaoRelatorios.js';
 import { baixarXlsx } from '../lib/xlsx.js';
+import AbaUrnas from './EleicaoUrnas.tsx';
 
-type Aba = 'resultado' | 'locais' | 'comparecimento' | 'perfil' | 'candidato' | 'relatorios';
+type Aba = 'resultado' | 'locais' | 'urnas' | 'comparecimento' | 'perfil' | 'candidato' | 'relatorios';
 const ABAS: { id: Aba; label: string; icon: string }[] = [
   { id: 'resultado', label: 'Resultado', icon: 'chart' },
   { id: 'locais', label: 'Por local e seção', icon: 'building' },
+  { id: 'urnas', label: 'Votos por urna', icon: 'box' },
   { id: 'comparecimento', label: 'Comparecimento', icon: 'users' },
   { id: 'perfil', label: 'Perfil do eleitorado', icon: 'users' },
   { id: 'candidato', label: 'Candidato', icon: 'search' },
@@ -67,6 +70,7 @@ export default function EleicaoPage() {
   const [termo, setTermo] = useState('');
   const [selecionados, setSelecionados] = useState<{ ano: number; cargo: string; id: string; nome: string }[]>([]);
   const [gerando, setGerando] = useState('');
+  const [urnasIds, setUrnasIds] = useState<string[]>([]);
 
   useEffect(() => {
     carregarDados(`${import.meta.env.BASE_URL}dados-eleicao/eleicoes-mg.dat`)
@@ -319,6 +323,30 @@ export default function EleicaoPage() {
 
         {aba === 'locais' && <AbaLocais f={f} cargo={cargoAtual} porSecao={porSecao} setPorSecao={setPorSecao} top={topMatriz} setTop={setTopMatriz} />}
 
+        {aba === 'urnas' && (
+          <AbaUrnas
+            dados={dados}
+            cidade={cidade}
+            ano={ano}
+            anos={anos}
+            trocarAno={(a) => {
+              setAno(a);
+              setLocal('');
+              setSecao('');
+            }}
+            cargo={cargoAtual}
+            cargos={cargos}
+            setCargo={setCargo}
+            escolhidos={urnasIds}
+            setEscolhidos={setUrnasIds}
+            filtroLocal={filtrosTexto}
+            limparFiltro={() => {
+              setLocal('');
+              setSecao('');
+            }}
+          />
+        )}
+
         {aba === 'comparecimento' && <AbaComparecimento dados={dados} cidade={cidade} ano={ano} f={f} />}
 
         {aba === 'perfil' && (
@@ -359,6 +387,14 @@ export default function EleicaoPage() {
             setTermo={setTermo}
             selecionados={selecionados}
             setSelecionados={setSelecionados}
+            abrirUrnas={(h) => {
+              setAno(h.ano);
+              setCargo(h.cargo);
+              setLocal('');
+              setSecao('');
+              setUrnasIds([h.id]);
+              setAba('urnas');
+            }}
           />
         )}
 
@@ -389,6 +425,16 @@ export default function EleicaoPage() {
                 </button>
               </div>
               {gerando && <p className="mt-2 text-sm text-slate-600">{gerando}</p>}
+            </div>
+            <div className={`${card} lg:col-span-2 border-2 border-[#0F2053]`}>
+              <p className="text-lg font-bold text-[#0F2053]">Votos por urna e perfil do candidato</p>
+              <p className="mt-1 text-[15px] text-slate-600">
+                Escolha o ano, o cargo e até 3 candidatos: cada urna (seção eleitoral) vira uma linha e cada candidato, uma coluna. Com um candidato só, o botão{' '}
+                <strong>Traçar perfil</strong> mostra a idade e a escolaridade do eleitorado das urnas onde ele ganhou. Excel e PDF.
+              </p>
+              <button type="button" onClick={() => setAba('urnas')} className="mt-3 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#0F2053] text-white font-bold cursor-pointer">
+                <Icon name="box" className="w-5 h-5" /> Abrir votos por urna
+              </button>
             </div>
             <div className={`${card} lg:col-span-2`}>
               <p className="text-lg font-bold text-[#0F2053]">Candidatos escolhidos por seção</p>
@@ -425,7 +471,7 @@ function Moldura({ children }: { children: React.ReactNode }) {
             ← Voltar para Dados
           </a>
           <h1 className="mt-2 text-2xl sm:text-3xl font-bold font-display text-[#0F2053]">Eleições em dados</h1>
-          <p className="mt-1 mb-6 text-[15px] text-slate-600">Resultado, votos por local e seção, comparecimento e perfil do eleitorado · dados do TSE</p>
+          <p className="mt-1 mb-6 text-[15px] text-slate-600">Resultado, votos por local e por urna, perfil de onde cada candidato ganhou, comparecimento e eleitorado · dados do TSE</p>
           {children}
         </Container>
       </main>
@@ -604,6 +650,7 @@ function AbaCandidato({
   setTermo,
   selecionados,
   setSelecionados,
+  abrirUrnas,
 }: {
   dados: any;
   cidade: string;
@@ -611,6 +658,7 @@ function AbaCandidato({
   setTermo: (s: string) => void;
   selecionados: { ano: number; cargo: string; id: string; nome: string }[];
   setSelecionados: (fn: (s: any[]) => any[]) => void;
+  abrirUrnas: (h: { ano: number; cargo: string; id: string }) => void;
 }) {
   const hist = useMemo(() => historicoCandidato(dados, cidade, termo), [dados, cidade, termo]);
   const marcado = (h: any) => selecionados.some((s) => s.ano === h.ano && s.id === h.id);
@@ -654,6 +702,13 @@ function AbaCandidato({
                 Mais forte em: {h.melhores.map((m: any) => `${m.local} (${num(m.votos)} · ${pct(m.pct, 1)})`).join(' · ')}
               </p>
             )}
+            <button
+              type="button"
+              onClick={() => abrirUrnas(h)}
+              className="mt-2 inline-flex items-center gap-1.5 text-sm font-bold text-[#0478CA] underline cursor-pointer"
+            >
+              <Icon name="box" className="w-4 h-4" /> Ver votos por urna e traçar perfil
+            </button>
           </li>
         ))}
       </ul>

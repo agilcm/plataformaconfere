@@ -1,5 +1,6 @@
 // Relatórios do painel eleitoral: abas do Excel e blocos do PDF (layout Ágil CM, pdfReport.ts).
 import { cargosDe, comparecimento, dimensoesDe, matriz, nomeLocal, perfil, porPartido, resultadoCargo, tipoVoto, totaisComparecimento } from './eleicao.js';
+import { rotuloCompleto } from './eleicaoUrnas.js';
 
 const pct = (v) => `${(v * 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
 const num = (v) => Number(v || 0).toLocaleString('pt-BR');
@@ -249,5 +250,282 @@ export function blocosPdf(f, { cidade, ano, dataText, filtrosTexto = '', locaisP
     });
   }
   b.push({ type: 'note', text: 'Fonte: Tribunal Superior Eleitoral (TSE), dados abertos por seção eleitoral, 1º turno. Votos nominais por local de votação.' });
+  return b;
+}
+
+/* ------------------------------------------------------------------ votos por urna e perfil do candidato */
+
+const pct1 = (v) => (v == null ? '—' : `${(v * 100).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`);
+const dec1 = (v) => (v == null ? '—' : v.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
+const emPct = (v) => (v == null ? null : Math.round(v * 10000) / 100); // fração -> número em % com 2 casas
+const umaCasa = (v) => (v == null ? null : Math.round(v * 10) / 10);
+const ateFundamental = (ind) => (ind?.e0 == null && ind?.e1 == null ? null : (ind.e0 || 0) + (ind.e1 || 0));
+const GRUPOS_PERFIL = [
+  ['venceu', 'Onde ficou em 1º'],
+  ['fortes', '25% mais fortes'],
+  ['fracas', '25% mais fracas'],
+  ['todas', 'Cidade'],
+];
+const valorIndicador = (g, d) => (!g.urnas ? null : d.tipo === 'pct' ? emPct(g.ind[d.id]) : umaCasa(g.ind[d.id]));
+const textoIndicador = (g, d) => (!g.urnas ? '—' : d.tipo === 'pct' ? pct1(g.ind[d.id]) : `${dec1(g.ind[d.id])} anos`);
+
+/**
+ * Excel do relatório "votos por urna": uma linha por urna, os candidatos nas colunas (votos, % e posição na urna)
+ * e o perfil do eleitorado de cada urna. Com o perfil traçado, mais três abas (comparação, relação com o voto e locais).
+ * @param {any} t resultado de votosPorUrna
+ * @param {any} [perfil] resultado de perfilDoCandidato (opcional)
+ */
+export function abasVotosPorUrna(t, perfil = null) {
+  const rotulo = (c) => `${c.nome} (${c.numero})`;
+  const temPerfil = t.linhas.some((l) => l.ind);
+  const colunas = [
+    { titulo: 'Zona', largura: 7, tipo: 'numero' },
+    { titulo: 'Seção (urna)', largura: 9, tipo: 'numero' },
+    { titulo: 'Local de votação', largura: 40 },
+    { titulo: 'Eleitores aptos', largura: 11, tipo: 'numero' },
+    { titulo: 'Comparecimento', largura: 14, tipo: 'numero' },
+    { titulo: `Votos válidos (${t.cargo})`, largura: 14, tipo: 'numero' },
+    ...t.candidatos.flatMap((c) => [
+      { titulo: `${rotulo(c)} - votos`, largura: 16, tipo: 'numero' },
+      { titulo: `${rotulo(c)} - % dos válidos`, largura: 15, tipo: 'numero' },
+      { titulo: `${rotulo(c)} - posição na urna`, largura: 14, tipo: 'numero' },
+    ]),
+    { titulo: 'Mais votado na urna', largura: 30 },
+    { titulo: 'Votos do mais votado', largura: 12, tipo: 'numero' },
+    ...(temPerfil
+      ? [
+          { titulo: 'Idade média do eleitorado (estimada)', largura: 14, tipo: 'numero' },
+          { titulo: '% de 16 a 29 anos', largura: 11, tipo: 'numero' },
+          { titulo: '% de 60 anos ou mais', largura: 11, tipo: 'numero' },
+          { titulo: '% com ensino superior', largura: 11, tipo: 'numero' },
+          { titulo: '% só até o fundamental', largura: 11, tipo: 'numero' },
+          { titulo: 'Anos de estudo (estimados)', largura: 11, tipo: 'numero' },
+          { titulo: '% mulheres', largura: 10, tipo: 'numero' },
+        ]
+      : []),
+  ];
+  const linhas = t.linhas.map((l) => [
+    Number(l.zona),
+    Number(l.secao),
+    l.local,
+    l.aptos,
+    l.comparecimento,
+    l.validos,
+    ...l.cand.flatMap((x) => [x.votos, emPct(x.pct), x.posicao]),
+    l.maisVotado,
+    l.votosMaisVotado,
+    ...(temPerfil
+      ? [umaCasa(l.ind?.idadeMedia), emPct(l.ind?.i16), emPct(l.ind?.i60), emPct(l.ind?.e3), emPct(ateFundamental(l.ind)), umaCasa(l.ind?.estudo), emPct(l.ind?.mulheres)]
+      : []),
+  ]);
+  linhas.push([
+    '',
+    '',
+    `Total (${t.totais.urnas} urnas)`,
+    t.totais.aptos,
+    t.totais.comparecimento,
+    t.totais.validos,
+    ...t.candidatos.flatMap((c) => [c.votos, emPct(c.pctValidos), '']),
+  ]);
+
+  const resumo = [
+    ['Município', t.cidade],
+    ['Eleição', `${t.ano} (1º turno)`],
+    ['Cargo', t.cargo],
+    ['Urnas (seções com votação)', t.totais.urnas],
+    [`Votos válidos (${t.cargo})`, t.totais.validos],
+  ];
+  for (const c of t.candidatos) {
+    resumo.push(
+      ['', ''],
+      ['Candidato', `${c.nome} · nº ${c.numero} · ${c.partido}`],
+      ['Votos', c.votos],
+      ['% dos válidos', pct(c.pctValidos)],
+      ['Posição no município', `${c.posicao}º`],
+      ['Urnas com voto', `${c.urnasComVoto} de ${t.totais.urnas}`],
+      ['Urnas em que ficou em 1º lugar', c.urnasVencidas],
+      ['Metade dos votos saiu de', `${c.metadeDosVotosEm} urnas`],
+      ['Melhor urna (maior % dos válidos)', c.melhor ? `Zona ${c.melhor.zona}, seção ${c.melhor.secao} (${c.melhor.local}): ${num(c.melhor.votos)} votos, ${pct(c.melhor.pct)}` : '—'],
+    );
+  }
+  if (perfil) {
+    resumo.push(['', ''], ['Perfil de onde foi mais forte', perfil.manchete], ...perfil.frases.map((f, i) => [i ? '' : 'Leitura', f]), ['Aviso', perfil.aviso]);
+  }
+  const abas = [
+    { nome: 'Votos por urna', colunas, linhas },
+    { nome: 'Resumo', colunas: [{ titulo: 'Item', largura: 36 }, { titulo: 'Valor', largura: 110 }], linhas: resumo },
+  ];
+  if (perfil) {
+    const g = perfil.grupos;
+    abas.push({
+      nome: 'Perfil - comparação',
+      colunas: [
+        { titulo: 'Tema', largura: 14 },
+        { titulo: 'Indicador', largura: 34 },
+        ...GRUPOS_PERFIL.map(([k, nome]) => ({ titulo: `${nome} (${g[k].urnas} urnas)`, largura: 20, tipo: 'numero' })),
+      ],
+      linhas: [
+        ['Votação', '% dos votos válidos do candidato', ...GRUPOS_PERFIL.map(([k]) => (g[k].urnas ? emPct(g[k].pct) : null))],
+        ...perfil.indicadores.map((d) => [d.grupo, `${d.rotulo}${d.tipo === 'pct' ? ' (%)' : ''}`, ...GRUPOS_PERFIL.map(([k]) => valorIndicador(g[k], d))]),
+      ],
+    });
+    abas.push({
+      nome: 'Perfil - relação com o voto',
+      colunas: [
+        { titulo: 'Indicador do eleitorado da urna', largura: 34 },
+        { titulo: 'Correlação com a % de votos (r)', largura: 16, tipo: 'numero' },
+        { titulo: 'Leitura', largura: 80 },
+      ],
+      linhas: perfil.relacoes.map((r) => [
+        r.rotulo,
+        r.r == null ? null : Math.round(r.r * 100) / 100,
+        r.r == null ? 'sem dados suficientes' : Math.abs(r.r) < 0.15 ? r.forca : `${r.forca}: quanto ${r.r > 0 ? r.mais : r.menos}, maior a votação`,
+      ]),
+    });
+    abas.push({
+      nome: 'Perfil - locais mais fortes',
+      colunas: [
+        { titulo: 'Local de votação', largura: 44 },
+        { titulo: 'Urnas entre as 25% mais fortes', largura: 16, tipo: 'numero' },
+        { titulo: 'Urnas no local', largura: 12, tipo: 'numero' },
+        { titulo: 'Votos nessas urnas', largura: 14, tipo: 'numero' },
+      ],
+      linhas: perfil.locais.map((l) => [l.local, l.urnas, l.total, l.votos]),
+    });
+  }
+  return abas;
+}
+
+/** Blocos do PDF com o perfil traçado (manchete, leitura, comparação, locais e aviso) */
+export function blocosPerfilCandidato(p) {
+  const g = p.grupos;
+  return [
+    { type: 'heading', text: `Perfil de onde ${p.candidato.nome} foi mais forte` },
+    { type: 'para', text: p.manchete, bold: true, gapAfter: 4 },
+    { type: 'bullets', items: p.frases },
+    {
+      type: 'table',
+      size: 8.2,
+      widths: [0.32, 0.17, 0.17, 0.17, 0.17],
+      header: ['Eleitorado da urna (TSE)', ...GRUPOS_PERFIL.map(([k, nome]) => `${nome} (${g[k].urnas} urnas)`)],
+      headerAlign: ['left', 'center', 'center', 'center', 'center'],
+      rows: [
+        [{ text: 'Votos do candidato (% dos válidos)', bold: true }, ...GRUPOS_PERFIL.map(([k]) => ({ text: g[k].urnas ? pct1(g[k].pct) : '—', align: 'center', bold: true }))],
+        ...p.indicadores.map((d) => [rotuloCompleto(d), ...GRUPOS_PERFIL.map(([k]) => ({ text: textoIndicador(g[k], d), align: 'center' }))]),
+      ],
+    },
+    {
+      type: 'table',
+      size: 8,
+      widths: [0.07, 0.07, 0.3, 0.09, 0.1, 0.12, 0.12, 0.13],
+      header: ['Zona', 'Seção', 'As 10 urnas mais fortes', 'Votos', '% válidos', 'Idade média', '60 anos ou mais', 'Ensino superior'],
+      headerAlign: ['center', 'center', 'left', 'center', 'center', 'center', 'center', 'center'],
+      rows: p.melhores.map((u) => [
+        { text: u.zona, align: 'center' },
+        { text: u.secao, align: 'center' },
+        localCurto(u.local),
+        { text: num(u.votos), align: 'center', bold: true },
+        { text: pct1(u.pct), align: 'center' },
+        { text: u.ind ? `${dec1(u.ind.idadeMedia)} anos` : '—', align: 'center' },
+        { text: pct1(u.ind?.i60), align: 'center' },
+        { text: pct1(u.ind?.e3), align: 'center' },
+      ]),
+    },
+    ...(p.locais.length
+      ? [
+          {
+            type: 'para',
+            text: `Locais de votação das urnas mais fortes: ${p.locais
+              .slice(0, 8)
+              .map((l) => `${localCurto(l.local)} (${l.urnas} de ${l.total} ${l.total === 1 ? 'urna' : 'urnas'})`)
+              .join('; ')}.`,
+            size: 9,
+            gapAfter: 4,
+          },
+        ]
+      : []),
+    { type: 'note', text: p.aviso },
+  ];
+}
+
+/**
+ * PDF "votos por urna": resumo dos candidatos e uma linha por urna (zona, seção, local), com os votos de cada candidato.
+ * Com o perfil traçado, ele vem antes, na primeira página. A ordem das urnas é a de `t.linhas`.
+ * @param {any} t resultado de votosPorUrna
+ * @param {{ dataText: string, perfil?: any }} opcoes
+ */
+export function blocosVotosPorUrna(t, { dataText, perfil = null }) {
+  const umSo = t.candidatos.length === 1;
+  const b = [
+    { type: 'date', text: dataText },
+    { type: 'title', text: `Votos por urna · ${t.cargo} · ${t.cidade} · ${t.ano}` },
+    {
+      type: 'para',
+      text: `1º turno · ${num(t.totais.urnas)} urnas (seções eleitorais com votação) · ${num(t.totais.validos)} votos válidos · ${t.candidatos.map((c) => `${c.nome} (${c.numero}, ${c.partido})`).join('; ')}.`,
+      size: 9.5,
+      color: 'muted',
+      gapAfter: 4,
+    },
+  ];
+  if (perfil) b.push(...blocosPerfilCandidato(perfil), { type: 'pagebreak' });
+  b.push(
+    { type: 'heading', text: 'Resumo' },
+    {
+      type: 'table',
+      size: 8.2,
+      widths: [0.27, 0.07, 0.1, 0.1, 0.08, 0.13, 0.11, 0.14],
+      header: ['Candidato (partido)', 'Nº', 'Votos', '% válidos', 'Posição', 'Urnas com voto', '1º lugar em', 'Metade dos votos em'],
+      headerAlign: ['left', 'center', 'center', 'center', 'center', 'center', 'center', 'center'],
+      rows: t.candidatos.map((c) => [
+        `${c.nome} (${c.partido})`,
+        { text: String(c.numero), align: 'center' },
+        { text: num(c.votos), align: 'center', bold: true },
+        { text: pct1(c.pctValidos), align: 'center' },
+        { text: `${c.posicao}º`, align: 'center' },
+        { text: `${c.urnasComVoto} de ${t.totais.urnas}`, align: 'center' },
+        { text: `${c.urnasVencidas} ${c.urnasVencidas === 1 ? 'urna' : 'urnas'}`, align: 'center' },
+        { text: `${c.metadeDosVotosEm} ${c.metadeDosVotosEm === 1 ? 'urna' : 'urnas'}`, align: 'center' },
+      ]),
+    },
+    { type: 'heading', text: 'Votos em cada urna' },
+  );
+  const celulaCand = (x) => ({ text: `${num(x.votos)} (${pct1(x.pct)})${x.venceu ? ' 1º' : ''}`, align: 'center', bold: x.venceu });
+  const header = umSo
+    ? ['Zona', 'Seção', 'Local de votação', 'Votos', '% válidos', 'Posição', 'Válidos', 'Mais votado na urna']
+    : ['Zona', 'Seção', 'Local de votação', ...t.candidatos.map((c) => c.nome), 'Válidos', 'Mais votado na urna'];
+  const widths = umSo ? [0.06, 0.07, 0.3, 0.08, 0.09, 0.08, 0.08, 0.24] : [0.06, 0.07, 0.24, ...t.candidatos.map(() => 0.38 / t.candidatos.length), 0.07, 0.18];
+  const rows = t.linhas.map((l) => [
+    { text: l.zona, align: 'center' },
+    { text: l.secao, align: 'center' },
+    localCurto(l.local),
+    ...(umSo
+      ? [
+          { text: num(l.cand[0].votos), align: 'center', bold: l.cand[0].venceu },
+          { text: pct1(l.cand[0].pct), align: 'center' },
+          { text: l.cand[0].posicao ? `${l.cand[0].posicao}º` : '—', align: 'center', bold: l.cand[0].venceu },
+        ]
+      : l.cand.map(celulaCand)),
+    { text: num(l.validos), align: 'center' },
+    l.maisVotado ? `${l.maisVotado} (${num(l.votosMaisVotado)})` : '—',
+  ]);
+  rows.push([
+    '',
+    '',
+    { text: `Total (${t.totais.urnas} urnas)`, bold: true },
+    ...(umSo
+      ? [
+          { text: num(t.candidatos[0].votos), align: 'center' },
+          { text: pct1(t.candidatos[0].pctValidos), align: 'center' },
+          { text: `${t.candidatos[0].posicao}º na cidade`, align: 'center' },
+        ]
+      : t.candidatos.map((c) => ({ text: `${num(c.votos)} (${pct1(c.pctValidos)})`, align: 'center' }))),
+    { text: num(t.totais.validos), align: 'center' },
+    '',
+  ]);
+  b.push({ type: 'table', size: 7.8, widths, header, headerAlign: header.map((_, i) => (i === 2 || i === header.length - 1 ? 'left' : 'center')), rows, totalRows: 1 });
+  b.push({
+    type: 'note',
+    text: `Fonte: Tribunal Superior Eleitoral (TSE), dados abertos por seção eleitoral, 1º turno. Cada urna é uma seção eleitoral; "1º" marca a urna em que o candidato foi o mais votado do cargo. % sobre os votos válidos da urna (candidatos${t.resultado.proporcional ? ' e legenda' : ''}).`,
+  });
   return b;
 }
