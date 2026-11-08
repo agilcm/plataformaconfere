@@ -317,6 +317,10 @@ export function compararCandidatos(dados, { cidade, a, b }) {
     mesmaPessoa: !!ca.pessoa && ca.pessoa === cb.pessoa,
     N,
     urnasA: ta.linhas.length,
+    totaisA: { votos: soma('votosA'), validos: soma('validosA') },
+    totaisB: { votos: soma('votosB'), validos: soma('validosB') },
+    concorrentesA: ta.resultado.candidatos.length,
+    concorrentesB: tb.resultado.candidatos.length,
     urnasB: tb.linhas.length,
     mediaA,
     mediaB,
@@ -333,7 +337,7 @@ export function compararCandidatos(dados, { cidade, a, b }) {
     pares: pares.map(({ acc, ...x }) => x),
     aviso: AVISO_COMPARACAO,
   };
-  return { ...res, ...textoDaComparacao(res) };
+  return { ...res, ...textoDaComparacao(res), comoLer: comoLerGrafico(res) };
 }
 
 const nomeDe = (c) => c.nome;
@@ -425,4 +429,46 @@ export function trechoTendencia(t, dx, dy) {
     if (y >= dy.min && y <= dy.max) dentro.push([x, y]);
   }
   return dentro.length > 1 ? [dentro[0], dentro[dentro.length - 1]] : null;
+}
+
+const numTxt = (v) => Number(v || 0).toLocaleString('pt-BR');
+const ONDE = { ambos: 'em cima, à direita', soA: 'embaixo, à direita', soB: 'em cima, à esquerda', nenhum: 'embaixo, à esquerda' };
+
+/**
+ * "Como ler o gráfico": quatro passos com os números de cada comparação (as médias com a conta, o número de
+ * concorrentes de cada cargo, os quatro grupos e o desenho que os pontos formam neste caso).
+ */
+export function comoLerGrafico(o) {
+  const A = o.ca.nome;
+  const B = o.cb.nome;
+  const mesmoCargo = o.a.cargo === o.b.cargo && o.mesmoAno;
+  const grupos = o.quadrantes.map((q) => ({ id: q.id, cor: q.cor, onde: ONDE[q.id], rotulo: rotuloQuadrante(q.id, o), urnas: q.urnas }));
+  const lig = o.ligacao;
+  const desenho =
+    lig.sinal > 0
+      ? `os pontos sobem${lig.forca === 'fraca' ? ' pouco' : ''} da esquerda para a direita: ${lig.curto.toLowerCase()}, com correlação de ${dec(o.rho)}`
+      : lig.sinal < 0
+        ? `os pontos descem da esquerda para a direita: bases opostas, com correlação de ${dec(o.rho)}`
+        : `os pontos não seguem uma direção clara (correlação de ${dec(o.rho)}): a votação de um não acompanha a do outro`;
+  const passos = [
+    {
+      titulo: 'Cada ponto é uma urna',
+      texto: `São ${o.N} urnas de ${o.cidade}${o.mesmoAno ? '' : ' (as que existem nos dois anos)'}. Quanto mais à direita, maior a fatia de ${A} nos votos válidos daquela urna; quanto mais alto, maior a fatia de ${B}. Passe o mouse ou toque num ponto para ver a seção, a escola e os votos.`,
+    },
+    {
+      titulo: 'As linhas cinzas são as médias',
+      texto: `A média é o resultado de cada um na cidade: todos os votos dele divididos por todos os votos válidos do cargo. ${A}: ${numTxt(o.totaisA.votos)} ÷ ${numTxt(o.totaisA.validos)} = ${pctTxt(o.mediaA)}. ${B}: ${numTxt(o.totaisB.votos)} ÷ ${numTxt(o.totaisB.validos)} = ${pctTxt(o.mediaB)}. É o número do resultado oficial${o.mesmoAno ? '' : ' nessas urnas'}, e urna com mais eleitores pesa mais na conta.`,
+    },
+    {
+      titulo: 'Cada um contra a própria média',
+      texto: mesmoCargo
+        ? `Os dois disputam o mesmo cargo, então o voto que um ganha numa urna costuma sair do outro. Por isso cada um é medido contra o próprio resultado, e é comum aparecerem bases opostas. As duas linhas dividem o gráfico em quatro grupos:`
+        : `${pctTxt(o.mediaA)} e ${pctTxt(o.mediaB)} não se comparam direto: ${o.a.cargo.toLowerCase()} dividiu os votos entre ${o.concorrentesA} candidatos e ${o.b.cargo.toLowerCase()} entre ${o.concorrentesB}. Para ${A}, ${pctTxt(o.mediaA)} é o normal; uma urna com ${pctTxt(o.mediaA * 2)} já é o dobro. Por isso cada um é medido contra o próprio resultado, e as duas linhas dividem o gráfico em quatro grupos:`,
+    },
+    {
+      titulo: 'O desenho dos pontos',
+      texto: `Se os pontos sobem da esquerda para a direita, os dois crescem juntos nas mesmas urnas; se descem, as bases são opostas; se formam uma nuvem sem direção, um não acompanha o outro. A linha azul-marinho resume essa direção. A correlação vai de −1 a 1: perto de 0, sem relação; perto de 1, os dois andam juntos; abaixo de 0, um sobe quando o outro cai. Aqui, ${desenho}.`,
+    },
+  ];
+  return { passos, grupos };
 }

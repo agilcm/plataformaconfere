@@ -214,6 +214,8 @@ function Resultado({
       </p>
       <p className="mt-3 text-[17px] leading-relaxed font-semibold text-slate-900 max-w-4xl">{o.manchete}</p>
 
+      <ComoLer c={o.comoLer} />
+
       <div className="mt-5 grid grid-cols-1 xl:grid-cols-3 gap-5">
         <div className="xl:col-span-2 min-w-0">
           <MapaUrnas o={o} />
@@ -368,6 +370,40 @@ function Resultado({
   );
 }
 
+/** "Como ler o gráfico": passos com os números desta comparação (aberto; dá para recolher) */
+function ComoLer({ c }: { c: any }) {
+  return (
+    <details open className="mt-5 rounded-xl border border-slate-200 bg-[#F4F7FB]">
+      <summary className="cursor-pointer select-none px-4 py-3 font-bold text-[#0F2053]">Como ler o gráfico</summary>
+      <ol className="px-4 pb-4 grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-5">
+        {c.passos.map((p: any, i: number) => (
+          <li key={p.titulo} className="flex gap-3 min-w-0">
+            <span className="shrink-0 w-7 h-7 rounded-full bg-[#0F2053] text-white text-sm font-bold grid place-items-center" aria-hidden="true">
+              {i + 1}
+            </span>
+            <div className="min-w-0">
+              <p className="font-bold text-[#0F2053]">{p.titulo}</p>
+              <p className="mt-0.5 text-[15px] leading-relaxed text-slate-700">{p.texto}</p>
+              {i === 2 && (
+                <ul className="mt-2 space-y-1.5 text-sm text-slate-700">
+                  {c.grupos.map((g: any) => (
+                    <li key={g.id} className="flex items-start gap-2">
+                      <span className="mt-1 w-3 h-3 rounded-full shrink-0" style={{ background: g.cor }} aria-hidden="true" />
+                      <span>
+                        <strong>{g.rotulo}</strong>, {g.onde}: {g.urnas} {g.urnas === 1 ? 'urna' : 'urnas'}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </li>
+        ))}
+      </ol>
+    </details>
+  );
+}
+
 function Numero({ rotulo, valor, nota }: { rotulo: string; valor: string; nota: string }) {
   return (
     <div className="p-4 rounded-xl bg-[#F4F7FB] min-w-0">
@@ -485,7 +521,7 @@ function MapaUrnas({ o }: { o: any }) {
             {rotuloQuadrante(sel.quadrante, o)}
           </>
         ) : (
-          'Passe o mouse ou toque num ponto para ver a urna. A linha azul-marinho mostra a tendência; as cinzas, a média de cada um.'
+          'Passe o mouse ou toque num ponto para ver a urna.'
         )}
       </p>
     </figure>

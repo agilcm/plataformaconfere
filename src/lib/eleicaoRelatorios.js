@@ -759,6 +759,14 @@ export function blocosComparacao(o, { dataText }) {
         ],
       ],
     },
+    { type: 'para', text: 'Como ler o gráfico', bold: true, gapAfter: 2 },
+    {
+      type: 'bullets',
+      items: o.comoLer.passos.map(
+        (p, i) =>
+          `${i + 1}. ${p.titulo}. ${p.texto}${i === 2 ? ` ${o.comoLer.grupos.map((g) => `${g.rotulo}, ${g.onde}: ${g.urnas} urnas`).join('; ')}.` : ''}`,
+      ),
+    },
     {
       type: 'scatter',
       height: 260,

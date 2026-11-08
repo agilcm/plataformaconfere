@@ -87,6 +87,12 @@ test('comparar: vereador e prefeita que crescem juntos nas mesmas urnas', () => 
   assert.ok(o.frases.some((f) => f.includes('Os dois são do MDB')));
   assert.equal(o.locais[0].local, 'Escola Sul');
   assert.equal(rotuloQuadrante('soA', o), 'Só VERA acima');
+  // como ler o gráfico: 4 passos com a conta das médias e os 4 grupos
+  assert.equal(o.comoLer.passos.length, 4);
+  assert.match(o.comoLer.passos[1].texto, new RegExp(`VERA: ${o.totaisA.votos.toLocaleString('pt-BR')} ÷ ${o.totaisA.validos.toLocaleString('pt-BR')} = `));
+  assert.match(o.comoLer.passos[2].texto, /vereador dividiu os votos entre 3 candidatos e prefeito entre 2/);
+  assert.match(o.comoLer.passos[3].texto, /Aqui, os pontos sobem da esquerda para a direita: ligação forte/);
+  assert.deepEqual(o.comoLer.grupos.map((g) => g.onde), ['em cima, à direita', 'embaixo, à direita', 'em cima, à esquerda', 'embaixo, à esquerda']);
 });
 
 test('comparar: rivais têm bases opostas; relatórios fecham as colunas', () => {
@@ -94,6 +100,8 @@ test('comparar: rivais têm bases opostas; relatórios fecham as colunas', () =>
   const o = compararCandidatos(d, { cidade: 'Z', a: { ano: 2024, cargo: 'Prefeito', id: 'Prefeito|15|ANA' }, b: { ano: 2024, cargo: 'Prefeito', id: 'Prefeito|12|RUI' } });
   assert.equal(o.rho, -1);
   assert.equal(o.ligacao.sinal, -1);
+  assert.match(o.comoLer.passos[2].texto, /Os dois disputam o mesmo cargo/);
+  assert.match(o.comoLer.passos[3].texto, /descem/);
   assert.equal(o.sobreposicao.comuns, 0);
   assert.ok(o.frases.some((f) => f.startsWith('Nenhuma das 4 urnas mais fortes de ANA')));
   const b = blocosComparacao(o, { dataText: 'hoje' });
