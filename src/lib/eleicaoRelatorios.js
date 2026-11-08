@@ -290,8 +290,9 @@ const textoIndicador = (g, d) => (!g.urnas ? '—' : d.tipo === 'pct' ? pct1(g.i
  * @param {any} t resultado de votosPorUrna
  * @param {any} [perfil] resultado de perfilDoCandidato (opcional)
  * @param {any} [traj] resultado de trajetoria (opcional): outras eleições da mesma pessoa
+ * @param {any} [urnasPessoa] resultado de urnasDaPessoa (opcional): a mesma urna em cada eleição da pessoa
  */
-export function abasVotosPorUrna(t, perfil = null, traj = null) {
+export function abasVotosPorUrna(t, perfil = null, traj = null, urnasPessoa = null) {
   const rotulo = (c) => `${c.nome} (${c.numero})`;
   const temPerfil = t.linhas.some((l) => l.ind);
   const colunas = [
@@ -410,6 +411,7 @@ export function abasVotosPorUrna(t, perfil = null, traj = null) {
       linhas: perfil.locais.map((l) => [l.local, l.urnas, l.total, l.votos]),
     });
   }
+  if (urnasPessoa) abas.push(abaUrnasDaPessoa(urnasPessoa));
   if (traj && traj.candidaturas.length > 1) abas.push(...abasTrajetoria(traj));
   return abas;
 }
@@ -577,9 +579,9 @@ export function blocosPerfilCandidato(p) {
  * PDF "votos por urna": resumo dos candidatos e uma linha por urna (zona, seção, local), com os votos de cada candidato.
  * Com o perfil traçado, ele vem antes, na primeira página. A ordem das urnas é a de `t.linhas`.
  * @param {any} t resultado de votosPorUrna
- * @param {{ dataText: string, perfil?: any, trajetoria?: any }} opcoes
+ * @param {{ dataText: string, perfil?: any, trajetoria?: any, urnasPessoa?: any }} opcoes
  */
-export function blocosVotosPorUrna(t, { dataText, perfil = null, trajetoria = null }) {
+export function blocosVotosPorUrna(t, { dataText, perfil = null, trajetoria = null, urnasPessoa = null }) {
   const umSo = t.candidatos.length === 1;
   const b = [
     { type: 'date', text: dataText },
@@ -653,7 +655,75 @@ export function blocosVotosPorUrna(t, { dataText, perfil = null, trajetoria = nu
     type: 'note',
     text: `Fonte: Tribunal Superior Eleitoral (TSE), dados abertos por seção eleitoral, 1º turno. Cada urna é uma seção eleitoral; "1º" marca a urna em que o candidato foi o mais votado do cargo. % sobre os votos válidos da urna (candidatos${t.resultado.proporcional ? ' e legenda' : ''}).`,
   });
+  if (urnasPessoa) b.push({ type: 'pagebreak' }, ...blocosUrnasDaPessoa(urnasPessoa));
   return b;
+}
+
+const rotuloEleicao = (e) => `${e.ano} · ${e.cargo}`;
+const difTxt = (d) => (d == null ? '—' : d === 0 ? '0' : `${d > 0 ? '+' : '-'}${num(Math.abs(d))}`);
+
+/** Excel: a mesma urna em cada eleição da pessoa (votos e % de cada ano, e a diferença entre a última e a primeira) */
+export function abaUrnasDaPessoa(u) {
+  const e = u.eleicoes;
+  const ult = e.length - 1;
+  return {
+    nome: 'Urnas em cada eleição',
+    colunas: [
+      { titulo: 'Zona', largura: 7, tipo: 'numero' },
+      { titulo: 'Seção (urna)', largura: 9, tipo: 'numero' },
+      { titulo: 'Local de votação', largura: 40 },
+      ...e.flatMap((x) => [
+        { titulo: `${x.ano} ${x.cargo} (${x.nome}, ${x.partido}): votos`, largura: 18, tipo: 'numero' },
+        { titulo: `${x.ano}: % dos válidos`, largura: 12, tipo: 'numero' },
+      ]),
+      { titulo: `Diferença de votos (${e[ult].ano} - ${e[0].ano})`, largura: 16, tipo: 'numero' },
+    ],
+    linhas: [
+      ...u.linhas.map((l) => [Number(l.zona), Number(l.secao), l.local, ...l.por.flatMap((p) => (p ? [p.votos, emPct(p.pct)] : [null, null])), l.diferenca]),
+      ['', '', 'Total na cidade', ...e.flatMap((x) => [x.votos, emPct(x.pctValidos)]), e[ult].votos - e[0].votos],
+    ],
+  };
+}
+
+/** PDF: a mesma urna em cada eleição da pessoa */
+export function blocosUrnasDaPessoa(u) {
+  const e = u.eleicoes;
+  const ult = e.length - 1;
+  const largura = 0.53 / e.length;
+  return [
+    { type: 'heading', text: `${u.nomeCivil}: votação urna por urna em ${e.length} eleições` },
+    {
+      type: 'para',
+      text: `${e.map((x) => `${x.ano}: ${x.cargo.toLowerCase()}, como ${x.nome} (${x.partido}), ${num(x.votos)} votos`).join('; ')}. Mesma urna (zona e seção) em cada eleição; "—" quando a seção não existia ou não teve votação naquele ano. ${u.emTodas} urnas aparecem em todas. Em negrito, a urna em que foi o mais votado do cargo.`,
+      size: 9,
+      color: 'muted',
+      gapAfter: 4,
+    },
+    {
+      type: 'table',
+      size: e.length > 3 ? 7.2 : 7.8,
+      widths: [0.06, 0.07, 0.25, ...e.map(() => largura), 0.09],
+      header: ['Zona', 'Seção', 'Local de votação', ...e.map(rotuloEleicao), `Diferença ${e[0].ano}-${e[ult].ano}`],
+      headerAlign: ['center', 'center', 'left', ...e.map(() => 'center'), 'center'],
+      rows: [
+        ...u.linhas.map((l) => [
+          { text: l.zona, align: 'center' },
+          { text: l.secao, align: 'center' },
+          localCurto(l.local),
+          ...l.por.map((p) => ({ text: p ? `${num(p.votos)} (${pct1(p.pct)})` : '—', align: 'center', bold: !!p?.venceu })),
+          { text: difTxt(l.diferenca), align: 'center' },
+        ]),
+        [
+          '',
+          '',
+          { text: 'Total na cidade', bold: true },
+          ...e.map((x) => ({ text: `${num(x.votos)} (${pct1(x.pctValidos)})`, align: 'center' })),
+          { text: difTxt(e[ult].votos - e[0].votos), align: 'center' },
+        ],
+      ],
+      totalRows: 1,
+    },
+  ];
 }
 
 /* ------------------------------------------------------------------ comparação de dois candidatos */

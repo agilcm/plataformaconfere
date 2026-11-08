@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { Icon } from '../components/ui.tsx';
 import { abasVotosPorUrna, blocosVotosPorUrna } from '../lib/eleicaoRelatorios.js';
-import { CORES_CANDIDATOS, MAX_CANDIDATOS, perfilDoCandidato, rotuloCompleto, trajetoria, votosPorUrna } from '../lib/eleicaoUrnas.js';
+import { CORES_CANDIDATOS, MAX_CANDIDATOS, perfilDoCandidato, rotuloCompleto, trajetoria, urnasDaPessoa, votosPorUrna } from '../lib/eleicaoUrnas.js';
 import { dateText, downloadPdf, slug } from '../lib/pdfReport.ts';
 import { baixarXlsx } from '../lib/xlsx.js';
 
@@ -69,6 +69,8 @@ export default function AbaUrnas({
     () => (perfilAberto && umId ? trajetoria(dados, { cidade, ano, cargo, id: umId }) : null),
     [perfilAberto, umId, dados, cidade, ano, cargo],
   );
+  // com um candidato só: a mesma urna nas outras eleições da pessoa (vale com ou sem o perfil aberto)
+  const multi = useMemo(() => (umId ? urnasDaPessoa(dados, { cidade, ano, cargo, id: umId }) : null), [umId, dados, cidade, ano, cargo]);
   const fortes = useMemo(() => new Set<string>(perfil?.idsFortes || []), [perfil]);
   const linhas = useMemo(
     () =>
@@ -101,14 +103,14 @@ export default function AbaUrnas({
 
   const nomeArquivo = (ext: string) =>
     `votos-por-urna-${slug(cidade)}-${ano}-${slug(cargo)}${um ? `-${slug(um.nome)}` : ''}${perfil ? '-com-perfil' : ''}.${ext}`;
-  const baixarExcel = () => baixarXlsx(nomeArquivo('xlsx'), abasVotosPorUrna({ ...t, linhas }, perfil, traj) as never);
+  const baixarExcel = () => baixarXlsx(nomeArquivo('xlsx'), abasVotosPorUrna({ ...t, linhas }, perfil, traj, multi) as never);
   const baixarPdf = async () => {
     setGerando('Gerando o PDF…');
     try {
       await downloadPdf(
         nomeArquivo('pdf'),
         `Votos por urna ${ano}`,
-        blocosVotosPorUrna({ ...t, linhas }, { dataText: dateText(), perfil, trajetoria: traj }) as never,
+        blocosVotosPorUrna({ ...t, linhas }, { dataText: dateText(), perfil, trajetoria: traj, urnasPessoa: multi }) as never,
       );
     } finally {
       setGerando('');
@@ -446,9 +448,91 @@ export default function AbaUrnas({
               </table>
             </div>
           </div>
+
+          {multi && <UrnasNasEleicoes u={multi} />}
         </>
       )}
     </div>
+  );
+}
+
+/** A mesma urna em cada eleição da pessoa: votos e % de cada ano, e a diferença entre a última e a primeira */
+function UrnasNasEleicoes({ u }: { u: any }) {
+  const e = u.eleicoes;
+  const ult = e.length - 1;
+  const dif = (d: number | null) => (d == null ? '—' : d === 0 ? '0' : `${d > 0 ? '+' : '−'}${num(Math.abs(d))}`);
+  return (
+    <section aria-labelledby="multi-titulo" className={card}>
+      <h3 id="multi-titulo" className="text-lg font-bold text-[#0F2053]">
+        {u.nomeCivil}: votação urna por urna em {e.length} eleições
+      </h3>
+      <p className="mt-1 text-[15px] text-slate-600 max-w-4xl">
+        Mesma urna (zona e seção) em cada eleição de que a pessoa participou, mesmo com outro nome de urna, partido ou cargo. "—" quando a seção não existia ou
+        não teve votação naquele ano. {u.emTodas} urnas aparecem em todas. Também sai no PDF e no Excel.
+      </p>
+      <div className="mt-3 overflow-auto max-h-[70vh] border border-slate-200 rounded-xl">
+        <table className="w-full min-w-[40rem] text-sm border-collapse">
+          <thead className="sticky top-0 z-10 bg-slate-50 text-slate-600">
+            <tr>
+              <th className="sticky left-0 z-20 bg-slate-50 p-2 text-left font-semibold">Urna</th>
+              <th className="p-2 text-left font-semibold min-w-[12rem]">Local de votação</th>
+              {e.map((x: any) => (
+                <th key={`${x.ano}${x.id}`} className={`p-2 text-right font-semibold align-bottom ${x.atual ? 'text-[#0F2053]' : ''}`}>
+                  {x.ano} · {x.cargo}
+                  <span className="block text-xs font-normal">
+                    {x.nome} · {x.partido}
+                  </span>
+                </th>
+              ))}
+              <th className="p-2 text-right font-semibold align-bottom">
+                Diferença
+                <span className="block text-xs font-normal">
+                  {e[0].ano} → {e[ult].ano}
+                </span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {u.linhas.map((l: any) => (
+              <tr key={l.id} className="border-t border-slate-100 tabular-nums">
+                <td className="sticky left-0 bg-white p-2 whitespace-nowrap">
+                  <span className="block font-bold text-[#0F2053]">Seção {l.secao}</span>
+                  <span className="block text-xs text-slate-500">Zona {l.zona}</span>
+                </td>
+                <td className="p-2 text-slate-700">{l.local}</td>
+                {l.por.map((p: any, i: number) => (
+                  <td key={i} className="p-2 text-right">
+                    {p ? (
+                      <>
+                        <span className="font-bold">{num(p.votos)}</span>
+                        {p.venceu && <span className="ml-1 px-1.5 rounded bg-[#128C4A] text-white text-[11px] font-bold">1º</span>}
+                        <span className="block text-xs text-slate-500">{pct(p.pct)}</span>
+                      </>
+                    ) : (
+                      <span className="text-slate-400">—</span>
+                    )}
+                  </td>
+                ))}
+                <td className={`p-2 text-right font-semibold ${l.diferenca > 0 ? 'text-[#0F2053]' : 'text-slate-600'}`}>{dif(l.diferenca)}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="border-t-2 border-slate-300 bg-slate-50 font-bold tabular-nums">
+              <td className="sticky left-0 bg-slate-50 p-2">Total</td>
+              <td className="p-2">na cidade</td>
+              {e.map((x: any) => (
+                <td key={`${x.ano}${x.id}`} className="p-2 text-right">
+                  {num(x.votos)}
+                  <span className="block text-xs font-semibold">{pct(x.pctValidos)}</span>
+                </td>
+              ))}
+              <td className="p-2 text-right">{dif(e[ult].votos - e[0].votos)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </section>
   );
 }
 

@@ -643,3 +643,52 @@ function descricaoCurta(l) {
   const adj = [l.idade, l.escolaridade].filter(Boolean);
   return adj.length ? `${juntarFrases(adj)}${l.genero ? `, com ${l.genero}` : ''}` : 'na média da cidade';
 }
+
+/* ------------------------------------------------------------------ a mesma urna em cada eleição da pessoa */
+
+/**
+ * Votação da mesma pessoa urna por urna em todas as eleições em que ela teve voto na cidade (cadastro do TSE):
+ * uma linha por urna (zona e seção) e, para cada eleição, votos, % dos válidos e se foi a mais votada ali.
+ * A diferença compara a última eleição com a primeira. Devolve null quando há uma eleição só.
+ */
+export function urnasDaPessoa(dados, { cidade, ano, cargo, id }) {
+  const atual = votosPorUrna(dados, { cidade, ano, cargo, ids: [id] }).candidatos[0];
+  if (!atual?.pessoa) return null;
+  const cands = candidaturasDaPessoa(dados, cidade, atual.pessoa);
+  if (cands.length < 2) return null;
+  const tabelas = cands.map((c) => votosPorUrna(dados, { cidade, ano: c.ano, cargo: c.cargo, ids: [c.id] }));
+  const eleicoes = cands.map((c, i) => {
+    const x = tabelas[i].candidatos[0];
+    return {
+      ano: c.ano,
+      cargo: c.cargo,
+      id: c.id,
+      atual: c.ano === Number(ano) && c.id === id,
+      nome: x.nome,
+      numero: x.numero,
+      partido: x.partido,
+      situacao: x.situacao,
+      votos: x.votos,
+      pctValidos: x.pctValidos,
+      urnasVencidas: x.urnasVencidas,
+    };
+  });
+  const mapa = new Map();
+  tabelas.forEach((t, i) => {
+    for (const l of t.linhas) {
+      const u = mapa.get(l.id) || { id: l.id, zona: l.zona, secao: l.secao, local: l.local, por: eleicoes.map(() => null) };
+      u.por[i] = { votos: l.cand[0].votos, pct: l.cand[0].pct, validos: l.validos, venceu: l.cand[0].venceu };
+      u.local = l.local; // o nome do local mais recente
+      mapa.set(l.id, u);
+    }
+  });
+  const ult = eleicoes.length - 1;
+  const linhas = [...mapa.values()].map((u) => ({ ...u, diferenca: u.por[0] && u.por[ult] ? u.por[ult].votos - u.por[0].votos : null })).sort(ordemUrna);
+  return {
+    nomeCivil: atual.nomeCivil || atual.nome,
+    eleicoes,
+    linhas,
+    emTodas: linhas.filter((u) => u.por.every(Boolean)).length,
+    total: eleicoes.map((e) => e.votos),
+  };
+}

@@ -239,3 +239,27 @@ test('relatórios por urna: Excel (com perfil) e PDF', () => {
   assert.ok(comP.findIndex((x) => x.type === 'pagebreak') > 0);
   for (const x of comP.filter((y) => y.type === 'table')) for (const r of x.rows) assert.equal(r.length, x.widths.length);
 });
+
+import { urnasDaPessoa } from '../src/lib/eleicaoUrnas.js';
+import { abaUrnasDaPessoa, blocosUrnasDaPessoa } from '../src/lib/eleicaoRelatorios.js';
+
+test('mesma urna em cada eleição da pessoa: votos do ano x e do ano y, e a diferença', () => {
+  const u = urnasDaPessoa(dados, { cidade: 'X', ano: 2024, cargo: 'Prefeito', id: 'Prefeito|15|MARIA' });
+  assert.equal(u.nomeCivil, 'MARIA DA SILVA');
+  assert.deepEqual(u.eleicoes.map((e) => [e.ano, e.votos, e.atual]), [[2020, 300, false], [2024, 70, true]]);
+  assert.deepEqual(
+    u.linhas.map((l) => [l.secao, l.por.map((p) => p?.votos ?? null), l.diferenca]),
+    [['1', [300, 50], -250], ['2', [null, 20], null]],
+    'a seção 2 não teve votação em 2020',
+  );
+  assert.equal(u.emTodas, 1);
+  assert.equal(urnasDaPessoa(dados, { cidade: 'X', ano: 2024, cargo: 'Prefeito', id: 'Prefeito|12|JOÃO' }), null, 'uma eleição só: não há o que comparar');
+  const aba = abaUrnasDaPessoa(u);
+  for (const l of aba.linhas) assert.equal(l.length, aba.colunas.length);
+  assert.equal(aba.linhas.at(-1)[2], 'Total na cidade');
+  const tab = blocosUrnasDaPessoa(u).find((b) => b.type === 'table');
+  assert.deepEqual(tab.header.slice(3), ['2020 · Prefeito', '2024 · Prefeito', 'Diferença 2020-2024']);
+  for (const r of tab.rows) assert.equal(r.length, tab.widths.length);
+  assert.equal(tab.rows[0][5].text, '-250');
+  assert.equal(tab.rows[1][3].text, '—');
+});
