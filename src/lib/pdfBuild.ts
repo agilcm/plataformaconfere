@@ -37,8 +37,11 @@ function pagina(paisagem: boolean) {
 
 // Fontes padrão do PDF usam WinAnsi: remove caracteres fora dessa tabela
 const ALLOWED = /[\x20-\x7E -ÿ–—‘’“”•…€]/;
+// Antes de limpar, troca os caracteres que têm equivalente: o sinal de menos (−) vira hífen (senão um número
+// negativo sairia sem o sinal), e setas, ≥ e ≤ viram texto.
+const EQUIVALENTES: Record<string, string> = { '−': '-', '‐': '-', '‑': '-', '≥': '>=', '≤': '<=', '→': '->' };
 const clean = (s: string) =>
-  Array.from(s.replace(/ /g, ' ').replace(/\t/g, ' '))
+  Array.from(s.replace(/[−‐‑≥≤→]/g, (c) => EQUIVALENTES[c]).replace(/ /g, ' ').replace(/\t/g, ' '))
     .map((c) => (c === '\n' || ALLOWED.test(c) ? c : ''))
     .join('');
 

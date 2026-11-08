@@ -5,6 +5,11 @@ import { rotuloCompleto } from './eleicaoUrnas.js';
 const pct = (v) => `${(v * 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
 const num = (v) => Number(v || 0).toLocaleString('pt-BR');
 const nomeAba = (s) => s.replace(/[:\\/?*[\]]/g, ' ').slice(0, 31);
+/** Nome civil do cadastro do TSE (ou o nome de urna, quando não há cadastro) */
+const civil = (c) => c.nomeCivil || c.nome;
+/** Ordem alfabética pelo nome do candidato (nome civil) */
+export const porNomeCivil = (a, b) => civil(a).localeCompare(civil(b), 'pt-BR') || a.nome.localeCompare(b.nome, 'pt-BR');
+const situacaoCurta = (c) => (/^eleito/i.test(c.situacao || '') ? 'eleito' : /^suplente/i.test(c.situacao || '') ? 'suplente' : '');
 
 /**
  * Excel completo de uma cidade e eleição (com os filtros de local/seção já aplicados em `f`).
@@ -36,16 +41,19 @@ export function abasExcelCompleto(f, { cidade, ano, filtrosTexto = '' }) {
 
   for (const c of cargos) {
     const r = resultadoCargo(f.votos, c);
-    const linhas = r.candidatos.map((x) => [x.posicao, x.nome, x.numero, x.partido, x.votos, Math.round(x.pctValidos * 10000) / 100]);
-    for (const l of r.legendas) linhas.push(['', `Voto de legenda: ${l.partido}`, '', l.partido, l.votos, Math.round((r.validos ? l.votos / r.validos : 0) * 10000) / 100]);
-    linhas.push(['', 'Brancos', '', '', r.brancos, null], ['', 'Nulos', '', '', r.nulos, null]);
+    const linhas = r.candidatos.map((x) => [x.posicao, civil(x), x.nome, x.numero, x.partido, x.situacao, x.votos, Math.round(x.pctValidos * 10000) / 100]);
+    for (const l of r.legendas)
+      linhas.push(['', `Voto de legenda: ${l.partido}`, '', '', l.partido, '', l.votos, Math.round((r.validos ? l.votos / r.validos : 0) * 10000) / 100]);
+    linhas.push(['', 'Brancos', '', '', '', '', r.brancos, null], ['', 'Nulos', '', '', '', '', r.nulos, null]);
     abas.push({
       nome: nomeAba(`${c} - resultado`),
       colunas: [
         { titulo: 'Posição', largura: 9, tipo: 'numero' },
-        { titulo: 'Candidato', largura: 36 },
+        { titulo: 'Nome do candidato', largura: 40 },
+        { titulo: 'Nome de urna', largura: 28 },
         { titulo: 'Número', largura: 9 },
         { titulo: 'Partido', largura: 14 },
+        { titulo: 'Situação', largura: 16 },
         { titulo: 'Votos', largura: 12, tipo: 'numero' },
         { titulo: '% dos válidos', largura: 13, tipo: 'numero' },
       ],
@@ -71,15 +79,16 @@ export function abasExcelCompleto(f, { cidade, ano, filtrosTexto = '' }) {
       abas.push({
         nome: nomeAba(`${c} - por ${por === 'local' ? 'local' : 'seção'}`),
         colunas: [
-          { titulo: 'Candidato', largura: 32 },
+          { titulo: 'Nome do candidato', largura: 36 },
+          { titulo: 'Nome de urna', largura: 26 },
           { titulo: 'Número', largura: 8 },
           { titulo: 'Partido', largura: 12 },
           ...cab.map((titulo) => ({ titulo, largura: 14, tipo: 'numero' })),
           { titulo: 'Total', largura: 11, tipo: 'numero' },
         ],
         linhas: [
-          ...m.linhas.map((l) => [l.nome, l.numero, l.partido, ...l.votosCol, l.votos]),
-          ['Votos válidos no local', '', '', ...m.validosCol, m.resultado.validos],
+          ...[...m.linhas].sort(porNomeCivil).map((l) => [civil(l), l.nome, l.numero, l.partido, ...l.votosCol, l.votos]),
+          ['Votos válidos no local', '', '', '', ...m.validosCol, m.resultado.validos],
         ],
       });
     }
@@ -134,13 +143,14 @@ export function abasCandidatosPorSecao(dados, cidade, selecionados) {
       return {
         nome: nomeAba(`${g.ano} ${g.cargo}`),
         colunas: [
-          { titulo: 'Candidato', largura: 32 },
+          { titulo: 'Nome do candidato', largura: 36 },
+          { titulo: 'Nome de urna', largura: 26 },
           { titulo: 'Número', largura: 8 },
           { titulo: 'Partido', largura: 12 },
           ...m.colunas.map((k) => ({ titulo: `${k.nome} · Z${k.zona} S${k.secao}`, largura: 14, tipo: 'numero' })),
           { titulo: 'Total', largura: 11, tipo: 'numero' },
         ],
-        linhas: linhas.map((l) => [l.nome, l.numero, l.partido, ...l.votosCol, l.votos]),
+        linhas: [...linhas].sort(porNomeCivil).map((l) => [civil(l), l.nome, l.numero, l.partido, ...l.votosCol, l.votos]),
       };
     });
 }
@@ -172,7 +182,7 @@ export function localCurto(nome) {
  * os locais de votação nas colunas e o total. Cargos com muitos candidatos seguem em várias páginas.
  * Com mais de `locaisPorPagina` locais, as colunas se dividem em blocos.
  */
-export function blocosPdf(f, { cidade, ano, dataText, filtrosTexto = '', locaisPorPagina = 8 }) {
+export function blocosPdf(f, { cidade, ano, dataText, filtrosTexto = '', locaisPorPagina = 10 }) {
   const t = totaisComparecimento(f.secoes);
   const b = [
     { type: 'date', text: dataText },
@@ -199,7 +209,7 @@ export function blocosPdf(f, { cidade, ano, dataText, filtrosTexto = '', locaisP
       const k = `${v.localCode}|${v.localName}`;
       extra[tipo].set(k, (extra[tipo].get(k) || 0) + v.votes);
     }
-    const alfabetica = [...m.linhas].sort((a, b2) => a.nome.localeCompare(b2.nome, 'pt-BR'));
+    const alfabetica = [...m.linhas].sort(porNomeCivil);
     const grupos = [];
     for (let i = 0; i < m.colunas.length; i += locaisPorPagina) grupos.push([i, Math.min(i + locaisPorPagina, m.colunas.length)]);
     grupos.forEach(([ini, fim], gi) => {
@@ -213,7 +223,7 @@ export function blocosPdf(f, { cidade, ano, dataText, filtrosTexto = '', locaisP
       });
       b.push({
         type: 'para',
-        text: `${alfabetica.length} candidatos em ordem alfabética · votos válidos: ${num(r.validos)}${r.legenda ? ` (${num(r.legenda)} de legenda)` : ''} · brancos: ${num(r.brancos)} · nulos: ${num(r.nulos)}`,
+        text: `${alfabetica.length} candidatos em ordem alfabética do nome · votos válidos: ${num(r.validos)}${r.legenda ? ` (${num(r.legenda)} de legenda)` : ''} · brancos: ${num(r.brancos)} · nulos: ${num(r.nulos)}`,
         size: 8.5,
         color: 'muted',
         gapAfter: 2,
@@ -222,6 +232,7 @@ export function blocosPdf(f, { cidade, ano, dataText, filtrosTexto = '', locaisP
       const linhaTotal = (rotulo, valores, total) => [
         { text: rotulo, bold: true },
         '',
+        '',
         ...valores.map((v) => ({ text: num(v), align: 'center', bold: true })),
         ...(ultimo ? [{ text: num(total), align: 'center', bold: true }] : []),
       ];
@@ -229,16 +240,17 @@ export function blocosPdf(f, { cidade, ano, dataText, filtrosTexto = '', locaisP
       const totais = [linhaTotal('Total dos candidatos', nominaisCol, alfabetica.reduce((s2, l) => s2 + l.votos, 0))];
       if (r.legenda) totais.push(linhaTotal('Votos de legenda', somaCol(extra.legenda), r.legenda));
       totais.push(linhaTotal('Brancos', somaCol(extra.branco), r.brancos), linhaTotal('Nulos', somaCol(extra.nulo), r.nulos));
-      const larguraLocais = 0.56 + (ultimo ? 0 : 0.1);
+      const larguraLocais = 0.5 + (ultimo ? 0 : 0.07);
       b.push({
         type: 'table',
-        size: 7.8,
-        widths: [0.3, 0.06, ...cols.map(() => larguraLocais / cols.length), ...(ultimo ? [0.08] : [])],
-        header: ['Candidato (partido)', 'Nº', ...cols.map((k) => localCurto(k.nome)), ...(ultimo ? ['Total'] : [])],
-        headerAlign: ['left', 'center', ...cols.map(() => 'center'), ...(ultimo ? ['center'] : [])],
+        size: cols.length > 8 ? 7.2 : 7.6,
+        widths: [0.21, 0.17, 0.05, ...cols.map(() => larguraLocais / cols.length), ...(ultimo ? [0.07] : [])],
+        header: ['Nome do candidato', 'Nome de urna (partido)', 'Nº', ...cols.map((k) => localCurto(k.nome)), ...(ultimo ? ['Total'] : [])],
+        headerAlign: ['left', 'left', 'center', ...cols.map(() => 'center'), ...(ultimo ? ['center'] : [])],
         rows: [
           ...alfabetica.map((l) => [
-            `${l.nome} (${l.partido})`,
+            civil(l),
+            `${l.nome} (${l.partido})${situacaoCurta(l) ? ` · ${situacaoCurta(l)}` : ''}`,
             { text: String(l.numero), align: 'center' },
             ...cols.map((_, ci) => ({ text: num(l.votosCol[ini + ci]), align: 'center' })),
             ...(ultimo ? [{ text: num(l.votos), align: 'center', bold: true }] : []),
@@ -274,8 +286,9 @@ const textoIndicador = (g, d) => (!g.urnas ? '—' : d.tipo === 'pct' ? pct1(g.i
  * e o perfil do eleitorado de cada urna. Com o perfil traçado, mais três abas (comparação, relação com o voto e locais).
  * @param {any} t resultado de votosPorUrna
  * @param {any} [perfil] resultado de perfilDoCandidato (opcional)
+ * @param {any} [traj] resultado de trajetoria (opcional): outras eleições da mesma pessoa
  */
-export function abasVotosPorUrna(t, perfil = null) {
+export function abasVotosPorUrna(t, perfil = null, traj = null) {
   const rotulo = (c) => `${c.nome} (${c.numero})`;
   const temPerfil = t.linhas.some((l) => l.ind);
   const colunas = [
@@ -338,7 +351,8 @@ export function abasVotosPorUrna(t, perfil = null) {
   for (const c of t.candidatos) {
     resumo.push(
       ['', ''],
-      ['Candidato', `${c.nome} · nº ${c.numero} · ${c.partido}`],
+      ['Nome do candidato', civil(c)],
+      ['Nome de urna', `${c.nome} · nº ${c.numero} · ${c.partido}${c.situacao ? ` · ${c.situacao}` : ''}`],
       ['Votos', c.votos],
       ['% dos válidos', pct(c.pctValidos)],
       ['Posição no município', `${c.posicao}º`],
@@ -393,14 +407,122 @@ export function abasVotosPorUrna(t, perfil = null) {
       linhas: perfil.locais.map((l) => [l.local, l.urnas, l.total, l.votos]),
     });
   }
+  if (traj && traj.candidaturas.length > 1) abas.push(...abasTrajetoria(traj));
   return abas;
+}
+
+const valorTraj = (v, tipo) => (v.valor == null ? '—' : tipo === 'pct' ? pct1(v.valor) : `${dec1(v.valor)} anos`);
+const difTraj = (v, tipo) =>
+  v.dif == null ? '' : tipo === 'pct' ? `${v.dif >= 0 ? '+' : '−'}${dec1(Math.abs(v.dif) * 100)} p.p.` : `${v.dif >= 0 ? '+' : '−'}${dec1(Math.abs(v.dif))}`;
+
+/** Abas do Excel com as outras eleições da mesma pessoa */
+export function abasTrajetoria(tr) {
+  const cs = tr.candidaturas;
+  return [
+    {
+      nome: 'Trajetória',
+      colunas: [
+        { titulo: 'Ano', largura: 7, tipo: 'numero' },
+        { titulo: 'Cargo', largura: 18 },
+        { titulo: 'Nome do candidato', largura: 36 },
+        { titulo: 'Nome de urna', largura: 26 },
+        { titulo: 'Número', largura: 9 },
+        { titulo: 'Partido', largura: 12 },
+        { titulo: 'Situação', largura: 16 },
+        { titulo: 'Votos', largura: 10, tipo: 'numero' },
+        { titulo: '% dos válidos', largura: 12, tipo: 'numero' },
+        { titulo: 'Posição', largura: 9, tipo: 'numero' },
+        { titulo: 'Concorrentes', largura: 12, tipo: 'numero' },
+        { titulo: 'Urnas em 1º lugar', largura: 12, tipo: 'numero' },
+        { titulo: 'Urnas', largura: 8, tipo: 'numero' },
+        { titulo: 'Perfil dos redutos', largura: 60 },
+      ],
+      linhas: [
+        ...cs.map((c) => [
+          c.ano,
+          c.cargo,
+          tr.nomeCivil,
+          c.nome,
+          c.numero,
+          c.partido,
+          c.situacao,
+          c.votos,
+          emPct(c.pctValidos),
+          c.posicao,
+          c.concorrentes,
+          c.urnasVencidas,
+          c.urnas,
+          c.perfil?.manchete || '',
+        ]),
+        [''],
+        ...tr.frases.map((f, i) => ['', i ? '' : 'Comparativo', f]),
+      ],
+    },
+    {
+      nome: 'Trajetória - redutos',
+      colunas: [{ titulo: 'Eleitorado das 25% urnas mais fortes', largura: 30 }, ...cs.flatMap((c) => [{ titulo: `${c.ano} ${c.cargo}`, largura: 18 }, { titulo: `${c.ano}: diferença para a cidade`, largura: 18 }])],
+      linhas: tr.comparacao.map((x) => [x.rotulo, ...x.valores.flatMap((v) => [valorTraj(v, x.tipo), difTraj(v, x.tipo)])]),
+    },
+    {
+      nome: 'Trajetória - locais',
+      colunas: [{ titulo: 'Local de votação', largura: 44 }, ...cs.flatMap((c) => [{ titulo: `${c.ano}: % dos válidos`, largura: 14, tipo: 'numero' }, { titulo: `${c.ano}: votos`, largura: 10, tipo: 'numero' }])],
+      linhas: tr.locais.map((l) => [l.local, ...l.por.flatMap((x) => (x ? [emPct(x.pct), x.votos] : [null, null]))]),
+    },
+  ];
+}
+
+/** Blocos do PDF com as outras eleições da mesma pessoa (cartão por eleição, comparativo, redutos e locais) */
+export function blocosTrajetoria(tr) {
+  if (!tr || tr.candidaturas.length < 2) return [];
+  const cs = tr.candidaturas;
+  const largura = 0.7 / cs.length;
+  return [
+    { type: 'heading', text: `${tr.nomeCivil} em ${cs.length} eleições` },
+    { type: 'para', text: 'Mesma pessoa no cadastro do TSE, mesmo quando muda o nome de urna, o partido ou o cargo.', size: 9, color: 'muted', gapAfter: 3 },
+    {
+      type: 'table',
+      size: 8,
+      widths: [0.07, 0.15, 0.2, 0.09, 0.1, 0.1, 0.09, 0.09, 0.11],
+      header: ['Ano', 'Cargo', 'Nome de urna', 'Partido', 'Votos', '% válidos', 'Posição', '1º lugar em', 'Situação'],
+      headerAlign: ['center', 'left', 'left', 'left', 'center', 'center', 'center', 'center', 'left'],
+      rows: cs.map((c) => [
+        { text: String(c.ano), align: 'center', bold: c.atual },
+        c.cargo,
+        c.nome,
+        c.partido,
+        { text: num(c.votos), align: 'center', bold: true },
+        { text: pct1(c.pctValidos), align: 'center' },
+        { text: `${c.posicao}º de ${c.concorrentes}`, align: 'center' },
+        { text: `${c.urnasVencidas} urnas`, align: 'center' },
+        c.situacao || '—',
+      ]),
+    },
+    { type: 'bullets', items: tr.frases },
+    {
+      type: 'table',
+      size: 8,
+      widths: [0.3, ...cs.map(() => largura)],
+      header: ['Redutos: eleitorado das 25% urnas mais fortes', ...cs.map((c) => `${c.ano} · ${c.cargo}`)],
+      headerAlign: ['left', ...cs.map(() => 'center')],
+      rows: tr.comparacao.map((x) => [x.rotulo, ...x.valores.map((v) => ({ text: `${valorTraj(v, x.tipo)}${v.dif == null ? '' : ` (${difTraj(v, x.tipo)})`}`, align: 'center' }))]),
+    },
+    {
+      type: 'table',
+      size: 8,
+      widths: [0.3, ...cs.map(() => largura)],
+      header: ['Local de votação: % dos válidos (votos)', ...cs.map((c) => String(c.ano))],
+      headerAlign: ['left', ...cs.map(() => 'center')],
+      rows: tr.locais.slice(0, 10).map((l) => [localCurto(l.local), ...l.por.map((x) => ({ text: x ? `${pct1(x.pct)} (${num(x.votos)})` : '—', align: 'center' }))]),
+    },
+    { type: 'note', text: 'Entre parênteses, nos redutos: diferença para a média da cidade naquele ano (p.p. = pontos percentuais).' },
+  ];
 }
 
 /** Blocos do PDF com o perfil traçado (manchete, leitura, comparação, locais e aviso) */
 export function blocosPerfilCandidato(p) {
   const g = p.grupos;
   return [
-    { type: 'heading', text: `Perfil de onde ${p.candidato.nome} foi mais forte` },
+    { type: 'heading', text: `Perfil de onde ${p.candidato.nome} foi mais forte${p.candidato.nomeCivil && p.candidato.nomeCivil !== p.candidato.nome ? ` (${p.candidato.nomeCivil})` : ''}` },
     { type: 'para', text: p.manchete, bold: true, gapAfter: 4 },
     { type: 'bullets', items: p.frases },
     {
@@ -452,32 +574,33 @@ export function blocosPerfilCandidato(p) {
  * PDF "votos por urna": resumo dos candidatos e uma linha por urna (zona, seção, local), com os votos de cada candidato.
  * Com o perfil traçado, ele vem antes, na primeira página. A ordem das urnas é a de `t.linhas`.
  * @param {any} t resultado de votosPorUrna
- * @param {{ dataText: string, perfil?: any }} opcoes
+ * @param {{ dataText: string, perfil?: any, trajetoria?: any }} opcoes
  */
-export function blocosVotosPorUrna(t, { dataText, perfil = null }) {
+export function blocosVotosPorUrna(t, { dataText, perfil = null, trajetoria = null }) {
   const umSo = t.candidatos.length === 1;
   const b = [
     { type: 'date', text: dataText },
     { type: 'title', text: `Votos por urna · ${t.cargo} · ${t.cidade} · ${t.ano}` },
     {
       type: 'para',
-      text: `1º turno · ${num(t.totais.urnas)} urnas (seções eleitorais com votação) · ${num(t.totais.validos)} votos válidos · ${t.candidatos.map((c) => `${c.nome} (${c.numero}, ${c.partido})`).join('; ')}.`,
+      text: `1º turno · ${num(t.totais.urnas)} urnas (seções eleitorais com votação) · ${num(t.totais.validos)} votos válidos · ${t.candidatos.map((c) => `${civil(c)}, nome de urna ${c.nome} (${c.numero}, ${c.partido})`).join('; ')}.`,
       size: 9.5,
       color: 'muted',
       gapAfter: 4,
     },
   ];
-  if (perfil) b.push(...blocosPerfilCandidato(perfil), { type: 'pagebreak' });
+  if (perfil) b.push(...blocosPerfilCandidato(perfil), ...blocosTrajetoria(trajetoria), { type: 'pagebreak' });
   b.push(
     { type: 'heading', text: 'Resumo' },
     {
       type: 'table',
       size: 8.2,
-      widths: [0.27, 0.07, 0.1, 0.1, 0.08, 0.13, 0.11, 0.14],
-      header: ['Candidato (partido)', 'Nº', 'Votos', '% válidos', 'Posição', 'Urnas com voto', '1º lugar em', 'Metade dos votos em'],
-      headerAlign: ['left', 'center', 'center', 'center', 'center', 'center', 'center', 'center'],
+      widths: [0.2, 0.17, 0.06, 0.08, 0.08, 0.08, 0.11, 0.1, 0.12],
+      header: ['Nome do candidato', 'Nome de urna (partido)', 'Nº', 'Votos', '% válidos', 'Posição', 'Urnas com voto', '1º lugar em', 'Metade dos votos em'],
+      headerAlign: ['left', 'left', 'center', 'center', 'center', 'center', 'center', 'center', 'center'],
       rows: t.candidatos.map((c) => [
-        `${c.nome} (${c.partido})`,
+        civil(c),
+        `${c.nome} (${c.partido})${c.situacao ? ` · ${c.situacao.toLowerCase()}` : ''}`,
         { text: String(c.numero), align: 'center' },
         { text: num(c.votos), align: 'center', bold: true },
         { text: pct1(c.pctValidos), align: 'center' },

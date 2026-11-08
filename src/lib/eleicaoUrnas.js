@@ -2,7 +2,7 @@
 // e o perfil do eleitorado das urnas onde um candidato venceu ou foi mais forte ("Traçar perfil").
 // O perfil é do eleitorado inscrito em cada urna (TSE): mostra tendência, não revela o voto de ninguém.
 // Puro: sem tela, para testar.
-import { ehAgregada, idCandidato, nomeLocal, resultadoCargo, tipoVoto } from './eleicao.js';
+import { candidaturasDaPessoa, ehAgregada, idCandidato, nomeLocal, resultadoCargo, tipoVoto } from './eleicao.js';
 
 export const MAX_CANDIDATOS = 3;
 /** Cores de identificação dos candidatos (validadas para daltonismo; o nome aparece sempre junto) */
@@ -487,4 +487,159 @@ const soma2 = (a, b) => (a == null && b == null ? null : (a || 0) + (b || 0));
 function juntarFrases(lista) {
   if (lista.length <= 1) return lista.join('');
   return `${lista.slice(0, -1).join(', ')} e ${lista[lista.length - 1]}`;
+}
+
+/* ------------------------------------------------------------------ trajetória: a mesma pessoa em outras eleições */
+
+/** Indicadores usados para comparar os redutos de uma eleição para outra (diferença para a média da cidade no ano) */
+export const INDICADORES_TRAJETORIA = ['i16', 'i60', 'idadeMedia', 'e3', 'ateFund', 'estudo', 'mulheres'];
+const ROTULO_TRAJETORIA = {
+  i16: '16 a 29 anos',
+  i60: '60 anos ou mais',
+  idadeMedia: 'Idade média',
+  e3: 'Ensino superior',
+  ateFund: 'Só até o fundamental',
+  estudo: 'Anos de estudo',
+  mulheres: 'Mulheres',
+};
+const valorInd = (ind, id) => (id === 'ateFund' ? (ind?.e0 == null && ind?.e1 == null ? null : (ind.e0 || 0) + (ind.e1 || 0)) : (ind?.[id] ?? null));
+
+/** Votos do candidato por local de votação: votos, válidos do local e % */
+function porLocal(t) {
+  const m = new Map();
+  for (const l of t.linhas) {
+    const x = m.get(l.localId) || { localId: l.localId, codigo: l.localId.split('|')[0], local: l.local, votos: 0, validos: 0 };
+    x.votos += l.cand[0]?.votos || 0;
+    x.validos += l.validos;
+    m.set(l.localId, x);
+  }
+  return [...m.values()].map((x) => ({ ...x, pct: x.validos ? x.votos / x.validos : 0 }));
+}
+
+/**
+ * Todas as eleições da mesma pessoa na cidade (pelo cadastro do TSE: o nome de urna, o partido e o cargo podem mudar),
+ * com o perfil de cada uma e os comparativos: votos, redutos (diferença para a média da cidade em cada ano) e locais.
+ * Devolve null quando o candidato não tem cadastro.
+ */
+export function trajetoria(dados, { cidade, ano, cargo, id }) {
+  const atual = votosPorUrna(dados, { cidade, ano, cargo, ids: [id] }).candidatos[0];
+  if (!atual?.pessoa) return null;
+  const candidaturas = candidaturasDaPessoa(dados, cidade, atual.pessoa).map((c) => {
+    const t = votosPorUrna(dados, { cidade, ano: c.ano, cargo: c.cargo, ids: [c.id] });
+    const cand = t.candidatos[0];
+    const perfil = perfilDoCandidato(dados, { cidade, ano: c.ano, cargo: c.cargo, id: c.id });
+    return {
+      ano: c.ano,
+      cargo: c.cargo,
+      id: c.id,
+      atual: c.ano === Number(ano) && c.id === id,
+      nome: cand.nome,
+      numero: cand.numero,
+      partido: cand.partido,
+      situacao: cand.situacao,
+      votos: cand.votos,
+      pctValidos: cand.pctValidos,
+      posicao: cand.posicao,
+      concorrentes: t.resultado.candidatos.length,
+      urnas: t.totais.urnas,
+      urnasComVoto: cand.urnasComVoto,
+      urnasVencidas: cand.urnasVencidas,
+      metadeDosVotosEm: cand.metadeDosVotosEm,
+      perfil,
+      locais: porLocal(t),
+    };
+  });
+  const nomeCivil = atual.nomeCivil || atual.nome;
+  if (candidaturas.length < 2) return { nomeCivil, pessoa: atual.pessoa, candidaturas, comparacao: [], locais: [], frases: [] };
+
+  // redutos: valor nas urnas mais fortes e diferença para a cidade no mesmo ano
+  const comparacao = INDICADORES_TRAJETORIA.map((ind) => ({
+    id: ind,
+    rotulo: ROTULO_TRAJETORIA[ind],
+    tipo: ['idadeMedia', 'estudo'].includes(ind) ? 'anos' : 'pct',
+    valores: candidaturas.map((c) => {
+      const g = c.perfil?.grupos;
+      const v = valorInd(g?.fortes.ind, ind);
+      const b = valorInd(g?.todas.ind, ind);
+      return { valor: v, cidade: b, dif: v == null || b == null ? null : v - b };
+    }),
+  }));
+
+  // locais: % dos válidos do local em cada eleição (os códigos de local se repetem entre os anos)
+  const mapa = new Map();
+  candidaturas.forEach((c, i) => {
+    for (const l of c.locais) {
+      const x = mapa.get(l.codigo) || { codigo: l.codigo, local: l.local, por: candidaturas.map(() => null) };
+      x.por[i] = { votos: l.votos, pct: l.pct };
+      x.local = l.local;
+      mapa.set(l.codigo, x);
+    }
+  });
+  const locais = [...mapa.values()].map((x) => ({ ...x, melhor: Math.max(...x.por.map((p) => p?.pct || 0)) })).sort((a, b) => b.melhor - a.melhor);
+
+  return { nomeCivil, pessoa: atual.pessoa, candidaturas, comparacao, locais, frases: frasesDaTrajetoria(nomeCivil, candidaturas, comparacao, cidade) };
+}
+
+const pontos = (d) =>
+  `${d > 0 ? '+' : '−'}${Math.abs(d * 100).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ponto${Math.abs(d * 100) >= 2 ? 's' : ''}`;
+
+/** Comparativo em frases curtas: votos, redutos e locais que se repetem */
+function frasesDaTrajetoria(nome, cs, comparacao, cidade) {
+  const frases = [];
+  const lista = cs.map((c) => `${c.ano} (${c.cargo.toLowerCase()}, como ${c.nome}, ${c.partido})`);
+  frases.push(`${nome} teve voto em ${cidade} em ${cs.length} eleições: ${juntarFrases(lista)}.`);
+  for (let i = 1; i < cs.length; i++) {
+    const a = cs[i - 1];
+    const b = cs[i];
+    const dif = b.votos - a.votos;
+    const mesmo = a.cargo === b.cargo;
+    frases.push(
+      `De ${a.ano} para ${b.ano}${mesmo ? '' : ` (de ${a.cargo.toLowerCase()} para ${b.cargo.toLowerCase()})`}: ${dif >= 0 ? 'subiu' : 'caiu'} de ${plural(a.votos, 'voto', 'votos')} para ${b.votos.toLocaleString('pt-BR')} (${dif >= 0 ? '+' : '−'}${Math.abs(dif).toLocaleString('pt-BR')}), e de ${pctTxt(a.pctValidos)} para ${pctTxt(b.pctValidos)} dos válidos${b.situacao ? `; ${minusculaInicial(b.situacao)} em ${b.ano}` : ''}.`,
+    );
+  }
+  // perfil dos redutos: a leitura de cada eleição
+  const leituras = cs.map((c) => c.perfil?.leituras?.fortes).filter(Boolean);
+  if (leituras.length === cs.length) {
+    const idades = new Set(leituras.map((l) => (l.idade ? (l.idade.includes('velho') ? 'velho' : 'jovem') : 'media')));
+    const estudos = new Set(leituras.map((l) => (l.escolaridade ? (l.escolaridade.includes('mais') ? 'mais' : 'menos') : 'media')));
+    const descr = cs.map((c) => `${c.ano}: ${descricaoCurta(c.perfil.leituras.fortes)}`).join('; ');
+    if (idades.size === 1 && estudos.size === 1) frases.push(`O perfil dos redutos se manteve nas ${cs.length} eleições (${descr}).`);
+    else frases.push(`O perfil dos redutos mudou de uma eleição para outra (${descr}).`);
+  }
+  const i60 = comparacao.find((x) => x.id === 'i60');
+  const sup = comparacao.find((x) => x.id === 'e3');
+  const prim = 0;
+  const ult = cs.length - 1;
+  if (i60?.valores[prim].dif != null && i60.valores[ult].dif != null)
+    frases.push(
+      `Eleitores com 60 anos ou mais nos redutos, em relação à média da cidade: ${pontos(i60.valores[prim].dif)} em ${cs[prim].ano} e ${pontos(i60.valores[ult].dif)} em ${cs[ult].ano}. Ensino superior: ${pontos(sup.valores[prim].dif)} e ${pontos(sup.valores[ult].dif)}.`,
+    );
+  // locais que se repetem entre os melhores (os 3 melhores; em cidade com poucos locais, só o melhor)
+  const k = Math.max(1, Math.min(3, Math.floor(Math.min(...cs.map((c) => c.locais.length)) / 2)));
+  const top = cs.map(
+    (c) =>
+      new Set(
+        [...c.locais]
+          .sort((a, b) => b.pct - a.pct)
+          .slice(0, k)
+          .map((l) => l.codigo),
+      ),
+  );
+  const repetidos = [...top[0]].filter((k) => top.every((s) => s.has(k)));
+  if (repetidos.length) {
+    const nomes = repetidos.map((k) => cs[ult].locais.find((l) => l.codigo === k)?.local || cs[0].locais.find((l) => l.codigo === k)?.local).filter(Boolean);
+    frases.push(
+      k === 1
+        ? `${nomes[0]} foi o local mais forte em todas as eleições.`
+        : `${juntarFrases(nomes)} ${nomes.length === 1 ? 'ficou' : 'ficaram'} entre os ${k} locais mais fortes em todas as eleições.`,
+    );
+  } else frases.push(k === 1 ? 'O local mais forte mudou de uma eleição para outra.' : `Os ${k} locais mais fortes mudaram de uma eleição para outra.`);
+  return frases;
+}
+
+const minusculaInicial = (t) => t.charAt(0).toLowerCase() + t.slice(1);
+
+function descricaoCurta(l) {
+  const adj = [l.idade, l.escolaridade].filter(Boolean);
+  return adj.length ? `${juntarFrases(adj)}${l.genero ? `, com ${l.genero}` : ''}` : 'na média da cidade';
 }

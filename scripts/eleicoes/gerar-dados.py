@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""Build the compact public dataset from the four-year TSE MG CSV recorte.
+"""Build the compact public dataset from the TSE MG CSV recorte (one set of files per election year).
 
-Expected input files in --input-dir:
-  perfil_eleitor_secao_{2020,2022,2024,2026}_MG.csv
-  detalhe_votacao_secao_{2020,2022,2024,2026}_MG.csv
-  bweb_1t_MG_*.csv for the same years
+Expected input files in --input-dir (2016, 2020, 2022, 2024 and 2026 today):
+  perfil_eleitor_secao_{ANO}_MG.csv
+  detalhe_votacao_secao_{ANO}_MG.csv
+  bweb_1t_MG_*.csv for the same years (the 2016 BWEB has no header: the recorte adds the TSE layout names)
+  consulta_cand_{ANO}.csv (optional): TSE candidate registry, for the civil name, the situation (eleito, suplente...)
+    and to link the same person across elections. CPF, voter id and birth date are used only to link records and
+    are never written to the public file: each person gets a sequential id.
 """
 from __future__ import annotations
 import argparse, csv, gzip, json, re, unicodedata
@@ -71,8 +74,8 @@ def main():
     profile_files = sorted(base.glob("perfil_eleitor_secao_*_MG.csv"))
     detail_files = sorted(base.glob("detalhe_votacao_secao_*_MG.csv"))
     bweb_files = sorted(base.glob("bweb_1t_MG_*.csv"))
-    if len(profile_files) != 4 or len(detail_files) != 4 or len(bweb_files) != 4:
-        raise SystemExit(f"Esperados 4 arquivos por tipo; encontrados perfil={len(profile_files)}, detalhe={len(detail_files)}, BWEB={len(bweb_files)}")
+    if not profile_files or len(profile_files) != len(detail_files) or len(detail_files) != len(bweb_files):
+        raise SystemExit(f"Esperado um arquivo de cada tipo por ano; encontrados perfil={len(profile_files)}, detalhe={len(detail_files)}, BWEB={len(bweb_files)}")
 
     # Municipality, year and section labels, plus aggregate electorate counts.
     local_names: dict[tuple, tuple[str, str]] = {}
@@ -84,13 +87,15 @@ def main():
             if not city: continue
             year = integer(r.get("AA_ELEICAO") or r.get("ANO_ELEICAO"))
             key = section_key(city, year, r)
-            local_names[key] = (str(r.get("NR_LOCAL_VOTACAO", "")), str(r.get("NM_LOCAL_VOTACAO", "")))
+            nome_local = str(r.get("NM_LOCAL_VOTACAO", "")).strip()
+            if nome_local or key not in local_names:
+                local_names[key] = (str(r.get("NR_LOCAL_VOTACAO", "")), nome_local)
             count = integer(r.get("QT_ELEITORES") or r.get("QT_ELEITORES_PERFIL"))
             aptos_by_section[section_id(key)] += count
             for dimension, field in PROFILE_FIELDS:
                 if field not in r:
                     continue
-                category = (r.get(field) or "").strip() or "NÃO INFORMADO"
+                category = re.sub(r"\s+", " ", (r.get(field) or "").strip()) or "NÃO INFORMADO"
                 if category == "#NE": category = "Não registrado neste ano"
                 profile_counts[key + (dimension, category)] += count
             if "DS_FAIXA_ETARIA" in r:
@@ -108,7 +113,8 @@ def main():
             year = integer(r.get("ANO_ELEICAO"))
             if integer(r.get("NR_TURNO")) != 1: continue
             key = section_key(city, year, r)
-            local_names.setdefault(key, (str(r.get("NR_LOCAL_VOTACAO", "")), str(r.get("NM_LOCAL_VOTACAO", ""))))
+            if not local_names.get(key, ("", ""))[1]:
+                local_names[key] = (str(r.get("NR_LOCAL_VOTACAO", "")), str(r.get("NM_LOCAL_VOTACAO", "")).strip())
             sid = section_id(key)
             if sid in turnout_by_section: continue
             turnout_by_section[sid] = {
@@ -146,6 +152,14 @@ def main():
                 "party": str(r.get("SG_PARTIDO", "")).strip(),
                 "votes": integer(r.get("QT_VOTOS")),
             })
+
+    # 2016 profile rows carry no location name: an empty name takes the name the
+    # same location code has elsewhere in the same city and year.
+    name_by_code: dict[tuple, str] = {}
+    for (city, year, _z, _s, code), (_c, name) in local_names.items():
+        if name: name_by_code.setdefault((city, year, code), name)
+    for key, (code, name) in list(local_names.items()):
+        if not name: local_names[key] = (code, name_by_code.get((key[0], key[1], code), ""))
 
     # Keep all profile sections available in the dashboard, even where the
     # TSE has no result row, and use BWEB for any section omitted in detail.
@@ -198,13 +212,15 @@ def main():
     notice = "Dados consultáveis de " + " e ".join(available) + "."
     if missing:
         notice += " Não foram encontrados arquivos para " + " e ".join(missing) + "."
-    notice += " Resultados nominais por seção disponíveis para o 1º turno de 2020, 2022, 2024 e 2026. O perfil da seção não revela o voto de qualquer pessoa ou grupo demográfico."
+    anos_txt = ", ".join(str(a) for a in all_years[:-1]) + (" e " if len(all_years) > 1 else "") + str(all_years[-1])
+    notice += f" Resultados nominais por seção disponíveis para o 1º turno de {anos_txt}. O perfil da seção não revela o voto de qualquer pessoa ou grupo demográfico."
+    candidates = load_candidates(base, votes)
     data = {
         "city": "Cataguases", "municipalityCode": "43052", "cities": CITY_ORDER,
         "availableCities": available, "partial": bool(missing), "notice": notice,
         "notices": [notice], "years": all_years,
         "updatedAt": date.today().isoformat(), "turnout": turnout,
-        "votes": votes, "profile": profile,
+        "votes": votes, "profile": profile, "candidates": candidates,
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with args.output.open("wb") as raw:
@@ -212,6 +228,86 @@ def main():
             zipped.write(json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
     print(json.dumps({"output": str(args.output), "cities": available, "years": all_years,
                       "turnout_rows": len(turnout), "vote_rows": len(votes), "profile_rows": len(profile),
+                      "candidates": len(candidates), "people": len({c["person"] for c in candidates}),
                       "size_bytes": args.output.stat().st_size}, ensure_ascii=False))
+
+MUNICIPAL = {"PREFEITO", "VEREADOR"}
+
+
+def scope_of(cargo: str, city: str) -> str:
+    c = norm(cargo)
+    return city if c in MUNICIPAL else ("BR" if c == "PRESIDENTE" else "MG")
+
+
+def situation(raw: str) -> str:
+    v = norm(raw)
+    if not v or v in {"NULO", "NE"}: return ""
+    if v.startswith("ELEITO POR QP"): return "Eleito por QP"
+    if v.startswith("ELEITO POR MEDIA"): return "Eleito por média"
+    if v.startswith("ELEITO"): return "Eleito"
+    if v.startswith("SUPLENTE"): return "Suplente"
+    if v.startswith("NAO ELEITO"): return "Não eleito"
+    if v.startswith("2 TURNO") or v.startswith("2O TURNO"): return "2º turno"
+    return raw.strip().capitalize()
+
+
+def load_candidates(base: Path, votes: list[dict]) -> list[dict]:
+    """Civil name, situation and a person id for every candidacy that got votes in the three cities."""
+    files = sorted(base.glob("consulta_cand_*.csv"))
+    if not files: return []
+    voted = {(v["year"], norm(v["cargo"]), v["candidateNumber"], scope_of(v["cargo"], v["city"])) for v in votes}
+    records: dict[tuple, dict] = {}
+    for path in files:
+        with path.open(encoding="utf-8", newline="") as f:
+            for r in csv.DictReader(f, delimiter=";"):
+                year = integer(r.get("ANO_ELEICAO"))
+                cargo = norm(r.get("DS_CARGO"))
+                city = city_name(r.get("NM_UE", "")) if cargo in MUNICIPAL else ""
+                if cargo in MUNICIPAL and not city: continue
+                scope = city if cargo in MUNICIPAL else ("BR" if cargo == "PRESIDENTE" else "MG")
+                key = (year, cargo, str(r.get("NR_CANDIDATO", "")).strip(), scope)
+                if key not in voted: continue
+                turno = integer(r.get("NR_TURNO")) or 1
+                old = records.get(key)
+                if old and old["_turno"] >= turno: continue
+                records[key] = {"_turno": turno, "_cpf": re.sub(r"\D", "", r.get("NR_CPF_CANDIDATO", "")),
+                                "_titulo": re.sub(r"\D", "", r.get("NR_TITULO_ELEITORAL_CANDIDATO", "")),
+                                "_nasc": (r.get("DT_NASCIMENTO") or "").strip(), "_row": r, "key": key}
+    # union-find: same CPF, same voter id or same civil name + birth date = same person
+    parent = {k: k for k in records}
+    def find(k):
+        while parent[k] != k:
+            parent[k] = parent[parent[k]]; k = parent[k]
+        return k
+    seen: dict[tuple, tuple] = {}
+    for k, rec in records.items():
+        name = norm(rec["_row"].get("NM_CANDIDATO"))
+        links = []
+        if len(rec["_cpf"]) == 11 and len(set(rec["_cpf"])) > 1: links.append(("cpf", rec["_cpf"]))
+        if len(rec["_titulo"]) >= 10 and len(set(rec["_titulo"])) > 1: links.append(("tit", rec["_titulo"]))
+        if name and re.match(r"\d{2}/\d{2}/\d{4}$", rec["_nasc"]): links.append(("nome", name, rec["_nasc"]))
+        for link in links:
+            if link in seen: parent[find(k)] = find(seen[link])
+            else: seen[link] = k
+    groups: dict[tuple, list] = defaultdict(list)
+    for k in records: groups[find(k)].append(k)
+    ordered = sorted(groups.values(), key=lambda ks: (norm(records[ks[0]]["_row"].get("NM_CANDIDATO")), min(k[0] for k in ks)))
+    person = {k: f"p{i + 1}" for i, ks in enumerate(ordered) for k in ks}
+    out = []
+    for k, rec in sorted(records.items(), key=lambda kv: (kv[0][0], kv[0][1], kv[0][3], kv[0][2])):
+        r = rec["_row"]
+        year, cargo, number, scope = k
+        out.append({
+            "year": year, "cargo": r.get("DS_CARGO", "").strip().title().replace(" De ", " de "), "number": number, "scope": scope,
+            "name": re.sub(r"\s+", " ", r.get("NM_CANDIDATO", "")).strip(),
+            "ballotName": re.sub(r"\s+", " ", r.get("NM_URNA_CANDIDATO", "")).strip(),
+            "party": (r.get("SG_PARTIDO") or "").strip(), "situation": situation(r.get("DS_SIT_TOT_TURNO", "")),
+            "person": person[k], "age": integer(r.get("NR_IDADE_DATA_POSSE")) or None,
+            "occupation": (r.get("DS_OCUPACAO") or "").strip().capitalize(),
+            "education": (r.get("DS_GRAU_INSTRUCAO") or "").strip().capitalize(),
+            "gender": (r.get("DS_GENERO") or "").strip().capitalize(),
+        })
+    return out
+
 
 if __name__ == "__main__": main()

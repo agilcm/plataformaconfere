@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { comparecimento, filtrar, historicoCandidato, matriz, porPartido, resultadoCargo, tipoVoto, totaisComparecimento } from '../src/lib/eleicao.js';
+import { candidaturasDaPessoa, comparecimento, filtrar, historicoCandidato, matriz, porPartido, prepararDados, resultadoCargo, tipoVoto, totaisComparecimento } from '../src/lib/eleicao.js';
 import { abasCandidatosPorSecao, abasExcelCompleto, blocosPdf } from '../src/lib/eleicaoRelatorios.js';
 
 const voto = (local, secao, cargo, numero, nome, partido, votos, ano = 2024) => ({
@@ -26,7 +26,14 @@ const dados = {
     voto('A', 1, 'Prefeito', 15, 'MARIA', 'MDB', 300, 2020),
   ],
   profile: [{ city: 'X', year: 2024, zone: '1', section: '1', localCode: 'A', localName: 'ESCOLA A', dimension: 'Gênero', category: 'FEMININO', count: 60 }],
+  // cadastro do TSE: nome civil, situação e a mesma pessoa (p1) em 2020 e 2024
+  candidates: [
+    { year: 2024, cargo: 'Prefeito', number: '15', scope: 'X', name: 'MARIA DA SILVA', ballotName: 'MARIA', party: 'MDB', situation: 'Eleito', person: 'p1' },
+    { year: 2024, cargo: 'Prefeito', number: '12', scope: 'X', name: 'JOÃO PEREIRA', ballotName: 'JOÃO', party: 'PDT', situation: 'Não eleito', person: 'p2' },
+    { year: 2020, cargo: 'Prefeito', number: '15', scope: 'X', name: 'MARIA DA SILVA', ballotName: 'MARIA', party: 'MDB', situation: 'Eleito', person: 'p1' },
+  ],
 };
+prepararDados(dados);
 
 test('tipos de voto: nominal, legenda, branco e nulo', () => {
   assert.deepEqual(dados.votes.slice(0, 4).map(tipoVoto), ['nominal', 'nominal', 'branco', 'nulo']);
@@ -91,16 +98,31 @@ test('relatórios: Excel completo, Excel por seção e PDF', () => {
   ]);
   assert.ok(abas.every((a) => a.nome.length <= 31));
   const sec = abasCandidatosPorSecao(dados, 'X', [{ ano: 2024, cargo: 'Prefeito', id: 'Prefeito|15|MARIA' }]);
-  assert.deepEqual(sec[0].linhas, [['MARIA', '15', 'MDB', 50, 20, 70]]);
+  assert.deepEqual(sec[0].linhas, [['MARIA DA SILVA', 'MARIA', '15', 'MDB', 50, 20, 70]]);
   const b = blocosPdf(f, { cidade: 'X', ano: 2024, dataText: 'X, hoje' });
   // um cargo por página, candidatos em ordem alfabética, número logo depois e locais nas colunas
   assert.ok(b.some((x) => x.type === 'heading' && x.text === 'VEREADOR · X · 2024'));
   assert.equal(b.filter((x) => x.type === 'pagebreak').length, b.filter((x) => x.type === 'table').length - 1);
   const pref = b.find((x) => x.type === 'table');
-  assert.deepEqual(pref.header.slice(0, 2), ['Candidato (partido)', 'Nº']);
+  assert.deepEqual(pref.header.slice(0, 3), ['Nome do candidato', 'Nome de urna (partido)', 'Nº']);
   assert.equal(pref.header.at(-1), 'Total');
+  assert.equal(pref.header.length, pref.widths.length);
   const nomes = pref.rows.slice(0, pref.rows.length - pref.totalRows).map((r) => r[0]);
-  assert.deepEqual(nomes, [...nomes].sort((x, y) => x.localeCompare(y, 'pt-BR')));
+  assert.deepEqual(nomes, ['JOÃO PEREIRA', 'MARIA DA SILVA'], 'ordem pelo nome do candidato');
+  assert.equal(pref.rows[1][1], 'MARIA (MDB) · eleito');
+  for (const r of pref.rows) assert.equal(r.length, pref.widths.length);
+  const res = abas.find((a) => a.nome === 'Prefeito - resultado');
+  assert.deepEqual(res.colunas.slice(1, 3).map((c) => c.titulo), ['Nome do candidato', 'Nome de urna']);
+  assert.deepEqual(res.linhas[0].slice(1, 6), ['MARIA DA SILVA', 'MARIA', '15', 'MDB', 'Eleito']);
+});
+
+test('cadastro do TSE: nome civil e a mesma pessoa em outras eleições', () => {
+  const f = filtrar(dados, { cidade: 'X', ano: 2024 });
+  const r = resultadoCargo(f.votos, 'Prefeito');
+  assert.deepEqual(r.candidatos.map((c) => [c.nome, c.nomeCivil, c.situacao, c.pessoa]), [['MARIA', 'MARIA DA SILVA', 'Eleito', 'p1'], ['JOÃO', 'JOÃO PEREIRA', 'Não eleito', 'p2']]);
+  assert.deepEqual(candidaturasDaPessoa(dados, 'X', 'p1').map((c) => [c.ano, c.cargo, c.votos]), [[2020, 'Prefeito', 300], [2024, 'Prefeito', 70]]);
+  assert.equal(historicoCandidato(dados, 'X', 'pereira')[0].nome, 'JOÃO', 'busca pelo nome civil');
+  assert.deepEqual(resultadoCargo(f.votos, 'Vereador').candidatos.map((c) => c.nomeCivil), ['', ''], 'sem cadastro, fica vazio');
 });
 
 // ------------------------------------------------------------------ votos por urna e "Traçar perfil"

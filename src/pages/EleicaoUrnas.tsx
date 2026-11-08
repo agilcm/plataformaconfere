@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { Icon } from '../components/ui.tsx';
 import { abasVotosPorUrna, blocosVotosPorUrna } from '../lib/eleicaoRelatorios.js';
-import { CORES_CANDIDATOS, MAX_CANDIDATOS, perfilDoCandidato, rotuloCompleto, votosPorUrna } from '../lib/eleicaoUrnas.js';
+import { CORES_CANDIDATOS, MAX_CANDIDATOS, perfilDoCandidato, rotuloCompleto, trajetoria, votosPorUrna } from '../lib/eleicaoUrnas.js';
 import { dateText, downloadPdf, slug } from '../lib/pdfReport.ts';
 import { baixarXlsx } from '../lib/xlsx.js';
 
@@ -63,6 +63,10 @@ export default function AbaUrnas({
     () => (perfilAberto && umId ? perfilDoCandidato(dados, { cidade, ano, cargo, id: umId }) : null),
     [perfilAberto, umId, dados, cidade, ano, cargo],
   );
+  const traj = useMemo(
+    () => (perfilAberto && umId ? trajetoria(dados, { cidade, ano, cargo, id: umId }) : null),
+    [perfilAberto, umId, dados, cidade, ano, cargo],
+  );
   const fortes = useMemo(() => new Set<string>(perfil?.idsFortes || []), [perfil]);
   const linhas = useMemo(
     () =>
@@ -76,7 +80,7 @@ export default function AbaUrnas({
   const corDe = (id: string, i: number) => CORES_CANDIDATOS[cores[id] ?? i] || CORES_CANDIDATOS[0];
 
   const termo = semAcento(busca.trim());
-  const lista = t.resultado.candidatos.filter((c: any) => !termo || semAcento(`${c.nome} ${c.numero} ${c.partido}`).includes(termo));
+  const lista = t.resultado.candidatos.filter((c: any) => !termo || semAcento(`${c.nome} ${c.nomeCivil} ${c.numero} ${c.partido}`).includes(termo));
   const visiveis = termo || verTodos ? lista : lista.slice(0, 12);
 
   const alternar = (id: string) => {
@@ -95,11 +99,15 @@ export default function AbaUrnas({
 
   const nomeArquivo = (ext: string) =>
     `votos-por-urna-${slug(cidade)}-${ano}-${slug(cargo)}${um ? `-${slug(um.nome)}` : ''}${perfil ? '-com-perfil' : ''}.${ext}`;
-  const baixarExcel = () => baixarXlsx(nomeArquivo('xlsx'), abasVotosPorUrna({ ...t, linhas }, perfil) as never);
+  const baixarExcel = () => baixarXlsx(nomeArquivo('xlsx'), abasVotosPorUrna({ ...t, linhas }, perfil, traj) as never);
   const baixarPdf = async () => {
     setGerando('Gerando o PDF…');
     try {
-      await downloadPdf(nomeArquivo('pdf'), `Votos por urna ${ano}`, blocosVotosPorUrna({ ...t, linhas }, { dataText: dateText(), perfil }) as never);
+      await downloadPdf(
+        nomeArquivo('pdf'),
+        `Votos por urna ${ano}`,
+        blocosVotosPorUrna({ ...t, linhas }, { dataText: dateText(), perfil, trajetoria: traj }) as never,
+      );
     } finally {
       setGerando('');
     }
@@ -211,6 +219,7 @@ export default function AbaUrnas({
                     <span className="flex-1 min-w-0">
                       <span className="block font-semibold text-slate-800 truncate">{c.nome}</span>
                       <span className="block text-xs text-slate-500">
+                        {c.nomeCivil && c.nomeCivil !== c.nome ? `${c.nomeCivil} · ` : ''}
                         {c.numero} · {c.partido}
                       </span>
                     </span>
@@ -242,7 +251,9 @@ export default function AbaUrnas({
               <div key={c.id} className={`${card} min-w-0`} style={{ borderTop: `4px solid ${corDe(c.id, i)}` }}>
                 <p className="font-bold text-[#0F2053]">{c.nome}</p>
                 <p className="text-sm text-slate-500">
+                  {c.nomeCivil && c.nomeCivil !== c.nome && <span className="block text-slate-700">{c.nomeCivil}</span>}
                   nº {c.numero} · {c.partido} · {c.posicao}º lugar em {cidade}
+                  {c.situacao && ` · ${c.situacao}`}
                 </p>
                 <p className="mt-2 text-2xl font-bold tabular-nums text-[#0F2053]">
                   {num(c.votos)} <span className="text-base font-semibold text-slate-600">votos · {pct(c.pctValidos)} dos válidos</span>
@@ -305,7 +316,7 @@ export default function AbaUrnas({
             )}
           </div>
 
-          {perfil && <PainelPerfil p={perfil} cidade={cidade} cor={corDe(perfil.candidato.id, 0)} />}
+          {perfil && <PainelPerfil p={perfil} tr={traj} cidade={cidade} cor={corDe(perfil.candidato.id, 0)} />}
 
           {/* Tabela: urnas nas linhas, candidatos nas colunas */}
           <div className={card}>
@@ -353,6 +364,7 @@ export default function AbaUrnas({
                       >
                         <span className="block text-left">{c.nome}</span>
                         <span className="block text-left text-xs font-normal text-slate-500">
+                          {c.nomeCivil && c.nomeCivil !== c.nome && <span className="block">{c.nomeCivil}</span>}
                           {c.numero} · {c.partido}
                         </span>
                       </th>
@@ -472,7 +484,7 @@ function Comparacao({ titulo, itens, g }: { titulo: string; itens: any[]; g: any
   );
 }
 
-function PainelPerfil({ p, cidade, cor }: { p: any; cidade: string; cor: string }) {
+function PainelPerfil({ p, tr, cidade, cor }: { p: any; tr: any; cidade: string; cor: string }) {
   const g = p.grupos;
   const ind = (id: string) => p.indicadores.find((d: any) => d.id === id);
   const grupos = [
@@ -484,7 +496,7 @@ function PainelPerfil({ p, cidade, cor }: { p: any; cidade: string; cor: string 
   const valor = (k: string, d: any) => (!g[k].urnas ? '—' : d.tipo === 'pct' ? pct(g[k].ind[d.id]) : `${dec(g[k].ind[d.id])} anos`);
   return (
     <section aria-labelledby="perfil-titulo" className="p-5 sm:p-6 rounded-2xl bg-white border-2 border-[#0F2053]">
-      <p className="text-sm font-bold uppercase tracking-wide text-[#0478CA]">Traçar perfil · onde ganhou</p>
+      <p className="text-sm font-bold text-[#0478CA]">Perfil de onde ganhou</p>
       <h2 id="perfil-titulo" className="mt-1 text-xl sm:text-2xl font-bold text-[#0F2053]">
         <span className="inline-block w-3 h-3 mr-2 rounded-full align-middle" style={{ background: cor }} aria-hidden="true" />
         {p.candidato.nome}{' '}
@@ -492,6 +504,9 @@ function PainelPerfil({ p, cidade, cor }: { p: any; cidade: string; cor: string 
           · {p.cargo} · {cidade} {p.ano}
         </span>
       </h2>
+      {p.candidato.nomeCivil && p.candidato.nomeCivil !== p.candidato.nome && (
+        <p className="mt-0.5 text-[15px] text-slate-600">Nome do candidato: {p.candidato.nomeCivil}</p>
+      )}
       <p className="mt-3 text-[17px] leading-relaxed font-semibold text-slate-900">{p.manchete}</p>
       <ul className="mt-3 flex flex-wrap gap-2" aria-label="Resumo do perfil">
         {p.selos.map((s: any) => (
@@ -605,6 +620,8 @@ function PainelPerfil({ p, cidade, cor }: { p: any; cidade: string; cor: string 
         </table>
       </div>
 
+      <Trajetoria tr={tr} cidade={cidade} />
+
       <details className="mt-5">
         <summary className="cursor-pointer font-bold text-[#0478CA]">Tabela completa: onde ficou em 1º, urnas mais fortes, mais fracas e cidade</summary>
         <div className="mt-2 overflow-auto border border-slate-200 rounded-xl">
@@ -645,6 +662,148 @@ function PainelPerfil({ p, cidade, cor }: { p: any; cidade: string; cor: string 
       </details>
 
       <p className="mt-4 text-sm text-slate-500">{p.aviso}</p>
+    </section>
+  );
+}
+
+const corSituacao = (s: string) =>
+  /^eleito/i.test(s) ? 'bg-[#128C4A] text-white' : /^suplente/i.test(s) ? 'bg-amber-100 text-amber-900' : 'bg-slate-100 text-slate-700';
+
+/** A mesma pessoa em outras eleições (cadastro do TSE): um cartão por ano, comparativo, redutos e locais */
+function Trajetoria({ tr, cidade }: { tr: any; cidade: string }) {
+  if (!tr) return null;
+  const cs = tr.candidaturas;
+  if (cs.length < 2)
+    return (
+      <p className="mt-6 p-4 rounded-xl bg-[#F4F7FB] text-[15px] text-slate-700">
+        {tr.nomeCivil} não teve outra candidatura com voto em {cidade} entre 2016 e 2026, então não há outra eleição para comparar.
+      </p>
+    );
+  const valorTxt = (x: any, tipo: string) => (x.valor == null ? '—' : tipo === 'pct' ? pct(x.valor) : `${dec(x.valor)} anos`);
+  const difTxt = (x: any, tipo: string) =>
+    x.dif == null ? '' : tipo === 'pct' ? `${x.dif >= 0 ? '+' : '−'}${dec(Math.abs(x.dif) * 100)} p.p.` : `${x.dif >= 0 ? '+' : '−'}${dec(Math.abs(x.dif))}`;
+  return (
+    <section aria-labelledby="traj-titulo" className="mt-8 pt-6 border-t-2 border-slate-200">
+      <h3 id="traj-titulo" className="text-xl font-bold text-[#0F2053]">
+        {tr.nomeCivil} em {cs.length} eleições
+      </h3>
+      <p className="mt-1 text-[15px] text-slate-600">
+        Mesma pessoa no cadastro do TSE, mesmo quando muda o nome de urna, o partido ou o cargo. Votos em {cidade}.
+      </p>
+
+      <ol className={`mt-4 grid grid-cols-1 sm:grid-cols-2 ${cs.length > 2 ? 'xl:grid-cols-3' : ''} gap-3`}>
+        {cs.map((c: any) => (
+          <li key={`${c.ano}${c.id}`} className={`p-4 rounded-xl border-2 min-w-0 ${c.atual ? 'border-[#0F2053] bg-white' : 'border-slate-200 bg-[#F4F7FB]'}`}>
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="text-3xl font-bold tabular-nums text-[#0F2053]">{c.ano}</span>
+              {c.situacao && <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${corSituacao(c.situacao)}`}>{c.situacao}</span>}
+            </div>
+            <p className="mt-1 font-semibold text-slate-800">
+              {c.cargo}
+              {c.atual && <span className="ml-2 text-xs font-bold text-[#0478CA]">(esta eleição)</span>}
+            </p>
+            <p className="text-sm text-slate-600">
+              {c.nome} · nº {c.numero} · {c.partido}
+            </p>
+            <p className="mt-2 text-lg font-bold tabular-nums text-[#0F2053]">
+              {num(c.votos)} votos <span className="text-sm font-semibold text-slate-600">· {pct(c.pctValidos)} dos válidos</span>
+            </p>
+            <p className="text-sm text-slate-600">
+              {c.posicao}º de {c.concorrentes} · 1º lugar em {c.urnasVencidas} de {c.urnas} urnas
+            </p>
+            {c.perfil?.selos && (
+              <ul className="mt-2 flex flex-wrap gap-1.5" aria-label={`Perfil dos redutos em ${c.ano}`}>
+                {c.perfil.selos.map((s: any) => (
+                  <li
+                    key={s.id}
+                    className={`px-2 py-0.5 rounded-full text-xs font-semibold ${s.destaque ? 'bg-[#0F2053] text-white' : 'bg-white text-slate-600 border border-slate-200'}`}
+                  >
+                    {s.texto}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </li>
+        ))}
+      </ol>
+
+      <h4 className="mt-6 font-bold text-[#0F2053]">Comparativo</h4>
+      <ul className="mt-2 space-y-1.5 list-disc pl-5 text-[15px] text-slate-800">
+        {tr.frases.map((f: string) => (
+          <li key={f}>{f}</li>
+        ))}
+      </ul>
+
+      <h4 className="mt-6 font-bold text-[#0F2053]">Redutos em cada eleição</h4>
+      <p className="text-sm text-slate-600">Eleitorado das 25% urnas mais fortes e, embaixo, a diferença para a média da cidade naquele ano.</p>
+      <div className="mt-2 overflow-auto border border-slate-200 rounded-xl">
+        <table className="w-full min-w-[34rem] text-sm">
+          <thead className="bg-slate-50 text-slate-600">
+            <tr>
+              <th className="p-2 text-left font-semibold">Eleitorado</th>
+              {cs.map((c: any) => (
+                <th key={`${c.ano}${c.id}`} className="p-2 text-right font-semibold">
+                  {c.ano}
+                  <span className="block text-xs font-normal">{c.cargo}</span>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {tr.comparacao.map((x: any) => (
+              <tr key={x.id} className="border-t border-slate-100 tabular-nums">
+                <td className="p-2 text-slate-800">{x.rotulo}</td>
+                {x.valores.map((v: any, i: number) => (
+                  <td key={i} className="p-2 text-right">
+                    {valorTxt(v, x.tipo)}
+                    <span
+                      className={`block text-xs ${v.dif != null && Math.abs(v.dif) >= (x.tipo === 'pct' ? 0.02 : 1) ? 'font-bold text-[#0F2053]' : 'text-slate-500'}`}
+                    >
+                      {difTxt(v, x.tipo)}
+                    </span>
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <h4 className="mt-6 font-bold text-[#0F2053]">Locais de votação em cada eleição</h4>
+      <p className="text-sm text-slate-600">Fatia dos votos válidos do local (e os votos), começando pelos locais onde foi mais forte.</p>
+      <div className="mt-2 overflow-auto border border-slate-200 rounded-xl">
+        <table className="w-full min-w-[34rem] text-sm">
+          <thead className="bg-slate-50 text-slate-600">
+            <tr>
+              <th className="p-2 text-left font-semibold">Local</th>
+              {cs.map((c: any) => (
+                <th key={`${c.ano}${c.id}`} className="p-2 text-right font-semibold">
+                  {c.ano}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {tr.locais.slice(0, 10).map((l: any) => (
+              <tr key={l.codigo} className="border-t border-slate-100 tabular-nums">
+                <td className="p-2 text-slate-800">{l.local}</td>
+                {l.por.map((x: any, i: number) => (
+                  <td key={i} className="p-2 text-right">
+                    {x ? (
+                      <>
+                        {pct(x.pct)}
+                        <span className="block text-xs text-slate-500">{num(x.votos)} votos</span>
+                      </>
+                    ) : (
+                      '—'
+                    )}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </section>
   );
 }

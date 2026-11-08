@@ -24,13 +24,12 @@ import { abasCandidatosPorSecao, abasExcelCompleto, blocosPdf } from '../lib/ele
 import { baixarXlsx } from '../lib/xlsx.js';
 import AbaUrnas from './EleicaoUrnas.tsx';
 
-type Aba = 'resultado' | 'locais' | 'urnas' | 'comparecimento' | 'perfil' | 'candidato' | 'relatorios';
+type Aba = 'resultado' | 'locais' | 'urnas' | 'eleitorado' | 'candidato' | 'relatorios';
 const ABAS: { id: Aba; label: string; icon: string }[] = [
   { id: 'resultado', label: 'Resultado', icon: 'chart' },
   { id: 'locais', label: 'Por local e seção', icon: 'building' },
   { id: 'urnas', label: 'Votos por urna', icon: 'box' },
-  { id: 'comparecimento', label: 'Comparecimento', icon: 'users' },
-  { id: 'perfil', label: 'Perfil do eleitorado', icon: 'users' },
+  { id: 'eleitorado', label: 'Comparecimento e perfil', icon: 'users' },
   { id: 'candidato', label: 'Candidato', icon: 'search' },
   { id: 'relatorios', label: 'Relatórios', icon: 'doc' },
 ];
@@ -269,7 +268,7 @@ export default function EleicaoPage() {
               </div>
               <ol className="mt-4 space-y-2">
                 {res.candidatos
-                  .filter((c) => !busca || `${c.nome} ${c.numero} ${c.partido}`.toLowerCase().includes(busca.toLowerCase()))
+                  .filter((c) => !busca || `${c.nome} ${c.nomeCivil} ${c.numero} ${c.partido}`.toLowerCase().includes(busca.toLowerCase()))
                   .slice(0, verTodos || busca ? undefined : 15)
                   .map((c) => (
                     <li key={c.id} className="grid grid-cols-12 items-center gap-2 text-[15px]">
@@ -277,7 +276,9 @@ export default function EleicaoPage() {
                       <span className="col-span-6 sm:col-span-5 min-w-0">
                         <span className="block font-semibold text-slate-800 truncate">{c.nome}</span>
                         <span className="block text-xs text-slate-500">
+                          {c.nomeCivil && c.nomeCivil !== c.nome ? `${c.nomeCivil} · ` : ''}
                           {c.numero} · {c.partido}
+                          {c.situacao ? ` · ${c.situacao}` : ''}
                         </span>
                       </span>
                       <span className="hidden sm:block sm:col-span-3">
@@ -347,36 +348,8 @@ export default function EleicaoPage() {
           />
         )}
 
-        {aba === 'comparecimento' && <AbaComparecimento dados={dados} cidade={cidade} ano={ano} f={f} />}
-
-        {aba === 'perfil' && (
-          <div className={card}>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="text-lg font-bold text-[#0F2053]">
-                Perfil do eleitorado · {cidade} {ano}
-                {filtrosTexto && <span className="text-slate-500 font-semibold"> · {filtrosTexto}</span>}
-              </p>
-              <select value={dimensao} onChange={(e) => setDimensao(e.target.value)} className="px-3 py-2 rounded-xl border border-slate-300 text-[15px]">
-                {dimensoesDe(f.perfil).map((d) => (
-                  <option key={d}>{d}</option>
-                ))}
-              </select>
-            </div>
-            <ul className="mt-4 space-y-2 text-[15px]">
-              {perfil(f.perfil, dimensao).map((p) => (
-                <li key={p.categoria} className="grid grid-cols-12 items-center gap-2">
-                  <span className="col-span-5 sm:col-span-4 text-slate-800">{p.categoria}</span>
-                  <span className="col-span-4 sm:col-span-6">
-                    <Barra valor={p.pct} />
-                  </span>
-                  <span className="col-span-3 sm:col-span-2 text-right tabular-nums">
-                    {num(p.eleitores)} · {pct(p.pct, 1)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-            <p className="mt-3 text-sm text-slate-500">Perfil agregado do eleitorado de cada seção (TSE). Não revela o voto de nenhuma pessoa ou grupo.</p>
-          </div>
+        {aba === 'eleitorado' && (
+          <AbaEleitorado dados={dados} cidade={cidade} ano={ano} f={f} filtrosTexto={filtrosTexto} dimensao={dimensao} setDimensao={setDimensao} />
         )}
 
         {aba === 'candidato' && (
@@ -532,6 +505,7 @@ function AbaLocais({ f, cargo, porSecao, setPorSecao, top, setTop }: { f: any; c
                 <td className="sticky left-0 bg-white p-2 min-w-[14rem]">
                   <span className="block font-semibold text-slate-800">{l.nome}</span>
                   <span className="block text-xs text-slate-500">
+                    {l.nomeCivil && l.nomeCivil !== l.nome && <span className="block">{l.nomeCivil}</span>}
                     {l.numero} · {l.partido} · {l.posicao}º
                   </span>
                 </td>
@@ -564,12 +538,30 @@ function AbaLocais({ f, cargo, porSecao, setPorSecao, top, setTop }: { f: any; c
   );
 }
 
-function AbaComparecimento({ dados, cidade, ano, f }: { dados: any; cidade: string; ano: number; f: any }) {
+function AbaEleitorado({
+  dados,
+  cidade,
+  ano,
+  f,
+  filtrosTexto,
+  dimensao,
+  setDimensao,
+}: {
+  dados: any;
+  cidade: string;
+  ano: number;
+  f: any;
+  filtrosTexto: string;
+  dimensao: string;
+  setDimensao: (d: string) => void;
+}) {
   const [porSecao, setPorSecao] = useState(false);
   const evo = useMemo(() => evolucao(dados, cidade), [dados, cidade]);
   const linhas = useMemo(() => comparecimento(f.secoes, porSecao ? 'secao' : 'local'), [f, porSecao]);
+  const dims = dimensoesDe(f.perfil);
+  const dim = dims.includes(dimensao) ? dimensao : dims[0] || '';
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       <div className={card}>
         <p className="text-lg font-bold text-[#0F2053]">Comparecimento por eleição · {cidade}</p>
         <ul className="mt-4 space-y-3 text-[15px]">
@@ -585,9 +577,38 @@ function AbaComparecimento({ dados, cidade, ano, f }: { dados: any; cidade: stri
             </li>
           ))}
         </ul>
-        <p className="mt-3 text-sm text-slate-500">Eleições municipais (2020, 2024) e gerais (2022, 2026), 1º turno.</p>
+        <p className="mt-3 text-sm text-slate-500">Eleições municipais (2016, 2020 e 2024) e gerais (2022 e 2026), sempre o 1º turno.</p>
       </div>
-      <div className={`${card} xl:col-span-2`}>
+      <div className={card}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-lg font-bold text-[#0F2053]">
+            Perfil do eleitorado · {ano}
+            {filtrosTexto && <span className="block text-sm text-slate-500 font-semibold">{filtrosTexto}</span>}
+          </p>
+          <select value={dim} onChange={(e) => setDimensao(e.target.value)} aria-label="Característica do eleitorado" className="px-3 py-2 rounded-xl border border-slate-300 text-[15px]">
+            {dims.map((d) => (
+              <option key={d}>{d}</option>
+            ))}
+          </select>
+        </div>
+        <ul className="mt-4 space-y-2 text-[15px]">
+          {perfil(f.perfil, dim).map((p) => (
+            <li key={p.categoria} className="grid grid-cols-12 items-center gap-2">
+              <span className="col-span-5 text-slate-800 truncate" title={p.categoria}>
+                {p.categoria}
+              </span>
+              <span className="col-span-4">
+                <Barra valor={p.pct} />
+              </span>
+              <span className="col-span-3 text-right tabular-nums text-sm">
+                {num(p.eleitores)} · {pct(p.pct, 1)}
+              </span>
+            </li>
+          ))}
+        </ul>
+        <p className="mt-3 text-sm text-slate-500">Perfil do eleitorado inscrito em cada seção (TSE). Não revela o voto de ninguém.</p>
+      </div>
+      <div className={`${card} lg:col-span-2`}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-lg font-bold text-[#0F2053]">Por {porSecao ? 'seção' : 'local de votação'}</p>
           <div role="group" className="grid grid-cols-2 p-1 rounded-xl bg-slate-100 text-sm">
@@ -669,7 +690,7 @@ function AbaCandidato({
         type="search"
         value={termo}
         onChange={(e) => setTermo(e.target.value)}
-        placeholder="Digite o nome ou o número (ex.: Henriques, 15)"
+        placeholder="Nome de urna, nome do candidato ou número (ex.: Henriques, 15)"
         className="mt-3 w-full px-4 py-3 rounded-xl border border-slate-300 text-base focus:outline-none focus:border-[#0478CA]"
       />
       {termo.trim().length >= 2 && !hist.length && <p className="mt-3 text-slate-600">Nenhum candidato encontrado.</p>}
@@ -680,7 +701,9 @@ function AbaCandidato({
               <span className="px-2.5 py-1 rounded-full bg-[#0478CA]/10 text-[#0478CA] text-sm font-bold">{h.ano}</span>
               <span className="font-bold text-[#0F2053]">{h.nome}</span>
               <span className="text-sm text-slate-600">
+                {h.nomeCivil && h.nomeCivil !== h.nome ? `${h.nomeCivil} · ` : ''}
                 {h.cargo} · nº {h.numero} · {h.partido}
+                {h.situacao ? ` · ${h.situacao}` : ''}
               </span>
               <label className="ml-auto inline-flex items-center gap-2 text-sm font-semibold text-slate-700 cursor-pointer">
                 <input

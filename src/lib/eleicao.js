@@ -13,6 +13,37 @@ export function tipoVoto(r) {
 }
 
 export const idCandidato = (r) => `${r.cargo}|${r.candidateNumber}|${r.candidateName}`;
+const MUNICIPAIS = new Set(['Prefeito', 'Vereador']);
+const semAc = (s) =>
+  String(s || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .trim();
+/** Onde vale a candidatura: a cidade (prefeito, vereador), 'MG' (governo, Senado, deputados) ou 'BR' (presidente) */
+export const abrangencia = (cargo, cidade) => (MUNICIPAIS.has(cargo) ? cidade : cargo === 'Presidente' ? 'BR' : 'MG');
+const chaveCand = (ano, cargo, numero, escopo) => `${ano}|${semAc(cargo)}|${numero}|${escopo}`;
+
+/**
+ * Liga cada voto nominal ao cadastro de candidatos do TSE (dados.candidates): nome civil, situação (eleito,
+ * suplente...), idade, ocupação e o id da pessoa, que é o mesmo em todas as eleições de que ela participou.
+ * Roda uma vez, ao carregar os dados.
+ */
+export function prepararDados(dados) {
+  if (dados._preparado) return dados;
+  const idx = new Map();
+  for (const c of dados.candidates || []) idx.set(chaveCand(c.year, c.cargo, c.number, c.scope), c);
+  dados.candIdx = idx;
+  for (const r of dados.votes) {
+    const c = idx.get(chaveCand(r.year, r.cargo, r.candidateNumber, abrangencia(r.cargo, r.city)));
+    if (c) r.cand = c;
+  }
+  dados._preparado = true;
+  return dados;
+}
+
+/** Nome civil (cadastro do TSE) de um candidato do resultado; vazio quando não há cadastro */
+export const nomeCivil = (c) => c?.info?.name || '';
 export const idLocal = (r) => `${r.localCode}|${r.localName}`;
 const idSecao = (r) => `${r.zone}|${r.section}`;
 
@@ -70,7 +101,18 @@ export function resultadoCargo(votos, cargo) {
     else if (t === 'legenda') legendas.set(r.party || r.candidateName, (legendas.get(r.party || r.candidateName) || 0) + r.votes);
     else {
       const id = idCandidato(r);
-      if (!cand.has(id)) cand.set(id, { id, nome: r.candidateName, numero: r.candidateNumber, partido: r.party || 'Sem partido', votos: 0 });
+      if (!cand.has(id))
+        cand.set(id, {
+          id,
+          nome: r.candidateName,
+          numero: r.candidateNumber,
+          partido: r.party || 'Sem partido',
+          votos: 0,
+          nomeCivil: r.cand?.name || '',
+          situacao: r.cand?.situation || '',
+          pessoa: r.cand?.person || '',
+          info: r.cand || null,
+        });
       cand.get(id).votos += r.votes;
     }
   }
@@ -212,6 +254,23 @@ export function perfil(perfilRows, dimensao) {
 
 export const dimensoesDe = (perfilRows) => [...new Set(perfilRows.map((r) => r.dimension))];
 
+/**
+ * Todas as candidaturas da mesma pessoa que tiveram voto na cidade (outros anos e outros cargos, com nome de urna
+ * e partido de cada vez), em ordem de ano. Sem cadastro do TSE, só a própria candidatura.
+ */
+export function candidaturasDaPessoa(dados, cidade, pessoa) {
+  if (!pessoa) return [];
+  const m = new Map();
+  for (const r of dados.votes) {
+    if (r.city !== cidade || r.cand?.person !== pessoa) continue;
+    const k = `${r.year}|${idCandidato(r)}`;
+    const x = m.get(k) || { ano: r.year, cargo: r.cargo, id: idCandidato(r), nome: r.candidateName, numero: r.candidateNumber, partido: r.party, info: r.cand, votos: 0 };
+    x.votos += r.votes;
+    m.set(k, x);
+  }
+  return [...m.values()].sort((a, b) => a.ano - b.ano || ordemCargo(a.cargo) - ordemCargo(b.cargo));
+}
+
 const sem = (s) =>
   String(s || '')
     .normalize('NFD')
@@ -228,9 +287,20 @@ export function historicoCandidato(dados, cidade, termo) {
   const daCidade = dados.votes.filter((r) => r.city === cidade && tipoVoto(r) === 'nominal');
   const achados = new Map();
   for (const r of daCidade) {
-    if (!(sem(r.candidateName).includes(t) || r.candidateNumber === t)) continue;
+    if (!(sem(r.candidateName).includes(t) || sem(r.cand?.name).includes(t) || r.candidateNumber === t)) continue;
     const k = `${r.year}|${idCandidato(r)}`;
-    if (!achados.has(k)) achados.set(k, { ano: r.year, cargo: r.cargo, id: idCandidato(r), nome: r.candidateName, numero: r.candidateNumber, partido: r.party });
+    if (!achados.has(k))
+      achados.set(k, {
+        ano: r.year,
+        cargo: r.cargo,
+        id: idCandidato(r),
+        nome: r.candidateName,
+        numero: r.candidateNumber,
+        partido: r.party,
+        nomeCivil: r.cand?.name || '',
+        situacao: r.cand?.situation || '',
+        pessoa: r.cand?.person || '',
+      });
   }
   return [...achados.values()]
     .map((a) => {
@@ -259,7 +329,7 @@ export async function carregarDados(url) {
   // o servidor pode já ter descompactado; gzip começa com 1f 8b
   if (bytes[0] === 0x1f && bytes[1] === 0x8b) {
     const fluxo = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
-    return JSON.parse(await new Response(fluxo).text());
+    return prepararDados(JSON.parse(await new Response(fluxo).text()));
   }
-  return JSON.parse(new TextDecoder().decode(bytes));
+  return prepararDados(JSON.parse(new TextDecoder().decode(bytes)));
 }
