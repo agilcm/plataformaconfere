@@ -17,6 +17,22 @@ export type Block =
   | { type: 'bullets'; items: string[] }
   | { type: 'note'; text: string }
   | { type: 'table'; widths: number[]; header?: string[]; headerAlign?: Align[]; rows: (string | Cell)[][]; totalRows?: number; size?: number }
+  | {
+      // gráfico de pontos (cada ponto, uma urna): eixos em fração (0,25 = 25%), linhas de referência e legenda
+      type: 'scatter';
+      height?: number;
+      xLabel: string;
+      yLabel: string;
+      xMin?: number;
+      xMax: number;
+      yMin?: number;
+      yMax: number;
+      xRef?: number;
+      yRef?: number;
+      trend?: { a: number; b: number };
+      points: { x: number; y: number; color: string }[];
+      legend?: { label: string; color: string }[];
+    }
   | { type: 'pagebreak' }
   | { type: 'space'; h: number }
   | { type: 'signature'; name: string; role: string };

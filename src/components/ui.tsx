@@ -47,6 +47,7 @@ const PATHS: Record<string, string> = {
   star: 'M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9L12 3.5z',
   calendar: 'M8 3v3m8-3v3M4 9h16M5 5h14a1 1 0 011 1v13a1 1 0 01-1 1H5a1 1 0 01-1-1V6a1 1 0 011-1z',
   pin: 'M12 21s-7-6.2-7-11.5A7 7 0 0119 9.5C19 14.8 12 21 12 21zm0-9a2.5 2.5 0 100-5 2.5 2.5 0 000 5z',
+  conexao: 'M9 6.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zm6 0a5.5 5.5 0 100 11 5.5 5.5 0 000-11z',
 };
 
 export function Icon({ name, className = 'w-6 h-6' }: { name: keyof typeof PATHS | string; className?: string }) {

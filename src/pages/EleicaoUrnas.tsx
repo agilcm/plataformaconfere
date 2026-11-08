@@ -31,6 +31,7 @@ type Props = {
   setEscolhidos: (ids: string[]) => void;
   filtroLocal: string;
   limparFiltro: () => void;
+  comparar?: (e: { ano: number; cargo: string; id: string }) => void;
 };
 
 export default function AbaUrnas({
@@ -46,6 +47,7 @@ export default function AbaUrnas({
   setEscolhidos,
   filtroLocal,
   limparFiltro,
+  comparar,
 }: Props) {
   const [busca, setBusca] = useState('');
   const [verTodos, setVerTodos] = useState(false);
@@ -280,6 +282,15 @@ export default function AbaUrnas({
 
           {/* Ações */}
           <div className="flex flex-wrap items-center gap-2">
+            {um && comparar && (
+              <button
+                type="button"
+                onClick={() => comparar({ ano, cargo, id: um.id })}
+                className="order-last inline-flex items-center gap-2 px-4 py-3 rounded-xl border-2 border-[#0F2053] text-[#0F2053] font-bold cursor-pointer"
+              >
+                <Icon name="conexao" className="w-5 h-5" /> Comparar com outro candidato
+              </button>
+            )}
             {um ? (
               <button
                 type="button"

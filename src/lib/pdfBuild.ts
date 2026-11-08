@@ -227,6 +227,67 @@ function drawTable(c: Ctx, b: Extract<Block, { type: 'table' }>) {
   c.y -= 14;
 }
 
+function drawScatter(c: Ctx, b: Extract<Block, { type: 'scatter' }>) {
+  const h = b.height ?? 250;
+  const legH = b.legend?.length ? 18 : 0;
+  ensure(c, h + legH + 10);
+  const left = M + 40;
+  const right = M + CW - 10;
+  const top = c.y - 14;
+  const bottom = c.y - h + 30;
+  const x0 = b.xMin ?? 0;
+  const y0 = b.yMin ?? 0;
+  const X = (v: number) => left + ((Math.max(x0, Math.min(v, b.xMax)) - x0) / (b.xMax - x0)) * (right - left);
+  const Y = (v: number) => bottom + ((Math.max(y0, Math.min(v, b.yMax)) - y0) / (b.yMax - y0)) * (top - bottom);
+  const tick = (v: number) => `${Math.round(v * 1000) / 10}%`.replace('.', ',');
+  const GRID = hex('E3E8EF');
+  // grade fina, sólida, e os valores dos eixos
+  for (let i = 0; i <= 4; i++) {
+    const vx = x0 + ((b.xMax - x0) * i) / 4;
+    const vy = y0 + ((b.yMax - y0) * i) / 4;
+    c.page.drawLine({ start: { x: X(vx), y: bottom }, end: { x: X(vx), y: top }, thickness: 0.5, color: GRID });
+    c.page.drawLine({ start: { x: left, y: Y(vy) }, end: { x: right, y: Y(vy) }, thickness: 0.5, color: GRID });
+    const tx = tick(vx);
+    text(c, tx, X(vx) - c.f.widthOfTextAtSize(tx, 7) / 2, bottom - 10, 7, c.f, MUTED);
+    const ty = tick(vy);
+    text(c, ty, left - 4 - c.f.widthOfTextAtSize(ty, 7), Y(vy) - 2.5, 7, c.f, MUTED);
+  }
+  c.page.drawLine({ start: { x: left, y: bottom }, end: { x: right, y: bottom }, thickness: 0.8, color: LINE });
+  c.page.drawLine({ start: { x: left, y: bottom }, end: { x: left, y: top }, thickness: 0.8, color: LINE });
+  // médias de cada um (dividem os quatro quadrantes)
+  if (b.xRef != null) c.page.drawLine({ start: { x: X(b.xRef), y: bottom }, end: { x: X(b.xRef), y: top }, thickness: 0.9, color: MUTED });
+  if (b.yRef != null) c.page.drawLine({ start: { x: left, y: Y(b.yRef) }, end: { x: right, y: Y(b.yRef) }, thickness: 0.9, color: MUTED });
+  // linha de tendência
+  if (b.trend) {
+    const pts: [number, number][] = [];
+    for (let i = 0; i <= 60; i++) {
+      const vx = x0 + ((b.xMax - x0) * i) / 60;
+      const vy = b.trend.a + b.trend.b * vx;
+      if (vy >= y0 && vy <= b.yMax) pts.push([X(vx), Y(vy)]);
+    }
+    if (pts.length > 1) c.page.drawLine({ start: { x: pts[0][0], y: pts[0][1] }, end: { x: pts[pts.length - 1][0], y: pts[pts.length - 1][1] }, thickness: 1, color: NAVY, opacity: 0.6 });
+  }
+  for (const p of b.points) c.page.drawCircle({ x: X(p.x), y: Y(p.y), size: 2.8, color: hex(p.color.replace('#', '')), borderColor: WHITE, borderWidth: 0.7 });
+  text(c, b.xLabel, left + (right - left) / 2 - c.fb.widthOfTextAtSize(b.xLabel, 8) / 2, bottom - 22, 8, c.fb, TEXT);
+  text(c, b.yLabel, left, top + 5, 8, c.fb, TEXT);
+  c.y = bottom - 30;
+  if (b.legend?.length) {
+    let x = M;
+    for (const l of b.legend) {
+      const w = 11 + c.f.widthOfTextAtSize(l.label, 8) + 16;
+      if (x > M && x + w > M + CW) {
+        x = M;
+        c.y -= 14;
+      }
+      c.page.drawCircle({ x: x + 4, y: c.y - 3, size: 3.2, color: hex(l.color.replace('#', '')) });
+      text(c, l.label, x + 11, c.y - 6, 8, c.f, TEXT);
+      x += w;
+    }
+    c.y -= legH;
+  }
+  c.y -= 8;
+}
+
 export async function buildPdf(docTitle: string, blocks: Block[], { paisagem = false } = {}): Promise<Uint8Array> {
   pagina(paisagem);
   const doc = await PDFDocument.create();
@@ -306,6 +367,9 @@ export async function buildPdf(docTitle: string, blocks: Block[], { paisagem = f
         break;
       case 'table':
         drawTable(c, b);
+        break;
+      case 'scatter':
+        drawScatter(c, b);
         break;
       case 'space':
         c.y -= b.h;

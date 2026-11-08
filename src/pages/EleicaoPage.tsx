@@ -22,13 +22,15 @@ import {
 } from '../lib/eleicao.js';
 import { abasCandidatosPorSecao, abasExcelCompleto, blocosPdf } from '../lib/eleicaoRelatorios.js';
 import { baixarXlsx } from '../lib/xlsx.js';
+import AbaComparar, { type Escolha } from './EleicaoComparar.tsx';
 import AbaUrnas from './EleicaoUrnas.tsx';
 
-type Aba = 'resultado' | 'locais' | 'urnas' | 'eleitorado' | 'candidato' | 'relatorios';
+type Aba = 'resultado' | 'locais' | 'urnas' | 'comparar' | 'eleitorado' | 'candidato' | 'relatorios';
 const ABAS: { id: Aba; label: string; icon: string }[] = [
   { id: 'resultado', label: 'Resultado', icon: 'chart' },
   { id: 'locais', label: 'Por local e seção', icon: 'building' },
   { id: 'urnas', label: 'Votos por urna', icon: 'box' },
+  { id: 'comparar', label: 'Comparar candidatos', icon: 'conexao' },
   { id: 'eleitorado', label: 'Comparecimento e perfil', icon: 'users' },
   { id: 'candidato', label: 'Candidato', icon: 'search' },
   { id: 'relatorios', label: 'Relatórios', icon: 'doc' },
@@ -70,6 +72,8 @@ export default function EleicaoPage() {
   const [selecionados, setSelecionados] = useState<{ ano: number; cargo: string; id: string; nome: string }[]>([]);
   const [gerando, setGerando] = useState('');
   const [urnasIds, setUrnasIds] = useState<string[]>([]);
+  const [cmpA, setCmpA] = useState<Escolha>({ ano: 2024, cargo: 'Vereador', id: '' });
+  const [cmpB, setCmpB] = useState<Escolha>({ ano: 2024, cargo: 'Prefeito', id: '' });
 
   useEffect(() => {
     carregarDados(`${import.meta.env.BASE_URL}dados-eleicao/eleicoes-mg.dat`)
@@ -345,8 +349,15 @@ export default function EleicaoPage() {
               setLocal('');
               setSecao('');
             }}
+            comparar={(e) => {
+              setCmpA(e);
+              setCmpB({ ano: e.ano, cargo: e.cargo === 'Prefeito' ? 'Vereador' : 'Prefeito', id: '' });
+              setAba('comparar');
+            }}
           />
         )}
+
+        {aba === 'comparar' && <AbaComparar dados={dados} cidade={cidade} anos={anos} a={cmpA} b={cmpB} setA={setCmpA} setB={setCmpB} />}
 
         {aba === 'eleitorado' && (
           <AbaEleitorado dados={dados} cidade={cidade} ano={ano} f={f} filtrosTexto={filtrosTexto} dimensao={dimensao} setDimensao={setDimensao} />
@@ -405,9 +416,14 @@ export default function EleicaoPage() {
                 Escolha o ano, o cargo e até 3 candidatos: cada urna (seção eleitoral) vira uma linha e cada candidato, uma coluna. Com um candidato só, o botão{' '}
                 <strong>Traçar perfil</strong> mostra a idade e a escolaridade do eleitorado das urnas onde ele ganhou. Excel e PDF.
               </p>
-              <button type="button" onClick={() => setAba('urnas')} className="mt-3 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#0F2053] text-white font-bold cursor-pointer">
-                <Icon name="box" className="w-5 h-5" /> Abrir votos por urna
-              </button>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button type="button" onClick={() => setAba('urnas')} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#0F2053] text-white font-bold cursor-pointer">
+                  <Icon name="box" className="w-5 h-5" /> Abrir votos por urna
+                </button>
+                <button type="button" onClick={() => setAba('comparar')} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 border-[#0F2053] text-[#0F2053] font-bold cursor-pointer">
+                  <Icon name="conexao" className="w-5 h-5" /> Comparar dois candidatos
+                </button>
+              </div>
             </div>
             <div className={`${card} lg:col-span-2`}>
               <p className="text-lg font-bold text-[#0F2053]">Candidatos escolhidos por seção</p>

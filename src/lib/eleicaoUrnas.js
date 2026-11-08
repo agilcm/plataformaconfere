@@ -213,7 +213,7 @@ function acumular(a, r) {
   }
 }
 
-function juntar(lista) {
+export function juntar(lista) {
   const t = acumulador();
   for (const a of lista) {
     if (!a) continue;
@@ -300,7 +300,7 @@ const intensidade = (d) => (Math.abs(d) < 0.35 ? 'um pouco ' : Math.abs(d) < 0.7
 const adjetivo = (x, mais, menos) => (!conta(x) ? null : `${intensidade(x.d)}${x.d > 0 ? mais : menos}`);
 
 /** Leitura em palavras de um grupo de urnas comparado à cidade (null = na média) */
-function leitura(g, base, porUrna) {
+export function leitura(g, base, porUrna) {
   const idade = desvio(
     porUrna.map((u) => u.ind?.idadeMedia),
     g.ind.idadeMedia,
@@ -484,7 +484,7 @@ function textoDoPerfil({ c, t, grupos, leituras, relacoes, n }) {
 
 const soma2 = (a, b) => (a == null && b == null ? null : (a || 0) + (b || 0));
 
-function juntarFrases(lista) {
+export function juntarFrases(lista) {
   if (lista.length <= 1) return lista.join('');
   return `${lista.slice(0, -1).join(', ')} e ${lista[lista.length - 1]}`;
 }

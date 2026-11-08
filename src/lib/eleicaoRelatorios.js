@@ -1,12 +1,15 @@
 // Relatórios do painel eleitoral: abas do Excel e blocos do PDF (layout Ágil CM, pdfReport.ts).
 import { cargosDe, comparecimento, dimensoesDe, matriz, nomeLocal, perfil, porPartido, resultadoCargo, tipoVoto, totaisComparecimento } from './eleicao.js';
 import { rotuloCompleto } from './eleicaoUrnas.js';
+import { QUADRANTES, dominioEixo, rotuloQuadrante } from './eleicaoComparar.js';
 
 const pct = (v) => `${(v * 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
 const num = (v) => Number(v || 0).toLocaleString('pt-BR');
 const nomeAba = (s) => s.replace(/[:\\/?*[\]]/g, ' ').slice(0, 31);
 /** Nome civil do cadastro do TSE (ou o nome de urna, quando não há cadastro) */
 const civil = (c) => c.nomeCivil || c.nome;
+/** Só a primeira letra em minúscula ("Eleito por QP" -> "eleito por QP") */
+const minuscula1 = (t) => (t ? t.charAt(0).toLowerCase() + t.slice(1) : t);
 /** Ordem alfabética pelo nome do candidato (nome civil) */
 export const porNomeCivil = (a, b) => civil(a).localeCompare(civil(b), 'pt-BR') || a.nome.localeCompare(b.nome, 'pt-BR');
 const situacaoCurta = (c) => (/^eleito/i.test(c.situacao || '') ? 'eleito' : /^suplente/i.test(c.situacao || '') ? 'suplente' : '');
@@ -600,7 +603,7 @@ export function blocosVotosPorUrna(t, { dataText, perfil = null, trajetoria = nu
       headerAlign: ['left', 'left', 'center', 'center', 'center', 'center', 'center', 'center', 'center'],
       rows: t.candidatos.map((c) => [
         civil(c),
-        `${c.nome} (${c.partido})${c.situacao ? ` · ${c.situacao.toLowerCase()}` : ''}`,
+        `${c.nome} (${c.partido})${c.situacao ? ` · ${minuscula1(c.situacao)}` : ''}`,
         { text: String(c.numero), align: 'center' },
         { text: num(c.votos), align: 'center', bold: true },
         { text: pct1(c.pctValidos), align: 'center' },
@@ -651,4 +654,195 @@ export function blocosVotosPorUrna(t, { dataText, perfil = null, trajetoria = nu
     text: `Fonte: Tribunal Superior Eleitoral (TSE), dados abertos por seção eleitoral, 1º turno. Cada urna é uma seção eleitoral; "1º" marca a urna em que o candidato foi o mais votado do cargo. % sobre os votos válidos da urna (candidatos${t.resultado.proporcional ? ' e legenda' : ''}).`,
   });
   return b;
+}
+
+/* ------------------------------------------------------------------ comparação de dois candidatos */
+
+const descreverCand = (c, x) => `${c.nome}${c.nomeCivil && c.nomeCivil !== c.nome ? ` (${c.nomeCivil})` : ''}, ${x.cargo.toLowerCase()} ${x.ano}, ${c.partido}${c.situacao ? `, ${minuscula1(c.situacao)}` : ''}`;
+
+/** PDF da comparação: conexão, gráfico de pontos (uma urna por ponto), quadrantes, locais e a tabela urna por urna */
+export function blocosComparacao(o, { dataText }) {
+  const A = o.ca.nome;
+  const B = o.cb.nome;
+  const q = Object.fromEntries(o.quadrantes.map((x) => [x.id, x]));
+  const dx = dominioEixo(o.pares.map((p) => p.pA));
+  const dy = dominioEixo(o.pares.map((p) => p.pB));
+  const pontosTxt = (d) => `${d >= 0 ? '+' : '-'}${dec1(Math.abs(d) * 100)}`;
+  return [
+    { type: 'date', text: dataText },
+    { type: 'title', text: `Comparação de candidatos · ${o.cidade}` },
+    { type: 'para', text: `Primeiro: ${descreverCand(o.ca, o.a)}. Segundo: ${descreverCand(o.cb, o.b)}. ${o.N} urnas comparadas.`, size: 9.5, color: 'muted', gapAfter: 4 },
+    { type: 'heading', text: 'Conexão entre os dois' },
+    { type: 'para', text: o.manchete, bold: true, gapAfter: 4 },
+    {
+      type: 'table',
+      size: 8.4,
+      widths: [0.25, 0.25, 0.25, 0.25],
+      header: ['Correlação nas urnas', 'Redutos em comum', `${B} nos redutos de ${A}`, `${A} nos redutos de ${B}`],
+      headerAlign: ['center', 'center', 'center', 'center'],
+      rows: [
+        [
+          { text: `${o.rho.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · ${o.ligacao.curto}`, align: 'center', bold: true },
+          { text: `${o.sobreposicao.comuns} de ${o.sobreposicao.redutosA} (acaso: ~${Math.round(o.sobreposicao.esperado)})`, align: 'center', bold: true },
+          { text: `${pct1(o.cruzado.bNosRedutosDeA)} (${pontosTxt(o.cruzado.bNosRedutosDeA - o.mediaB)} p.p.)`, align: 'center', bold: true },
+          { text: `${pct1(o.cruzado.aNosRedutosDeB)} (${pontosTxt(o.cruzado.aNosRedutosDeB - o.mediaA)} p.p.)`, align: 'center', bold: true },
+        ],
+      ],
+    },
+    {
+      type: 'scatter',
+      height: 260,
+      xLabel: `% dos válidos de ${A} na urna`,
+      yLabel: `% dos válidos de ${B} na urna`,
+      xMin: dx.min,
+      xMax: dx.max,
+      yMin: dy.min,
+      yMax: dy.max,
+      xRef: o.mediaA,
+      yRef: o.mediaB,
+      trend: o.tendencia,
+      points: o.pares.map((p) => ({ x: p.pA, y: p.pB, color: QUADRANTES.find((x) => x.id === p.quadrante).cor })),
+      legend: QUADRANTES.map((x) => ({ label: `${rotuloQuadrante(x.id, o)} (${q[x.id].urnas})`, color: x.cor })),
+    },
+    { type: 'note', text: `Cada ponto é uma urna. As linhas cinzas marcam a média de cada um na cidade (${pct1(o.mediaA)} e ${pct1(o.mediaB)}); a linha azul-marinho mostra a tendência.` },
+    { type: 'bullets', items: o.frases },
+    {
+      type: 'table',
+      size: 8,
+      widths: [0.27, 0.08, 0.11, 0.11, 0.1, 0.1, 0.23],
+      header: ['Grupo de urnas', 'Urnas', `% ${A}`, `% ${B}`, 'Idade média', 'Ensino superior', 'Eleitorado'],
+      headerAlign: ['left', 'center', 'center', 'center', 'center', 'center', 'left'],
+      rows: [
+        ...o.quadrantes.map((x) => [
+          rotuloQuadrante(x.id, o),
+          { text: String(x.urnas), align: 'center' },
+          { text: x.urnas ? pct1(x.pctA) : '—', align: 'center' },
+          { text: x.urnas ? pct1(x.pctB) : '—', align: 'center' },
+          { text: x.urnas && x.ind.idadeMedia != null ? `${dec1(x.ind.idadeMedia)} anos` : '—', align: 'center' },
+          { text: x.urnas ? pct1(x.ind.e3) : '—', align: 'center' },
+          x.leitura ? [x.leitura.idade, x.leitura.escolaridade].filter(Boolean).join(', ') || 'na média da cidade' : '—',
+        ]),
+      ],
+    },
+    {
+      type: 'table',
+      size: 8,
+      widths: [0.4, 0.08, 0.13, 0.13, 0.26],
+      header: ['Local de votação', 'Urnas', `% ${A}`, `% ${B}`, 'Grupo'],
+      headerAlign: ['left', 'center', 'center', 'center', 'left'],
+      rows: o.locais.map((l) => [localCurto(l.local), { text: String(l.urnas), align: 'center' }, { text: pct1(l.pA), align: 'center' }, { text: pct1(l.pB), align: 'center' }, rotuloQuadrante(l.quadrante, o)]),
+    },
+    { type: 'pagebreak' },
+    { type: 'heading', text: 'Urna por urna' },
+    {
+      type: 'table',
+      size: 7.8,
+      widths: [0.07, 0.07, 0.3, 0.16, 0.16, 0.24],
+      header: ['Zona', 'Seção', 'Local de votação', `${A}: votos (%)`, `${B}: votos (%)`, 'Grupo'],
+      headerAlign: ['center', 'center', 'left', 'center', 'center', 'left'],
+      rows: o.pares.map((p) => [
+        { text: p.zona, align: 'center' },
+        { text: p.secao, align: 'center' },
+        localCurto(p.local),
+        { text: `${num(p.votosA)} (${pct1(p.pA)})`, align: 'center', bold: p.venceuA },
+        { text: `${num(p.votosB)} (${pct1(p.pB)})`, align: 'center', bold: p.venceuB },
+        rotuloQuadrante(p.quadrante, o),
+      ]),
+    },
+    { type: 'note', text: `${o.aviso} Em negrito, a urna em que o candidato foi o mais votado do cargo. Fonte: TSE, dados abertos por seção, 1º turno.` },
+  ];
+}
+
+/** Excel da comparação: resumo, urna por urna (com o perfil do eleitorado), grupos e locais */
+export function abasComparacao(o) {
+  const A = o.ca.nome;
+  const B = o.cb.nome;
+  return [
+    {
+      nome: 'Comparação',
+      colunas: [{ titulo: 'Item', largura: 40 }, { titulo: 'Valor', largura: 120 }],
+      linhas: [
+        ['Município', o.cidade],
+        ['Primeiro candidato', descreverCand(o.ca, o.a)],
+        ['Segundo candidato', descreverCand(o.cb, o.b)],
+        ['Urnas comparadas', o.N],
+        ['Conexão', o.manchete],
+        ['Correlação de Spearman (urnas)', Math.round(o.rho * 1000) / 1000],
+        ['Intervalo de 95% da correlação', o.ic ? o.ic.map((v) => v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })).join(' a ') : '—'],
+        ['p-valor', o.p == null ? '—' : o.p < 0.001 ? '< 0,001' : Math.round(o.p * 1000) / 1000],
+        ['Correlação de Pearson (urnas)', Math.round(o.r * 1000) / 1000],
+        [`Média de ${A} (% dos válidos)`, pct(o.mediaA)],
+        [`Média de ${B} (% dos válidos)`, pct(o.mediaB)],
+        ['Redutos em comum', `${o.sobreposicao.comuns} de ${o.sobreposicao.redutosA} (acaso: cerca de ${Math.round(o.sobreposicao.esperado)})`],
+        [`${B} nos redutos de ${A}`, pct(o.cruzado.bNosRedutosDeA)],
+        [`${A} nos redutos de ${B}`, pct(o.cruzado.aNosRedutosDeB)],
+        [''],
+        ...o.frases.map((f, i) => [i ? '' : 'Leitura', f]),
+        ['Aviso', o.aviso],
+      ],
+    },
+    {
+      nome: 'Urnas',
+      colunas: [
+        { titulo: 'Zona', largura: 7, tipo: 'numero' },
+        { titulo: 'Seção', largura: 8, tipo: 'numero' },
+        { titulo: 'Local de votação', largura: 40 },
+        { titulo: `${A}: votos`, largura: 12, tipo: 'numero' },
+        { titulo: `${A}: % dos válidos`, largura: 14, tipo: 'numero' },
+        { titulo: `${B}: votos`, largura: 12, tipo: 'numero' },
+        { titulo: `${B}: % dos válidos`, largura: 14, tipo: 'numero' },
+        { titulo: 'Grupo', largura: 30 },
+        { titulo: 'Idade média do eleitorado', largura: 12, tipo: 'numero' },
+        { titulo: '% de 60 anos ou mais', largura: 11, tipo: 'numero' },
+        { titulo: '% com ensino superior', largura: 11, tipo: 'numero' },
+      ],
+      linhas: o.pares.map((p) => [
+        Number(p.zona),
+        Number(p.secao),
+        p.local,
+        p.votosA,
+        emPct(p.pA),
+        p.votosB,
+        emPct(p.pB),
+        rotuloQuadrante(p.quadrante, o),
+        umaCasa(p.ind?.idadeMedia),
+        emPct(p.ind?.i60),
+        emPct(p.ind?.e3),
+      ]),
+    },
+    {
+      nome: 'Grupos de urnas',
+      colunas: [
+        { titulo: 'Grupo', largura: 34 },
+        { titulo: 'Urnas', largura: 8, tipo: 'numero' },
+        { titulo: `% ${A}`, largura: 12, tipo: 'numero' },
+        { titulo: `% ${B}`, largura: 12, tipo: 'numero' },
+        { titulo: 'Idade média', largura: 11, tipo: 'numero' },
+        { titulo: '% 60 anos ou mais', largura: 11, tipo: 'numero' },
+        { titulo: '% ensino superior', largura: 11, tipo: 'numero' },
+        { titulo: 'Eleitorado', largura: 40 },
+      ],
+      linhas: o.quadrantes.map((x) => [
+        rotuloQuadrante(x.id, o),
+        x.urnas,
+        x.urnas ? emPct(x.pctA) : null,
+        x.urnas ? emPct(x.pctB) : null,
+        x.urnas ? umaCasa(x.ind.idadeMedia) : null,
+        x.urnas ? emPct(x.ind.i60) : null,
+        x.urnas ? emPct(x.ind.e3) : null,
+        x.leitura ? [x.leitura.idade, x.leitura.escolaridade, x.leitura.genero].filter(Boolean).join(', ') || 'na média da cidade' : '',
+      ]),
+    },
+    {
+      nome: 'Locais',
+      colunas: [
+        { titulo: 'Local de votação', largura: 44 },
+        { titulo: 'Urnas', largura: 8, tipo: 'numero' },
+        { titulo: `% ${A}`, largura: 12, tipo: 'numero' },
+        { titulo: `% ${B}`, largura: 12, tipo: 'numero' },
+        { titulo: 'Grupo', largura: 30 },
+      ],
+      linhas: o.locais.map((l) => [l.local, l.urnas, emPct(l.pA), emPct(l.pB), rotuloQuadrante(l.quadrante, o)]),
+    },
+  ];
 }
