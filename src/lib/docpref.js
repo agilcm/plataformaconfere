@@ -319,7 +319,7 @@ const hojeISO = () => new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 1
 const somaDias = (iso, n) => new Date(Date.parse(`${iso}T12:00:00Z`) + n * 86400e3).toISOString().slice(0, 10);
 
 /** Domingo de Páscoa (algoritmo de Meeus) */
-function pascoa(ano) {
+export function pascoa(ano) {
   const a = ano % 19;
   const b = Math.floor(ano / 100);
   const c = ano % 100;
@@ -338,25 +338,6 @@ function pascoa(ano) {
 }
 const cacheFeriados = new Map();
 /** Dias sem expediente bancário no país: feriados nacionais, Carnaval, Sexta-feira Santa e Corpus Christi */
-/** Feriados nacionais do ano com o nome: Map "AAAA-MM-DD" -> nome (Carnaval e Corpus Christi são pontos facultativos usuais) */
-export function feriadosNacionaisNomes(ano) {
-  const p = pascoa(ano);
-  return new Map([
-    [`${ano}-01-01`, 'Confraternização Universal'],
-    [somaDias(p, -48), 'Carnaval'],
-    [somaDias(p, -47), 'Carnaval'],
-    [somaDias(p, -2), 'Sexta-feira Santa'],
-    [`${ano}-04-21`, 'Tiradentes'],
-    [`${ano}-05-01`, 'Dia do Trabalho'],
-    [somaDias(p, 60), 'Corpus Christi'],
-    [`${ano}-09-07`, 'Independência do Brasil'],
-    [`${ano}-10-12`, 'Nossa Senhora Aparecida'],
-    [`${ano}-11-02`, 'Finados'],
-    [`${ano}-11-15`, 'Proclamação da República'],
-    [`${ano}-11-20`, 'Dia da Consciência Negra'],
-    [`${ano}-12-25`, 'Natal'],
-  ]);
-}
 export function feriadosNacionais(ano) {
   if (!cacheFeriados.has(ano)) {
     const p = pascoa(ano);

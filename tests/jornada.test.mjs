@@ -1,6 +1,22 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { avaliarEscala, calcularDia, compararRegimes, gerarEscala, horas, minutos, programarFolgas, regimeDaData, semanaPadrao } from '../src/lib/jornada.js';
+import {
+  abasEscala,
+  avaliarEscala,
+  blocosEscala,
+  calcularDia,
+  compararRegimes,
+  dataDaRegra,
+  feriadosDoPeriodo,
+  gerarEscala,
+  horas,
+  mesesDaEscala,
+  minutos,
+  mudancasDeRegra,
+  programarFolgas,
+  regimeDaData,
+  semanaPadrao,
+} from '../src/lib/jornada.js';
 
 const problemasDe = (a, regra) => a.problemas.filter((p) => p.regra === regra);
 
@@ -24,13 +40,47 @@ test('regra pela data da EC 141/2026', () => {
   assert.equal(regimeDaData('2027-12-17'), 40);
 });
 
+test('feriados: nacionais, da cidade (todo ano, Páscoa ou só um dia) e pontos facultativos', () => {
+  assert.equal(dataDaRegra('05-22', 2027), '2027-05-22');
+  assert.equal(dataDaRegra('P+60', 2027), '2027-05-27', 'Corpus Christi de 2027');
+  assert.equal(dataDaRegra('P-2', 2026), '2026-04-03', 'Sexta-feira da Paixão de 2026');
+  assert.equal(dataDaRegra('2026-06-01', 2027), null, 'data avulsa só vale no seu ano');
+  const nac = feriadosDoPeriodo('2027-01-01', '2027-12-31');
+  assert.equal(nac.length, 10, '9 nacionais por lei federal e a Sexta-feira da Paixão');
+  assert.ok(nac.every((f) => f.tipo === 'nacional'));
+  assert.ok(!nac.some((f) => /Carnaval|Corpus/.test(f.nome)), 'Carnaval e Corpus Christi são pontos facultativos');
+  // Cataguases pela lista do TJMG: padroeira em 22/05 e Corpus Christi
+  const cat = feriadosDoPeriodo('2027-05-01', '2027-06-30', {
+    municipais: [
+      { regra: '05-22', nome: 'Dia de Santa Rita' },
+      { regra: 'P+60', nome: 'Corpus Christi' },
+    ],
+  });
+  assert.deepEqual(
+    cat.map((f) => [f.data, f.tipo]),
+    [
+      ['2027-05-01', 'nacional'],
+      ['2027-05-22', 'municipal'],
+      ['2027-05-27', 'municipal'],
+    ],
+  );
+  const fac = feriadosDoPeriodo('2027-02-01', '2027-02-28', { facultativos: ['carnaval'] });
+  assert.deepEqual(
+    fac.map((f) => f.data),
+    ['2027-02-08', '2027-02-09'],
+  );
+  assert.deepEqual(mudancasDeRegra('2027-01-01', '2027-12-31'), [{ data: '2027-12-17', de: 42, para: 40 }]);
+  assert.deepEqual(mudancasDeRegra('2027-01-01', '2027-06-30'), []);
+});
+
 test('gerar a escala: dias da semana, duas folgas, feriado nacional e local', () => {
   const semana = programarFolgas(semanaPadrao(), [0, 6]);
-  const dias = gerarEscala({ inicio: '2026-11-09', fim: '2026-11-22', semana, feriadosLocais: [{ data: '2026-11-18', nome: 'Aniversário da cidade' }] });
+  const feriados = feriadosDoPeriodo('2026-11-09', '2026-11-22', { municipais: [{ regra: '11-18', nome: 'Aniversário da cidade' }] });
+  const dias = gerarEscala({ inicio: '2026-11-09', fim: '2026-11-22', semana, feriados });
   assert.equal(dias.length, 14);
   assert.equal(dias[0].dow, 1, '09/11/2026 é segunda-feira');
   const d20 = dias.find((d) => d.data === '2026-11-20');
-  assert.deepEqual([d20.feriado, d20.tipo], ['Dia da Consciência Negra', 'feriado']);
+  assert.deepEqual([d20.feriado, d20.tipo], ['Dia Nacional de Zumbi e da Consciência Negra', 'feriado']);
   assert.equal(dias.find((d) => d.data === '2026-11-18').tipo, 'feriado');
   assert.equal(dias.find((d) => d.data === '2026-11-15').tipo, 'folga', 'domingo de folga, mesmo sendo feriado');
   const folgas = programarFolgas(semanaPadrao(), [3, 4]);
@@ -82,7 +132,13 @@ test('6x1 (44h): fora do 5x2, dentro da regra antiga de 44h', () => {
 
 test('intervalo, descanso entre jornadas, 7 dias seguidos, feriado trabalhado e domingo', () => {
   const semana = semanaPadrao({ intervaloInicio: '', intervaloFim: '', saida: '15:00', folgas: [] });
-  const dias = gerarEscala({ inicio: '2026-11-16', fim: '2026-11-22', semana, trabalharFeriados: true });
+  const dias = gerarEscala({
+    inicio: '2026-11-16',
+    fim: '2026-11-22',
+    semana,
+    feriados: feriadosDoPeriodo('2026-11-16', '2026-11-22'),
+    trabalharFeriados: true,
+  });
   dias[1] = { ...dias[1], entrada: '20:00', saida: '23:00', intervaloInicio: '', intervaloFim: '' };
   const a = avaliarEscala(dias, { regime: 40 });
   assert.ok(problemasDe(a, 'Intervalo para refeição').length >= 5, '7h sem intervalo');
@@ -95,4 +151,39 @@ test('intervalo, descanso entre jornadas, 7 dias seguidos, feriado trabalhado e 
   assert.equal(problemasDe(a, 'Folga no domingo').length, 1);
   assert.equal(problemasDe(a, 'Duas folgas por semana (5x2)').length, 1);
   assert.equal(a.resumo.dentro, false);
+});
+
+test('uma página por mês: meses da escala, abas do Excel e páginas do PDF', () => {
+  const inicio = '2027-01-01';
+  const fim = '2027-12-31';
+  const feriados = feriadosDoPeriodo(inicio, fim, { municipais: [{ regra: '05-22', nome: 'Dia de Santa Rita' }] });
+  const dias = gerarEscala({ inicio, fim, semana: semanaPadrao(), feriados });
+  assert.equal(dias.length, 365);
+  const a = avaliarEscala(dias, { regime: 42 });
+  const meses = mesesDaEscala(a);
+  assert.equal(meses.length, 12);
+  assert.equal(meses[0].rotulo, 'janeiro de 2027');
+  assert.equal(meses[0].dias.length, 31);
+  assert.equal(meses[0].feriados, 1, '01/01');
+  assert.equal(meses[0].trabalhados, 20, 'janeiro de 2027: 21 dias úteis menos o 1º de janeiro');
+  assert.equal(
+    meses.reduce((t, m) => t + m.dias.length, 0),
+    365,
+  );
+  const abas = abasEscala(a, { inicio, fim, cidade: 'Cataguases', feriados });
+  assert.deepEqual(
+    abas.slice(0, 3).map((x) => x.nome),
+    ['Meses', 'jan 2027', 'fev 2027'],
+  );
+  assert.equal(abas.length, 1 + 12 + 4);
+  for (const x of abas) for (const l of x.linhas) assert.equal(l.length, x.colunas.length, x.nome);
+  const fer = abas.find((x) => x.nome === 'Feriados');
+  assert.equal(fer.linhas.length, 11);
+  assert.ok(fer.linhas.some((l) => l[2] === 'Dia de Santa Rita' && l[3] === 'Municipal'));
+  const b = blocosEscala(a, { inicio, fim, dataText: 'hoje', cidade: 'Cataguases', feriados });
+  const paginasDeMes = b.filter((x) => x.type === 'heading' && x.text.startsWith('Escala de '));
+  assert.equal(paginasDeMes.length, 12);
+  assert.equal(b.filter((x) => x.type === 'pagebreak').length, 13, 'cada mês começa numa página e a lei também');
+  for (const t of b.filter((x) => x.type === 'table')) for (const r of t.rows) assert.equal(r.length, t.widths.length);
+  assert.match(b[2].text, /Cataguases/);
 });

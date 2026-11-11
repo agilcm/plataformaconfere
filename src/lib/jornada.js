@@ -2,7 +2,7 @@
 // Regras: CF art. 7º XIII e XV com a redação da EC 141/2026 (promulgada em 16/10/2026: 42h a partir de 17/12/2026 e
 // 40h a partir de 17/12/2027, com dois dias de repouso semanal), CLT arts. 58, 59, 66, 67, 71 e 73 e Lei 605/1949.
 // Puro: sem tela, para testar.
-import { feriadosNacionaisNomes } from './docpref.js';
+import { pascoa } from './docpref.js';
 
 export const MARCOS_EC141 = { promulgacao: '2026-10-16', jornada42: '2026-12-17', jornada40: '2027-12-17' };
 
@@ -84,29 +84,79 @@ export function programarFolgas(semana, folgas) {
   );
 }
 
+/* ------------------------------------------------------------------ feriados */
+
+export const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+export const MESES_CURTOS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+/** "2027-01" -> "janeiro de 2027" */
+export const nomeDoMes = (ym) => `${MESES[Number(ym.slice(5, 7)) - 1]} de ${ym.slice(0, 4)}`;
+
+/** Feriados nacionais por lei federal, mais a Sexta-feira da Paixão (feriado religioso da Lei 9.093/1995, adotado nas cidades do país) */
+const NACIONAIS = [
+  ['01-01', 'Confraternização Universal', 'Lei 662/1949'],
+  ['P-2', 'Sexta-feira da Paixão', 'Lei 9.093/1995'],
+  ['04-21', 'Tiradentes', 'Lei 662/1949'],
+  ['05-01', 'Dia do Trabalho', 'Lei 662/1949'],
+  ['09-07', 'Independência do Brasil', 'Lei 662/1949'],
+  ['10-12', 'Nossa Senhora Aparecida', 'Lei 6.802/1980'],
+  ['11-02', 'Finados', 'Lei 662/1949'],
+  ['11-15', 'Proclamação da República', 'Lei 662/1949'],
+  ['11-20', 'Dia Nacional de Zumbi e da Consciência Negra', 'Lei 14.759/2023'],
+  ['12-25', 'Natal', 'Lei 662/1949'],
+];
+/** Pontos facultativos: só viram feriado se a cidade (ou a convenção coletiva) disser */
+export const FACULTATIVOS = [
+  { id: 'carnaval', nome: 'Carnaval', regras: ['P-48', 'P-47'] },
+  { id: 'corpus', nome: 'Corpus Christi', regras: ['P+60'] },
+];
+
 /**
- * Feriados do período: nacionais e os locais informados
+ * Data de uma regra num ano: "MM-DD" (todo ano), "P+N"/"P-N" (dias a partir da Páscoa) ou "AAAA-MM-DD" (só aquele dia)
+ * @returns {string|null}
+ */
+export function dataDaRegra(regra, ano) {
+  const r = String(regra || '');
+  if (/^\d{2}-\d{2}$/.test(r)) return `${ano}-${r}`;
+  const p = /^P([+-]\d+)$/.exec(r);
+  if (p) return somaDias(pascoa(ano), Number(p[1]));
+  if (/^\d{4}-\d{2}-\d{2}$/.test(r)) return Number(r.slice(0, 4)) === ano ? r : null;
+  return null;
+}
+
+/**
+ * Feriados do período, em ordem de data: nacionais, municipais (lista da cidade e os incluídos à mão) e os pontos
+ * facultativos marcados. Na mesma data fica o primeiro: nacional, depois municipal, depois facultativo.
  * @param {string} inicio
  * @param {string} fim
- * @param {{ data: string, nome: string }[]} [locais]
+ * @param {{ municipais?: { regra: string, nome: string }[], facultativos?: string[] }} [o]
+ * @returns {{ data: string, nome: string, tipo: 'nacional'|'municipal'|'facultativo', regra: string, base?: string }[]}
  */
-export function feriadosDoPeriodo(inicio, fim, locais = []) {
+export function feriadosDoPeriodo(inicio, fim, { municipais = [], facultativos = [] } = {}) {
   const m = new Map();
-  for (let ano = Number(inicio.slice(0, 4)); ano <= Number(fim.slice(0, 4)); ano++) for (const [d, n] of feriadosNacionaisNomes(ano)) m.set(d, n);
-  for (const f of locais) if (f?.data) m.set(f.data, f.nome || 'Feriado local');
-  return m;
+  const por = (regra, nome, tipo, base) => {
+    for (let ano = Number(inicio.slice(0, 4)); ano <= Number(fim.slice(0, 4)); ano++) {
+      const data = dataDaRegra(regra, ano);
+      if (data && data >= inicio && data <= fim && !m.has(data)) m.set(data, { data, nome, tipo, regra, ...(base ? { base } : {}) });
+    }
+  };
+  for (const [regra, nome, base] of NACIONAIS) por(regra, nome, 'nacional', base);
+  for (const f of municipais) if (f?.regra) por(f.regra, f.nome || 'Feriado municipal', 'municipal');
+  for (const f of FACULTATIVOS) if (facultativos.includes(f.id)) for (const r of f.regras) por(r, f.nome, 'facultativo');
+  return [...m.values()].sort((a, b) => (a.data < b.data ? -1 : 1));
 }
+
+export const LIMITE_DIAS = 731;
 
 /**
  * Gera a escala dia a dia no período, a partir da semana padrão.
  * Feriado sem trabalho por padrão (folga do feriado); com trabalharFeriados, o dia segue a semana padrão.
- * @param {{ inicio: string, fim: string, semana: any[], feriadosLocais?: { data: string, nome: string }[], trabalharFeriados?: boolean }} o
+ * @param {{ inicio: string, fim: string, semana: any[], feriados?: { data: string, nome: string }[], trabalharFeriados?: boolean }} o
  */
-export function gerarEscala({ inicio, fim, semana, feriadosLocais = [], trabalharFeriados = false }) {
+export function gerarEscala({ inicio, fim, semana, feriados = [], trabalharFeriados = false }) {
   if (!inicio || !fim || fim < inicio) return [];
   const total = diasEntre(inicio, fim) + 1;
-  if (total > 400) throw new Error('Escolha um período de até 400 dias.');
-  const fer = feriadosDoPeriodo(inicio, fim, feriadosLocais);
+  if (total > LIMITE_DIAS) throw new Error('Escolha um período de até 24 meses.');
+  const fer = new Map(feriados.map((f) => [f.data, f.nome]));
   const dias = [];
   for (let i = 0; i < total; i++) {
     const data = somaDias(inicio, i);
@@ -127,6 +177,38 @@ export function gerarEscala({ inicio, fim, semana, feriadosLocais = [], trabalha
   }
   return dias;
 }
+
+/**
+ * Os meses do período, para mostrar e imprimir uma página por mês
+ * @param {any} a resultado de avaliarEscala
+ */
+export function mesesDaEscala(a) {
+  const m = new Map();
+  for (const d of a.dias) {
+    const k = d.data.slice(0, 7);
+    if (!m.has(k)) m.set(k, []);
+    m.get(k).push(d);
+  }
+  return [...m.entries()].map(([mes, dias]) => ({
+    mes,
+    rotulo: nomeDoMes(mes),
+    dias,
+    trabalhados: dias.filter((d) => d.trabalha).length,
+    folgas: dias.filter((d) => !d.trabalha && d.tipo !== 'feriado').length,
+    feriados: dias.filter((d) => d.feriado).length,
+    computados: dias.reduce((t, d) => t + (d.trabalha && d.valido ? d.computados : 0), 0),
+    alertas: dias.filter((d) => d.alertas.length).length,
+  }));
+}
+
+/** Datas de mudança de regra da EC 141/2026 dentro do período */
+export const mudancasDeRegra = (inicio, fim) =>
+  [
+    [MARCOS_EC141.jornada42, 44, 42],
+    [MARCOS_EC141.jornada40, 42, 40],
+  ]
+    .filter(([d]) => d > inicio && d <= fim)
+    .map(([data, de, para]) => ({ data, de, para }));
 
 /* ------------------------------------------------------------------ cálculo do dia */
 
@@ -429,7 +511,7 @@ export const LEGISLACAO = [
     ],
   },
   {
-    titulo: 'Regras da CLT que continuam valendo',
+    titulo: 'Regras da CLT e dos feriados que continuam valendo',
     itens: [
       'Horas extras: no máximo 2 por dia, com adicional de pelo menos 50% (CLT art. 59; CF art. 7º, XVI). A escala 12x36 depende de acordo (CLT art. 59-A).',
       'Descanso entre jornadas: pelo menos 11 horas seguidas (CLT art. 66).',
@@ -437,6 +519,7 @@ export const LEGISLACAO = [
       'Intervalo para refeição: de 1 a 2 horas em jornadas acima de 6 horas; 15 minutos entre 4 e 6 horas (CLT art. 71). Pode cair para 30 minutos por convenção ou acordo coletivo (CLT art. 611-A, III).',
       'Trabalho noturno (22h às 5h): a hora vale 52min30s e tem adicional de pelo menos 20% (CLT art. 73).',
       'Feriado trabalhado: pagamento em dobro ou outro dia de folga (Lei 605/1949, art. 9º). No comércio, a folga cai no domingo ao menos uma vez a cada 3 semanas (Lei 10.101/2000, art. 6º).',
+      'Feriados municipais vêm de lei municipal: até quatro religiosos, contando a Sexta-feira da Paixão (Lei 9.093/1995). Carnaval e Corpus Christi são pontos facultativos, a não ser que a lei da cidade os declare feriado.',
       'Divisor do salário-hora: 200 horas por mês para 40h semanais, 210 para 42h e 220 para 44h.',
     ],
   },
@@ -447,12 +530,33 @@ export const LEGISLACAO = [
 const SITUACAO = { trabalho: 'Trabalho', folga: 'Folga', feriado: 'Feriado (folga)' };
 const intervaloTxt = (d) => (d.intervaloInicio && d.intervaloFim && d.intervaloInicio !== d.intervaloFim ? `${d.intervaloInicio} às ${d.intervaloFim}` : '—');
 
-/** Excel: escala dia a dia, semanas, verificação e o que diz a lei */
-export function abasEscala(a, { inicio, fim }) {
+const TIPO_FERIADO = { nacional: 'Nacional', municipal: 'Municipal', facultativo: 'Ponto facultativo marcado' };
+const maiuscula = (t) => t.charAt(0).toUpperCase() + t.slice(1);
+const horasDecimais = (min) => Math.round((min / 60) * 100) / 100;
+
+/**
+ * Excel: os meses, uma aba por mês com a escala dia a dia, as semanas, os feriados, a verificação e a lei
+ * @param {any} a resultado de avaliarEscala
+ * @param {{ inicio: string, fim: string, cidade?: string, feriados?: { data: string, nome: string, tipo: string }[] }} o
+ */
+export function abasEscala(a, { inicio, fim, cidade = '', feriados = [] }) {
   const r = a.regime;
+  const meses = mesesDaEscala(a);
   return [
     {
-      nome: 'Escala',
+      nome: 'Meses',
+      colunas: [
+        { titulo: 'Mês', largura: 20 },
+        { titulo: 'Dias de trabalho', largura: 12, tipo: 'numero' },
+        { titulo: 'Folgas', largura: 9, tipo: 'numero' },
+        { titulo: 'Feriados', largura: 9, tipo: 'numero' },
+        { titulo: 'Horas computadas', largura: 12, tipo: 'numero' },
+        { titulo: 'Dias com alerta', largura: 11, tipo: 'numero' },
+      ],
+      linhas: meses.map((m) => [maiuscula(m.rotulo), m.trabalhados, m.folgas, m.feriados, horasDecimais(m.computados), m.alertas]),
+    },
+    ...meses.map((m) => ({
+      nome: `${MESES_CURTOS[Number(m.mes.slice(5, 7)) - 1]} ${m.mes.slice(0, 4)}`,
       colunas: [
         { titulo: 'Data', largura: 12, tipo: 'data' },
         { titulo: 'Dia da semana', largura: 15 },
@@ -466,7 +570,7 @@ export function abasEscala(a, { inicio, fim }) {
         { titulo: 'Horas computadas', largura: 12, tipo: 'numero' },
         { titulo: 'Alertas', largura: 40 },
       ],
-      linhas: a.dias.map((d) => [
+      linhas: m.dias.map((d) => [
         d.data,
         DIAS[d.dow],
         d.feriado,
@@ -474,12 +578,12 @@ export function abasEscala(a, { inicio, fim }) {
         d.trabalha ? d.entrada : '',
         d.trabalha ? intervaloTxt(d) : '',
         d.trabalha ? d.saida : '',
-        d.trabalha ? Math.round((d.trabalhados / 60) * 100) / 100 : 0,
-        d.trabalha ? Math.round((d.noturnos / 60) * 100) / 100 : 0,
-        d.trabalha ? Math.round((d.computados / 60) * 100) / 100 : 0,
+        d.trabalha ? horasDecimais(d.trabalhados) : 0,
+        d.trabalha ? horasDecimais(d.noturnos) : 0,
+        d.trabalha ? horasDecimais(d.computados) : 0,
         d.alertas.join('; '),
       ]),
-    },
+    })),
     {
       nome: 'Semanas',
       colunas: [
@@ -508,6 +612,20 @@ export function abasEscala(a, { inicio, fim }) {
       ]),
     },
     {
+      nome: 'Feriados',
+      colunas: [
+        { titulo: 'Data', largura: 12, tipo: 'data' },
+        { titulo: 'Dia da semana', largura: 15 },
+        { titulo: 'Feriado', largura: 50 },
+        { titulo: 'Tipo', largura: 24 },
+        { titulo: 'Na escala', largura: 16 },
+      ],
+      linhas: feriados.map((f) => {
+        const d = a.dias.find((x) => x.data === f.data);
+        return [f.data, DIAS[diaDaSemana(f.data)], f.nome, TIPO_FERIADO[f.tipo] || f.tipo, !d ? '' : d.trabalha ? 'trabalhado' : 'folga'];
+      }),
+    },
+    {
       nome: 'Verificação',
       colunas: [
         { titulo: 'Nível', largura: 10 },
@@ -519,7 +637,7 @@ export function abasEscala(a, { inicio, fim }) {
         [
           '',
           'Resultado',
-          `${a.resumo.dentro ? 'Dentro' : 'Fora'} da regra de ${r.id} horas (${dataBR(inicio)} a ${dataBR(fim)}): ${a.resumo.erros} problema(s) e ${a.resumo.atencao} ponto(s) de atenção.`,
+          `${a.resumo.dentro ? 'Dentro' : 'Fora'} da regra de ${r.id} horas (${dataBR(inicio)} a ${dataBR(fim)}${cidade ? `, ${cidade}` : ''}): ${a.resumo.erros} problema(s) e ${a.resumo.atencao} ponto(s) de atenção.`,
           r.base,
         ],
         ...a.problemas.map((p) => [p.nivel === 'erro' ? 'Problema' : 'Atenção', p.regra, p.texto, p.base]),
@@ -536,16 +654,21 @@ export function abasEscala(a, { inicio, fim }) {
   ];
 }
 
-/** PDF: resultado, comparação das regras, problemas, semanas, escala dia a dia e a lei */
-export function blocosEscala(a, { inicio, fim, dataText, comparativo, primeiroDia = 1 }) {
+/**
+ * PDF: resultado, comparação das regras, meses, feriados, problemas, semanas, uma página por mês e a lei
+ * @param {any} a resultado de avaliarEscala
+ * @param {{ inicio: string, fim: string, dataText: string, comparativo?: any[], primeiroDia?: 0|1, cidade?: string, feriados?: { data: string, nome: string, tipo: string }[] }} o
+ */
+export function blocosEscala(a, { inicio, fim, dataText, comparativo, primeiroDia = 1, cidade = '', feriados = [] }) {
   const r = a.regime;
   const res = a.resumo;
+  const meses = mesesDaEscala(a);
   const b = [
     { type: 'date', text: dataText },
     { type: 'title', text: `Escala de trabalho · regra de ${r.id} horas` },
     {
       type: 'para',
-      text: `Período de ${dataBR(inicio)} a ${dataBR(fim)} · semana de ${primeiroDia === 1 ? 'segunda a domingo' : 'domingo a sábado'} · ${r.detalhe}.`,
+      text: `Período de ${dataBR(inicio)} a ${dataBR(fim)}${cidade ? ` · ${cidade}` : ''} · semana de ${primeiroDia === 1 ? 'segunda a domingo' : 'domingo a sábado'} · ${r.detalhe}.`,
       size: 9.5,
       color: 'muted',
       gapAfter: 4,
@@ -562,7 +685,7 @@ export function blocosEscala(a, { inicio, fim, dataText, comparativo, primeiroDi
       type: 'table',
       size: 8.6,
       widths: [0.2, 0.2, 0.2, 0.2, 0.2],
-      header: ['Dias de trabalho', 'Folgas', 'Horas no período', 'Média por semana', 'Acima do limite'],
+      header: ['Dias de trabalho', 'Folgas e feriados', 'Horas no período', 'Média por semana', 'Acima do limite'],
       headerAlign: ['center', 'center', 'center', 'center', 'center'],
       rows: [
         [
@@ -584,6 +707,35 @@ export function blocosEscala(a, { inicio, fim, dataText, comparativo, primeiroDi
       headerAlign: comparativo.map(() => 'center'),
       rows: [comparativo.map((c) => ({ text: c.dentro ? 'Cabe' : `Não cabe (${c.erros} problema${c.erros === 1 ? '' : 's'})`, align: 'center', bold: true }))],
     });
+  if (meses.length > 1) {
+    b.push({ type: 'heading', text: 'Mês a mês' });
+    b.push({
+      type: 'table',
+      size: 8.4,
+      widths: [0.28, 0.16, 0.14, 0.14, 0.14, 0.14],
+      header: ['Mês', 'Dias de trabalho', 'Folgas', 'Feriados', 'Horas', 'Dias com alerta'],
+      headerAlign: ['left', 'center', 'center', 'center', 'center', 'center'],
+      rows: meses.map((m) => [
+        maiuscula(m.rotulo),
+        { text: String(m.trabalhados), align: 'center' },
+        { text: String(m.folgas), align: 'center' },
+        { text: String(m.feriados), align: 'center' },
+        { text: horas(m.computados), align: 'center' },
+        { text: String(m.alertas), align: 'center', bold: m.alertas > 0 },
+      ]),
+    });
+  }
+  if (feriados.length) {
+    b.push({ type: 'heading', text: `Feriados do período${cidade ? ` (${cidade})` : ''}` });
+    b.push({
+      type: 'table',
+      size: 8,
+      widths: [0.12, 0.16, 0.48, 0.24],
+      header: ['Data', 'Dia', 'Feriado', 'Tipo'],
+      headerAlign: ['left', 'left', 'left', 'left'],
+      rows: feriados.map((f) => [dataBR(f.data), DIAS[diaDaSemana(f.data)], f.nome, TIPO_FERIADO[f.tipo] || f.tipo]),
+    });
+  }
   if (a.problemas.length) {
     b.push({ type: 'heading', text: 'O que precisa de ajuste' });
     b.push({
@@ -611,24 +763,33 @@ export function blocosEscala(a, { inicio, fim, dataText, comparativo, primeiroDi
       !s.completa ? 'incompleta no período' : s.problemas ? `${s.problemas} item(ns) a ver` : 'ok',
     ]),
   });
-  b.push({ type: 'pagebreak' }, { type: 'heading', text: 'Escala dia a dia' });
-  b.push({
-    type: 'table',
-    size: 7.6,
-    widths: [0.1, 0.13, 0.15, 0.08, 0.13, 0.08, 0.09, 0.24],
-    header: ['Data', 'Dia', 'Situação', 'Entrada', 'Intervalo', 'Saída', 'Horas', 'Alertas'],
-    headerAlign: ['left', 'left', 'left', 'center', 'center', 'center', 'center', 'left'],
-    rows: a.dias.map((d) => [
-      dataBR(d.data).slice(0, 5),
-      DIAS[d.dow],
-      d.feriado ? `${SITUACAO[d.tipo]} · ${d.feriado}` : SITUACAO[d.tipo],
-      { text: d.trabalha ? d.entrada : '', align: 'center' },
-      { text: d.trabalha ? intervaloTxt(d) : '', align: 'center' },
-      { text: d.trabalha ? d.saida : '', align: 'center' },
-      { text: d.trabalha ? horas(d.computados) : '', align: 'center' },
-      d.alertas.join('; '),
-    ]),
-  });
+  for (const m of meses) {
+    b.push({ type: 'pagebreak' }, { type: 'heading', text: `Escala de ${m.rotulo}` });
+    b.push({
+      type: 'para',
+      text: `${m.trabalhados} dias de trabalho · ${m.folgas} folgas · ${m.feriados} ${m.feriados === 1 ? 'feriado' : 'feriados'} · ${horas(m.computados)} no mês${m.alertas ? ` · ${m.alertas} ${m.alertas === 1 ? 'dia' : 'dias'} com alerta` : ''}`,
+      size: 9,
+      color: 'muted',
+      gapAfter: 4,
+    });
+    b.push({
+      type: 'table',
+      size: 7.6,
+      widths: [0.08, 0.13, 0.19, 0.08, 0.13, 0.08, 0.08, 0.23],
+      header: ['Data', 'Dia', 'Situação', 'Entrada', 'Intervalo', 'Saída', 'Horas', 'Alertas'],
+      headerAlign: ['left', 'left', 'left', 'center', 'center', 'center', 'center', 'left'],
+      rows: m.dias.map((d) => [
+        dataBR(d.data).slice(0, 5),
+        DIAS[d.dow],
+        d.feriado ? `${SITUACAO[d.tipo]} · ${d.feriado}` : SITUACAO[d.tipo],
+        { text: d.trabalha ? d.entrada : '', align: 'center' },
+        { text: d.trabalha ? intervaloTxt(d) : '', align: 'center' },
+        { text: d.trabalha ? d.saida : '', align: 'center' },
+        { text: d.trabalha ? horas(d.computados) : '', align: 'center' },
+        d.alertas.join('; '),
+      ]),
+    });
+  }
   b.push({ type: 'pagebreak' }, { type: 'heading', text: 'O que diz a lei' });
   for (const g of LEGISLACAO) b.push({ type: 'para', text: g.titulo, bold: true, gapAfter: 2 }, { type: 'bullets', items: g.itens });
   b.push({

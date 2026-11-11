@@ -5,7 +5,10 @@ import { Icon } from '../components/ui.tsx';
 import {
   DIAS,
   DIAS_CURTOS,
+  FACULTATIVOS,
   LEGISLACAO,
+  LIMITE_DIAS,
+  MESES_CURTOS,
   REGIMES,
   abasEscala,
   avaliarEscala,
@@ -13,8 +16,12 @@ import {
   calcularDia,
   compararRegimes,
   dataBR,
+  feriadosDoPeriodo,
   gerarEscala,
   horas,
+  mesesDaEscala,
+  mudancasDeRegra,
+  nomeDoMes,
   programarFolgas,
   regimeDaData,
   semanaPadrao,
@@ -25,6 +32,8 @@ import { baixarXlsx } from '../lib/xlsx.js';
 type Regime = 40 | 42 | 44;
 type DiaModelo = { dow: number; trabalha: boolean; entrada: string; intervaloInicio: string; intervaloFim: string; saida: string };
 type Ajuste = Partial<{ tipo: string; entrada: string; intervaloInicio: string; intervaloFim: string; saida: string }>;
+type FeriadoRegra = { regra: string; nome: string };
+type DadosFeriados = { fonte: string; cidades: Record<string, [string, string][]>; municipios: string[] };
 
 const card = 'p-5 sm:p-6 rounded-2xl bg-white border border-slate-200';
 const campo =
@@ -38,7 +47,34 @@ const fimDoMes = (iso: string) => {
   const [a, m] = iso.split('-').map(Number);
   return new Date(Date.UTC(a, m, 0, 12)).toISOString().slice(0, 10);
 };
+/** Véspera da mesma data n meses depois: 15/01 + 3 meses -> 14/04 */
+const maisMeses = (iso: string, n: number) => {
+  const [a, m, d] = iso.split('-').map(Number);
+  const ultimo = new Date(Date.UTC(a, m - 1 + n + 1, 0, 12)).getUTCDate();
+  return soma(new Date(Date.UTC(a, m - 1 + n, Math.min(d, ultimo), 12)).toISOString().slice(0, 10), -1);
+};
 const CHAVE = 'agilcm:hora';
+const sem = (t: string) =>
+  t
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+const maiuscula = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
+const mesCurto = (ym: string) => `${MESES_CURTOS[Number(ym.slice(5, 7)) - 1]}/${ym.slice(2, 4)}`;
+const diaSemana = (iso: string) => DIAS[new Date(`${iso}T12:00:00Z`).getUTCDay()];
+const quantosMeses = (ini: string, fi: string) =>
+  (Number(fi.slice(0, 4)) - Number(ini.slice(0, 4))) * 12 + Number(fi.slice(5, 7)) - Number(ini.slice(5, 7)) + 1;
+/** Regra do feriado em texto: "todo ano em 22/05", "Páscoa + 60 dias" ou a data */
+const quando = (regra: string) =>
+  /^\d{2}-\d{2}$/.test(regra)
+    ? `todo ano em ${regra.slice(3)}/${regra.slice(0, 2)}`
+    : regra === 'P+60'
+      ? '60 dias depois da Páscoa (muda todo ano)'
+      : regra.startsWith('P')
+        ? 'data ligada à Páscoa (muda todo ano)'
+        : `só em ${dataBR(regra)}`;
 
 const MODELOS: { id: string; rotulo: string; nota: string; semana: () => DiaModelo[] }[] = [
   { id: '5x2-40', rotulo: '5x2 · 8h por dia', nota: '40h na semana', semana: () => semanaPadrao() },
@@ -62,35 +98,90 @@ function lerSalvo() {
 export default function JornadaHora() {
   const salvo = useMemo(lerSalvo, []);
   const [regime, setRegime] = useState<Regime>(salvo?.regime ?? 40);
-  const [inicio, setInicio] = useState<string>(salvo?.inicio ?? hojeISO());
-  const [fim, setFim] = useState<string>(salvo?.fim ?? soma(hojeISO(), 27));
+  const [modo, setModo] = useState<'meses' | 'datas'>(salvo?.modo ?? 'meses');
+  const [inicio, setInicio] = useState<string>(salvo?.inicio ?? `${hojeISO().slice(0, 7)}-01`);
+  const [fim, setFim] = useState<string>(salvo?.fim ?? fimDoMes(hojeISO()));
+  const [anoMeses, setAnoMeses] = useState<number>(Number((salvo?.inicio ?? hojeISO()).slice(0, 4)));
+  const [ancora, setAncora] = useState('');
   const [primeiroDia, setPrimeiroDia] = useState<0 | 1>(salvo?.primeiroDia ?? 1);
   const [semana, setSemana] = useState<DiaModelo[]>(salvo?.semana ?? semanaPadrao());
   const [folgasEscolhidas, setFolgasEscolhidas] = useState<number[]>(salvo?.folgas ?? [6, 0]);
-  const [locais, setLocais] = useState<{ data: string; nome: string }[]>(salvo?.locais ?? []);
+  const [cidade, setCidade] = useState<string>(salvo?.cidade ?? '');
+  // feriados incluídos à mão, por cidade (os antigos, sem cidade, ficam na chave '')
+  const [doUsuario, setDoUsuario] = useState<Record<string, FeriadoRegra[]>>(
+    salvo?.doUsuario ?? (salvo?.locais?.length ? { '': salvo.locais.map((l: any) => ({ regra: l.data, nome: l.nome })) } : {}),
+  );
+  const [desligados, setDesligados] = useState<Record<string, string[]>>(salvo?.desligados ?? {});
+  const [facultativos, setFacultativos] = useState<string[]>(salvo?.facultativos ?? []);
   const [trabFeriados, setTrabFeriados] = useState<boolean>(salvo?.trabFeriados ?? false);
   const [ajustes, setAjustes] = useState<Record<string, Ajuste>>(salvo?.ajustes ?? {});
-  const [novoFeriado, setNovoFeriado] = useState({ data: '', nome: '' });
+  const [novoFeriado, setNovoFeriado] = useState({ data: '', nome: '', todoAno: true });
+  const [dadosFer, setDadosFer] = useState<DadosFeriados | null>(null);
+  const [mesAberto, setMesAberto] = useState('');
   const [gerando, setGerando] = useState('');
 
   useEffect(() => {
     try {
-      localStorage.setItem(CHAVE, JSON.stringify({ regime, inicio, fim, primeiroDia, semana, folgas: folgasEscolhidas, locais, trabFeriados, ajustes }));
+      localStorage.setItem(
+        CHAVE,
+        JSON.stringify({
+          regime,
+          modo,
+          inicio,
+          fim,
+          primeiroDia,
+          semana,
+          folgas: folgasEscolhidas,
+          cidade,
+          doUsuario,
+          desligados,
+          facultativos,
+          trabFeriados,
+          ajustes,
+        }),
+      );
     } catch {
       /* sem armazenamento: segue sem salvar */
     }
-  }, [regime, inicio, fim, primeiroDia, semana, folgasEscolhidas, locais, trabFeriados, ajustes]);
+  }, [regime, modo, inicio, fim, primeiroDia, semana, folgasEscolhidas, cidade, doUsuario, desligados, facultativos, trabFeriados, ajustes]);
+
+  // feriados municipais das comarcas de MG (TJMG), carregados uma vez
+  useEffect(() => {
+    let vivo = true;
+    fetch(`${import.meta.env.BASE_URL}dados-hora/feriados-mg.json`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => vivo && d && setDadosFer(d))
+      .catch(() => {});
+    return () => {
+      vivo = false;
+    };
+  }, []);
+
+  const cidadeOficial = useMemo(() => (cidade.trim() && dadosFer?.municipios.find((m) => sem(m) === sem(cidade))) || '', [dadosFer, cidade]);
+  const chaveCidade = cidadeOficial || cidade.trim();
+  // a Sexta-feira da Paixão já entra com os nacionais
+  const daLista: FeriadoRegra[] = useMemo(
+    () => (dadosFer?.cidades[cidadeOficial] || []).filter(([regra]) => regra !== 'P-2').map(([regra, nome]) => ({ regra, nome })),
+    [dadosFer, cidadeOficial],
+  );
+  const desligadosCidade = desligados[chaveCidade] || [];
+  const meus = doUsuario[chaveCidade] || [];
+  const facultativosLivres = FACULTATIVOS.filter((f) => !f.regras.every((r) => daLista.some((x) => x.regra === r)));
 
   const erroPeriodo = !inicio || !fim ? 'Informe as duas datas.' : fim < inicio ? 'A data final vem antes da inicial.' : '';
+  const feriados = useMemo(() => {
+    if (erroPeriodo) return [];
+    const municipais = [...daLista.filter((f) => !desligadosCidade.includes(f.regra)), ...meus];
+    return feriadosDoPeriodo(inicio, fim, { municipais, facultativos });
+  }, [inicio, fim, erroPeriodo, daLista, desligadosCidade, meus, facultativos]);
   const base = useMemo(() => {
     if (erroPeriodo) return [];
     try {
-      return gerarEscala({ inicio, fim, semana, feriadosLocais: locais, trabalharFeriados: trabFeriados });
+      return gerarEscala({ inicio, fim, semana, feriados, trabalharFeriados: trabFeriados });
     } catch {
       return [];
     }
-  }, [inicio, fim, semana, locais, trabFeriados, erroPeriodo]);
-  const longo = !erroPeriodo && base.length === 0;
+  }, [inicio, fim, semana, feriados, trabFeriados, erroPeriodo]);
   const dias = useMemo(() => base.map((d: any) => ({ ...d, ...(ajustes[d.data] || {}) })), [base, ajustes]);
   const a = useMemo(() => (dias.length ? avaliarEscala(dias, { regime, primeiroDia }) : null), [dias, regime, primeiroDia]);
   const comparativo = useMemo(() => (dias.length ? compararRegimes(dias, primeiroDia) : []), [dias, primeiroDia]);
@@ -99,6 +190,35 @@ export default function JornadaHora() {
   const totalModelo = semana.reduce((t, d) => (d.trabalha ? t + calcularDia(d).computados : t), 0);
   const folgasModelo = semana.filter((d) => !d.trabalha).length;
   const regraDaData = regimeDaData(inicio || hojeISO()) as Regime;
+  const totalDias = erroPeriodo ? 0 : Math.round((Date.parse(`${fim}T12:00:00Z`) - Date.parse(`${inicio}T12:00:00Z`)) / 86400e3) + 1;
+  const mudancas = erroPeriodo ? [] : mudancasDeRegra(inicio, fim);
+
+  const clicarMes = (ym: string) => {
+    if (ancora) {
+      const [x, y] = ancora <= ym ? [ancora, ym] : [ym, ancora];
+      setInicio(`${x}-01`);
+      setFim(fimDoMes(`${y}-01`));
+      setAncora('');
+    } else {
+      setInicio(`${ym}-01`);
+      setFim(fimDoMes(`${ym}-01`));
+      setAncora(ym);
+    }
+  };
+  const incluirFeriado = () => {
+    if (!novoFeriado.data) return;
+    const regra = novoFeriado.todoAno ? novoFeriado.data.slice(5) : novoFeriado.data;
+    setDoUsuario((x) => ({
+      ...x,
+      [chaveCidade]: [...(x[chaveCidade] || []).filter((f) => f.regra !== regra), { regra, nome: novoFeriado.nome.trim() || 'Feriado municipal' }],
+    }));
+    setNovoFeriado({ data: '', nome: '', todoAno: novoFeriado.todoAno });
+  };
+  const alternarDaLista = (regra: string) =>
+    setDesligados((x) => {
+      const atual = x[chaveCidade] || [];
+      return { ...x, [chaveCidade]: atual.includes(regra) ? atual.filter((r) => r !== regra) : [...atual, regra] };
+    });
 
   const mudarDiaModelo = (dow: number, campoNome: keyof DiaModelo, valor: any) =>
     setSemana((s) => s.map((d) => (d.dow === dow ? { ...d, [campoNome]: valor } : d)));
@@ -110,7 +230,11 @@ export default function JornadaHora() {
     if (!a) return;
     setGerando('Gerando o PDF…');
     try {
-      await downloadPdf(nomeArquivo('pdf'), `Escala ${regime}h`, blocosEscala(a, { inicio, fim, dataText: dateText(), comparativo, primeiroDia }) as never);
+      await downloadPdf(
+        nomeArquivo('pdf'),
+        `Escala ${regime}h`,
+        blocosEscala(a, { inicio, fim, dataText: dateText(), comparativo, primeiroDia, cidade: chaveCidade, feriados }) as never,
+      );
     } finally {
       setGerando('');
     }
@@ -121,6 +245,15 @@ export default function JornadaHora() {
     if (!a) return [];
     return a.semanas.map((s: any) => ({ ...s, linhas: a.dias.filter((d: any) => d.data >= s.inicio && d.data <= s.fim) }));
   }, [a]);
+  const meses = useMemo(() => (a ? mesesDaEscala(a) : []), [a]);
+  const iMes = Math.max(
+    0,
+    meses.findIndex((m: any) => m.mes === mesAberto),
+  );
+  const mesAtivo: any = meses[iMes];
+  const semanasDoMes = mesAtivo
+    ? semanasTabela.map((s: any) => ({ ...s, linhas: s.linhas.filter((d: any) => d.data.startsWith(mesAtivo.mes)) })).filter((s: any) => s.linhas.length)
+    : [];
   const porRegra = useMemo(() => {
     const m = new Map<string, any[]>();
     for (const p of a?.problemas || []) m.set(p.regra, [...(m.get(p.regra) || []), p]);
@@ -132,8 +265,8 @@ export default function JornadaHora() {
       <div className={card}>
         <p className="text-lg font-bold text-[#0F2053]">Hora: monte a escala e veja se ela cabe na lei</p>
         <p className="mt-1 text-[15px] text-slate-600 max-w-3xl">
-          Escolha a regra, o período e a semana padrão com as duas folgas. A escala é montada dia a dia, com o dia da semana e os feriados de cada data, e cada
-          dia pode ser ajustado. A conferência segue a EC 141/2026 (5x2, 42h e 40h) e a CLT.
+          Escolha a regra, os meses (ou as datas), a cidade e a semana padrão com as duas folgas. A escala é montada dia a dia, com o dia da semana e os
+          feriados nacionais e da cidade, e aparece uma página por mês. Cada dia pode ser ajustado. A conferência segue a EC 141/2026 (5x2, 42h e 40h) e a CLT.
         </p>
       </div>
 
@@ -171,99 +304,226 @@ export default function JornadaHora() {
 
       {/* 2. Período */}
       <section className={card} aria-labelledby="h-periodo">
-        <h2 id="h-periodo" className="text-lg font-bold text-[#0F2053]">
-          2. Período
-        </h2>
-        <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-3xl">
-          <label>
-            <span className="block text-sm font-semibold text-slate-700 mb-1">Data inicial</span>
-            <input id="hora-inicio" type="date" value={inicio} onChange={(e) => setInicio(e.target.value)} className={campo} />
-            {inicio && <span className="block mt-1 text-xs text-slate-500">{DIAS[new Date(`${inicio}T12:00:00Z`).getUTCDay()]}</span>}
-          </label>
-          <label>
-            <span className="block text-sm font-semibold text-slate-700 mb-1">Data final</span>
-            <input id="hora-fim" type="date" value={fim} onChange={(e) => setFim(e.target.value)} className={campo} />
-            {fim && <span className="block mt-1 text-xs text-slate-500">{DIAS[new Date(`${fim}T12:00:00Z`).getUTCDay()]}</span>}
-          </label>
-          <label>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 id="h-periodo" className="text-lg font-bold text-[#0F2053]">
+            2. Período
+          </h2>
+          <div className="inline-flex p-1 rounded-xl bg-slate-100" role="group" aria-label="Como escolher o período">
+            {(
+              [
+                ['meses', 'Escolher os meses'],
+                ['datas', 'Digitar as datas'],
+              ] as const
+            ).map(([id, rot]) => (
+              <button
+                key={id}
+                type="button"
+                aria-pressed={modo === id}
+                onClick={() => {
+                  setModo(id);
+                  setAncora('');
+                  if (id === 'meses') setAnoMeses(Number((inicio || hojeISO()).slice(0, 4)));
+                }}
+                className={`px-3 py-1.5 rounded-lg text-sm font-bold cursor-pointer ${modo === id ? 'bg-white text-[#0F2053] shadow-sm' : 'text-slate-600 hover:text-[#0F2053]'}`}
+              >
+                {rot}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {modo === 'meses' ? (
+          <div className="mt-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                aria-label="Ano anterior"
+                onClick={() => setAnoMeses((y) => y - 1)}
+                className="w-9 h-9 rounded-lg border border-slate-300 bg-white font-bold text-[#0F2053] hover:border-[#0478CA] cursor-pointer"
+              >
+                ‹
+              </button>
+              <span className="min-w-[4rem] text-center text-lg font-bold tabular-nums text-[#0F2053]" aria-live="polite">
+                {anoMeses}
+              </span>
+              <button
+                type="button"
+                aria-label="Próximo ano"
+                onClick={() => setAnoMeses((y) => y + 1)}
+                className="w-9 h-9 rounded-lg border border-slate-300 bg-white font-bold text-[#0F2053] hover:border-[#0478CA] cursor-pointer"
+              >
+                ›
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setInicio(`${anoMeses}-01-01`);
+                  setFim(`${anoMeses}-12-31`);
+                  setAncora('');
+                }}
+                className="ml-1 px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-sm font-semibold text-[#0F2053] hover:border-[#0478CA] cursor-pointer"
+              >
+                Ano inteiro de {anoMeses}
+              </button>
+            </div>
+            <div className="mt-3 grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-12 gap-2" role="group" aria-label={`Meses de ${anoMeses}`}>
+              {MESES_CURTOS.map((m, i) => {
+                const ym = `${anoMeses}-${String(i + 1).padStart(2, '0')}`;
+                const marcado = !erroPeriodo && ym >= inicio.slice(0, 7) && ym <= fim.slice(0, 7);
+                return (
+                  <button
+                    key={ym}
+                    type="button"
+                    aria-pressed={marcado}
+                    aria-label={nomeDoMes(ym)}
+                    onClick={() => clicarMes(ym)}
+                    className={`py-2 rounded-lg border-2 text-sm font-bold capitalize cursor-pointer ${ancora === ym ? 'ring-2 ring-offset-1 ring-[#0478CA]' : ''} ${marcado ? 'bg-[#0F2053] border-[#0F2053] text-white' : 'bg-white border-slate-300 text-[#0F2053] hover:border-[#0478CA]'}`}
+                  >
+                    {m}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-2 text-sm text-slate-600">
+              {ancora
+                ? `Começa em ${nomeDoMes(ancora)}. Clique no último mês do período (pode trocar o ano nas setas) ou em outro trabalho.`
+                : 'Clique num mês para escolher só ele. Para um período, clique no primeiro mês e depois no último.'}
+            </p>
+          </div>
+        ) : (
+          <div className="mt-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl">
+              <label>
+                <span className="block text-sm font-semibold text-slate-700 mb-1">Data inicial</span>
+                <input id="hora-inicio" type="date" value={inicio} onChange={(e) => setInicio(e.target.value)} className={campo} />
+                {inicio && <span className="block mt-1 text-xs text-slate-500">{diaSemana(inicio)}</span>}
+              </label>
+              <label>
+                <span className="block text-sm font-semibold text-slate-700 mb-1">Data final</span>
+                <input id="hora-fim" type="date" value={fim} onChange={(e) => setFim(e.target.value)} className={campo} />
+                {fim && <span className="block mt-1 text-xs text-slate-500">{diaSemana(fim)}</span>}
+              </label>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2 text-sm">
+              <span className="self-center font-semibold text-slate-700">Atalhos:</span>
+              {[
+                ['4 semanas', () => setFim(soma(inicio, 27))],
+                ['Mês da data inicial', () => (setInicio(`${inicio.slice(0, 7)}-01`), setFim(fimDoMes(inicio)))],
+                ['3 meses', () => setFim(maisMeses(inicio, 3))],
+                ['12 meses', () => setFim(maisMeses(inicio, 12))],
+              ].map(([rot, fn]) => (
+                <button
+                  key={rot as string}
+                  type="button"
+                  disabled={!inicio}
+                  onClick={fn as () => void}
+                  className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white font-semibold text-[#0F2053] hover:border-[#0478CA] cursor-pointer disabled:opacity-40"
+                >
+                  {rot as string}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="mt-4 flex flex-wrap items-end gap-x-6 gap-y-3">
+          <label className="block">
             <span className="block text-sm font-semibold text-slate-700 mb-1">A semana começa no</span>
             <select id="hora-semana" value={primeiroDia} onChange={(e) => setPrimeiroDia(Number(e.target.value) as 0 | 1)} className={campo}>
               <option value={1}>segunda (segunda a domingo)</option>
               <option value={0}>domingo (domingo a sábado)</option>
             </select>
           </label>
-        </div>
-        <div className="mt-3 flex flex-wrap gap-2 text-sm">
-          <span className="self-center font-semibold text-slate-700">Atalhos:</span>
-          {[
-            ['4 semanas', () => setFim(soma(inicio, 27))],
-            ['Mês da data inicial', () => (setInicio(`${inicio.slice(0, 7)}-01`), setFim(fimDoMes(inicio)))],
-            ['3 meses', () => setFim(soma(inicio, 90))],
-          ].map(([rot, fn]) => (
-            <button
-              key={rot as string}
-              type="button"
-              onClick={fn as () => void}
-              className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white font-semibold text-[#0F2053] hover:border-[#0478CA] cursor-pointer"
-            >
-              {rot as string}
-            </button>
-          ))}
+          {!erroPeriodo && (
+            <p className="pb-2 text-[15px] text-slate-700" aria-live="polite">
+              <strong className="text-[#0F2053]">
+                {dataBR(inicio)} a {dataBR(fim)}
+              </strong>{' '}
+              · {diaSemana(inicio)} a {diaSemana(fim)} ·{' '}
+              {inicio.endsWith('-01') && fim === fimDoMes(fim)
+                ? `${quantosMeses(inicio, fim)} ${quantosMeses(inicio, fim) === 1 ? 'mês' : 'meses'} · ${totalDias} dias`
+                : `${totalDias} dias · ${quantosMeses(inicio, fim) === 1 ? 'dentro de 1 mês' : `passa por ${quantosMeses(inicio, fim)} meses`}`}
+            </p>
+          )}
         </div>
         {erroPeriodo && <p className="mt-2 text-sm font-semibold text-red-700">{erroPeriodo}</p>}
-        {longo && <p className="mt-2 text-sm font-semibold text-red-700">Escolha um período de até 400 dias.</p>}
+        {totalDias > LIMITE_DIAS && <p className="mt-2 text-sm font-semibold text-red-700">Escolha um período de até 24 meses.</p>}
+        {mudancas.map((m) => (
+          <p key={m.data} className="mt-2 p-3 rounded-xl bg-amber-50 border border-amber-200 text-sm text-amber-900">
+            Em {dataBR(m.data)} a regra muda de {m.de} para {m.para} horas (EC 141/2026). A conferência usa uma regra só para o período todo: confira a parte
+            antes e a parte depois dessa data em separado, ou use a regra de {m.para} horas, que é a mais exigente.
+          </p>
+        ))}
+      </section>
 
-        <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div>
-            <p className="text-sm font-semibold text-slate-700">Feriados</p>
-            <p className="text-sm text-slate-600">Os nacionais entram sozinhos. Inclua os feriados da cidade (aniversário, padroeiro).</p>
-            <div className="mt-2 flex flex-wrap items-end gap-2">
-              <label className="min-w-0">
-                <span className="sr-only">Data do feriado local</span>
-                <input
-                  id="hora-feriado-data"
-                  type="date"
-                  value={novoFeriado.data}
-                  onChange={(e) => setNovoFeriado((f) => ({ ...f, data: e.target.value }))}
-                  className={campo}
-                />
-              </label>
-              <label className="min-w-0 flex-1">
-                <span className="sr-only">Nome do feriado local</span>
-                <input
-                  id="hora-feriado-nome"
-                  type="text"
-                  placeholder="Nome (ex.: aniversário da cidade)"
-                  value={novoFeriado.nome}
-                  onChange={(e) => setNovoFeriado((f) => ({ ...f, nome: e.target.value }))}
-                  className={campo}
-                />
-              </label>
-              <button
-                type="button"
-                disabled={!novoFeriado.data}
-                onClick={() => {
-                  setLocais((l) => [
-                    ...l.filter((x) => x.data !== novoFeriado.data),
-                    { data: novoFeriado.data, nome: novoFeriado.nome.trim() || 'Feriado local' },
-                  ]);
-                  setNovoFeriado({ data: '', nome: '' });
-                }}
-                className="px-3 py-1.5 rounded-lg bg-[#0F2053] text-white font-bold disabled:opacity-40 cursor-pointer"
-              >
-                Incluir
-              </button>
-            </div>
-            {locais.length > 0 && (
-              <ul className="mt-2 flex flex-wrap gap-2">
-                {locais.map((f) => (
-                  <li key={f.data} className="inline-flex items-center gap-2 pl-3 pr-1 py-1 rounded-full bg-[#F4F7FB] border border-slate-200 text-sm">
-                    {dataBR(f.data)} · {f.nome}
+      {/* 3. Cidade e feriados */}
+      <section className={card} aria-labelledby="h-cidade">
+        <h2 id="h-cidade" className="text-lg font-bold text-[#0F2053]">
+          3. Cidade e feriados
+        </h2>
+        <div className="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="min-w-0">
+            <label className="block max-w-md">
+              <span className="block text-sm font-semibold text-slate-700 mb-1">Cidade (MG)</span>
+              <input
+                id="hora-cidade"
+                type="text"
+                list="hora-cidades-mg"
+                autoComplete="off"
+                placeholder="Digite o nome da cidade"
+                value={cidade}
+                onChange={(e) => setCidade(e.target.value)}
+                onBlur={() => cidadeOficial && cidadeOficial !== cidade && setCidade(cidadeOficial)}
+                className={campo}
+              />
+              <datalist id="hora-cidades-mg">
+                {(dadosFer?.municipios || []).map((m) => (
+                  <option key={m} value={m} />
+                ))}
+              </datalist>
+            </label>
+            <p className="mt-2 text-sm text-slate-600">
+              {!cidade.trim()
+                ? 'Escolha a cidade para incluir os feriados municipais.'
+                : !dadosFer
+                  ? 'Carregando os feriados municipais…'
+                  : daLista.length
+                    ? `${cidadeOficial}: feriados municipais da Portaria Conjunta nº 1.798/2026 do TJMG. Desmarque o que não valer e inclua o que faltar.`
+                    : cidadeOficial
+                      ? `${cidadeOficial} não é sede de comarca e não está na lista do TJMG. Inclua abaixo os feriados da lei municipal: eles ficam guardados para essa cidade.`
+                      : 'Cidade fora da lista de municípios de MG. Inclua os feriados abaixo: eles ficam guardados com esse nome.'}
+            </p>
+
+            {(daLista.length > 0 || meus.length > 0) && (
+              <ul className="mt-3 space-y-1.5" aria-label={`Feriados municipais de ${chaveCidade}`}>
+                {daLista.map((f) => (
+                  <li key={f.regra}>
+                    <label className="flex items-start gap-2 text-sm text-slate-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={!desligadosCidade.includes(f.regra)}
+                        onChange={() => alternarDaLista(f.regra)}
+                        className="mt-0.5 w-4 h-4"
+                      />
+                      <span>
+                        <strong className="text-[#0F2053]">{f.nome}</strong> <span className="text-slate-500">· {quando(f.regra)}</span>
+                      </span>
+                    </label>
+                  </li>
+                ))}
+                {meus.map((f) => (
+                  <li key={f.regra} className="flex items-start gap-2 text-sm text-slate-700">
+                    <span className="mt-0.5 w-4 text-center text-[#0478CA]" aria-hidden="true">
+                      ●
+                    </span>
+                    <span className="flex-1">
+                      <strong className="text-[#0F2053]">{f.nome}</strong> <span className="text-slate-500">· {quando(f.regra)} · incluído por você</span>
+                    </span>
                     <button
                       type="button"
                       aria-label={`Tirar ${f.nome}`}
-                      onClick={() => setLocais((l) => l.filter((x) => x.data !== f.data))}
-                      className="w-6 h-6 rounded-full hover:bg-white cursor-pointer"
+                      onClick={() => setDoUsuario((x) => ({ ...x, [chaveCidade]: (x[chaveCidade] || []).filter((y) => y.regra !== f.regra) }))}
+                      className="px-2 rounded-lg text-slate-500 hover:bg-slate-100 cursor-pointer"
                     >
                       ×
                     </button>
@@ -271,24 +531,124 @@ export default function JornadaHora() {
                 ))}
               </ul>
             )}
+
+            <div className="mt-3 p-3 rounded-xl bg-[#F4F7FB]">
+              <p className="text-sm font-semibold text-slate-700">Incluir feriado {chaveCidade ? `de ${chaveCidade}` : 'da cidade'}</p>
+              <div className="mt-2 flex flex-wrap items-end gap-2">
+                <label className="min-w-0">
+                  <span className="sr-only">Data do feriado municipal</span>
+                  <input
+                    id="hora-feriado-data"
+                    type="date"
+                    value={novoFeriado.data}
+                    onChange={(e) => setNovoFeriado((f) => ({ ...f, data: e.target.value }))}
+                    className={campo}
+                  />
+                </label>
+                <label className="min-w-0 flex-1 basis-48">
+                  <span className="sr-only">Nome do feriado municipal</span>
+                  <input
+                    id="hora-feriado-nome"
+                    type="text"
+                    placeholder="Nome (ex.: aniversário da cidade)"
+                    value={novoFeriado.nome}
+                    onChange={(e) => setNovoFeriado((f) => ({ ...f, nome: e.target.value }))}
+                    onKeyDown={(e) => e.key === 'Enter' && incluirFeriado()}
+                    className={campo}
+                  />
+                </label>
+                <button
+                  type="button"
+                  disabled={!novoFeriado.data}
+                  onClick={incluirFeriado}
+                  className="px-3 py-1.5 rounded-lg bg-[#0F2053] text-white font-bold disabled:opacity-40 cursor-pointer"
+                >
+                  Incluir
+                </button>
+              </div>
+              <label className="mt-2 flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                <input
+                  id="hora-feriado-todo-ano"
+                  type="checkbox"
+                  checked={novoFeriado.todoAno}
+                  onChange={(e) => setNovoFeriado((f) => ({ ...f, todoAno: e.target.checked }))}
+                  className="w-4 h-4"
+                />
+                Repete todo ano nesse dia e mês
+              </label>
+            </div>
           </div>
-          <label className="flex items-start gap-3 self-start p-3 rounded-xl bg-[#F4F7FB] cursor-pointer">
-            <input id="hora-trab-feriado" type="checkbox" checked={trabFeriados} onChange={(e) => setTrabFeriados(e.target.checked)} className="mt-1 w-4 h-4" />
-            <span className="text-sm text-slate-700">
-              <strong className="text-[#0F2053]">Trabalhar nos feriados</strong>
-              <span className="block">
-                Desmarcado, o feriado vira folga. Marcado, segue a semana padrão e o sistema avisa que o dia deve ser pago em dobro ou compensado.
+
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-slate-700">
+              Feriados no período ({feriados.length}){chaveCidade && ` · ${chaveCidade}`}
+            </p>
+            {feriados.length === 0 ? (
+              <p className="mt-1 text-sm text-slate-600">Nenhum feriado nas datas escolhidas.</p>
+            ) : (
+              <ul className="mt-2 max-h-80 overflow-auto rounded-xl border border-slate-200 divide-y divide-slate-100" aria-label="Feriados no período">
+                {feriados.map((f: any) => (
+                  <li key={f.data} className="px-3 py-2 flex flex-wrap items-baseline gap-x-2 text-sm">
+                    <span className="font-bold tabular-nums text-[#0F2053]">{dataBR(f.data)}</span>
+                    <span className="text-slate-500">{diaSemana(f.data)}</span>
+                    <span className="flex-1 min-w-[10rem] text-slate-800">{f.nome}</span>
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-xs font-bold ${f.tipo === 'nacional' ? 'bg-[#0F2053]/10 text-[#0F2053]' : f.tipo === 'municipal' ? 'bg-[#0478CA]/10 text-[#03609F]' : 'bg-amber-100 text-amber-900'}`}
+                    >
+                      {f.tipo === 'nacional' ? 'nacional' : f.tipo === 'municipal' ? 'municipal' : 'ponto facultativo'}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {facultativosLivres.length > 0 && (
+              <div className="mt-3">
+                <p className="text-sm text-slate-600">Pontos facultativos (só contam como feriado se a lei da cidade ou a convenção disser):</p>
+                <div className="mt-1 flex flex-wrap gap-x-5 gap-y-1">
+                  {facultativosLivres.map((f) => (
+                    <label key={f.id} className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                      <input
+                        id={`hora-facultativo-${f.id}`}
+                        type="checkbox"
+                        checked={facultativos.includes(f.id)}
+                        onChange={() => setFacultativos((x) => (x.includes(f.id) ? x.filter((y) => y !== f.id) : [...x, f.id]))}
+                        className="w-4 h-4"
+                      />
+                      {f.nome}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+            <label className="mt-3 flex items-start gap-3 p-3 rounded-xl bg-[#F4F7FB] cursor-pointer">
+              <input
+                id="hora-trab-feriado"
+                type="checkbox"
+                checked={trabFeriados}
+                onChange={(e) => setTrabFeriados(e.target.checked)}
+                className="mt-1 w-4 h-4"
+              />
+              <span className="text-sm text-slate-700">
+                <strong className="text-[#0F2053]">Trabalhar nos feriados</strong>
+                <span className="block">
+                  Desmarcado, o feriado vira folga. Marcado, segue a semana padrão e o sistema avisa que o dia deve ser pago em dobro ou compensado.
+                </span>
               </span>
-            </span>
-          </label>
+            </label>
+          </div>
         </div>
+        {dadosFer && (
+          <p className="mt-3 text-xs text-slate-500">
+            Feriados municipais: {dadosFer.fonte}. A lista cobre as 298 cidades sede de comarca; confira sempre a lei municipal.
+          </p>
+        )}
       </section>
 
-      {/* 3. Semana padrão */}
+      {/* 4. Semana padrão */}
       <section className={card} aria-labelledby="h-semana">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 id="h-semana" className="text-lg font-bold text-[#0F2053]">
-            3. Semana padrão
+            4. Semana padrão
           </h2>
           <p className={`text-sm font-bold ${totalModelo > REGIMES[regime].semanal ? 'text-red-700' : 'text-[#128C4A]'}`}>
             {horas(totalModelo)} na semana · {folgasModelo} {folgasModelo === 1 ? 'folga' : 'folgas'} · limite {regime}h
@@ -478,7 +838,7 @@ export default function JornadaHora() {
           <div className="mt-5 flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={() => baixarXlsx(nomeArquivo('xlsx'), abasEscala(a, { inicio, fim }) as never)}
+              onClick={() => baixarXlsx(nomeArquivo('xlsx'), abasEscala(a, { inicio, fim, cidade: chaveCidade, feriados }) as never)}
               className="inline-flex items-center gap-2 px-4 py-3 rounded-xl bg-[#1D6F42] hover:bg-[#185C37] text-white font-bold cursor-pointer"
             >
               <Icon name="sheet" className="w-5 h-5" /> Baixar Excel da escala
@@ -513,9 +873,65 @@ export default function JornadaHora() {
       {a && (
         <section className={card} aria-labelledby="h-escala">
           <h2 id="h-escala" className="text-lg font-bold text-[#0F2053]">
-            Escala dia a dia
+            Escala dia a dia · uma página por mês
           </h2>
           <p className="mt-1 text-sm text-slate-600">Mude qualquer dia: troque trabalho por folga ou ajuste os horários. A conferência acompanha na hora.</p>
+          {meses.length > 1 && (
+            <nav className="mt-3 flex flex-wrap items-center gap-1.5" aria-label="Meses da escala">
+              <button
+                type="button"
+                aria-label="Mês anterior"
+                disabled={iMes === 0}
+                onClick={() => setMesAberto(meses[iMes - 1].mes)}
+                className="w-9 h-9 rounded-lg border border-slate-300 bg-white font-bold text-[#0F2053] disabled:opacity-30 cursor-pointer"
+              >
+                ‹
+              </button>
+              {meses.map((m: any) => (
+                <button
+                  key={m.mes}
+                  type="button"
+                  aria-current={m.mes === mesAtivo.mes ? 'page' : undefined}
+                  aria-label={`Ver ${nomeDoMes(m.mes)}${m.alertas ? `, ${m.alertas} dias com alerta` : ''}`}
+                  onClick={() => setMesAberto(m.mes)}
+                  className={`relative px-2.5 h-9 rounded-lg border text-sm font-bold capitalize cursor-pointer ${m.mes === mesAtivo.mes ? 'bg-[#0F2053] border-[#0F2053] text-white' : 'bg-white border-slate-300 text-[#0F2053] hover:border-[#0478CA]'}`}
+                >
+                  {mesCurto(m.mes)}
+                  {m.alertas > 0 && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-red-600" aria-hidden="true" />}
+                </button>
+              ))}
+              <button
+                type="button"
+                aria-label="Próximo mês"
+                disabled={iMes === meses.length - 1}
+                onClick={() => setMesAberto(meses[iMes + 1].mes)}
+                className="w-9 h-9 rounded-lg border border-slate-300 bg-white font-bold text-[#0F2053] disabled:opacity-30 cursor-pointer"
+              >
+                ›
+              </button>
+            </nav>
+          )}
+          {mesAtivo && (
+            <div className="mt-4 flex flex-wrap items-baseline gap-x-5 gap-y-1">
+              <h3 className="text-xl font-bold text-[#0F2053]">{maiuscula(mesAtivo.rotulo)}</h3>
+              <p className="text-sm text-slate-700">
+                <strong className="tabular-nums">{mesAtivo.trabalhados}</strong> dias de trabalho · <strong className="tabular-nums">{mesAtivo.folgas}</strong>{' '}
+                folgas · <strong className="tabular-nums">{mesAtivo.feriados}</strong> {mesAtivo.feriados === 1 ? 'feriado' : 'feriados'} ·{' '}
+                <strong className="tabular-nums">{horas(mesAtivo.computados)}</strong> no mês
+                {mesAtivo.alertas > 0 && (
+                  <span className="text-red-700">
+                    {' '}
+                    · {mesAtivo.alertas} {mesAtivo.alertas === 1 ? 'dia' : 'dias'} com alerta
+                  </span>
+                )}
+              </p>
+              {meses.length > 1 && (
+                <p className="text-sm text-slate-500">
+                  página {iMes + 1} de {meses.length}
+                </p>
+              )}
+            </div>
+          )}
           <div className="mt-3 overflow-auto max-h-[75vh] border border-slate-200 rounded-xl">
             <table className="w-full min-w-[52rem] text-sm">
               <thead className="sticky top-0 z-10 bg-slate-50 text-left text-slate-600">
@@ -530,7 +946,7 @@ export default function JornadaHora() {
                   <th className="p-2 font-semibold">Alertas</th>
                 </tr>
               </thead>
-              {semanasTabela.map((s: any) => (
+              {semanasDoMes.map((s: any) => (
                 <tbody key={s.inicio}>
                   <tr className="bg-[#F4F7FB] border-t-2 border-slate-200">
                     <td colSpan={8} className="p-2">
