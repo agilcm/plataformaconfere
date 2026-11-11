@@ -11,11 +11,13 @@ import { dateText, downloadPdf } from '../lib/pdfReport.ts';
 import { blocosPdfSimples } from '../lib/simplesRelatorio.js';
 import { baixarXlsx } from '../lib/xlsx.js';
 import DonaEuzebiaGuias from './DonaEuzebiaGuias.tsx';
+import JornadaHora from './JornadaHora.tsx';
 
-type Aba = 'rh' | 'simples' | 'eleicao' | 'euzebia';
+type Aba = 'rh' | 'simples' | 'hora' | 'eleicao' | 'euzebia';
 const ABAS: { id: Aba; label: string; icon: string }[] = [
   { id: 'rh', label: 'Simulador de RH', icon: 'users' },
   { id: 'simples', label: 'Simples, pró-labore e regime', icon: 'chart' },
+  { id: 'hora', label: 'Hora', icon: 'clock' },
   { id: 'eleicao', label: 'Eleição', icon: 'check' },
   { id: 'euzebia', label: 'Dona Euzébia', icon: 'calc' },
 ];
@@ -583,6 +585,9 @@ const HASH: Record<string, Aba> = {
   '#simples': 'simples',
   '#pro-labore': 'simples',
   '#comparativo': 'simples',
+  '#hora': 'hora',
+  '#jornada': 'hora',
+  '#escala': 'hora',
   '#eleicao': 'eleicao',
   '#euzebia': 'euzebia',
   '#dona-euzebia': 'euzebia',
@@ -611,7 +616,7 @@ export default function DadosPage() {
       <main id="conteudo" className="bg-[#F4F7FB] min-h-screen py-10 sm:py-14">
         <Container>
           <h1 className="text-2xl sm:text-3xl font-bold font-display text-[#0F2053]">Dados</h1>
-          <p className="mt-1 text-[15px] text-slate-600">Simuladores internos de folha, pró-labore e regime tributário · parâmetros de {VIGENCIA}</p>
+          <p className="mt-1 text-[15px] text-slate-600">Simuladores internos de folha, pró-labore, regime tributário e jornada · parâmetros de {VIGENCIA}</p>
           <div role="tablist" aria-label="Simuladores" className="mt-6 flex flex-wrap gap-2">
             {ABAS.map((t) => (
               <button
@@ -631,6 +636,7 @@ export default function DadosPage() {
           </div>
           <div role="tabpanel" className="mt-6">
             {aba === 'simples' && <SimuladorSimplesProLabore />}
+            {aba === 'hora' && <JornadaHora />}
             {aba === 'euzebia' && <DonaEuzebiaGuias />}
             {aba === 'eleicao' && (
               <div className={card}>
