@@ -1,4 +1,4 @@
-// Painel eleitoral (/dados/eleicao/): resultado, votos por local e seção, votos por urna (até 3 candidatos, com o
+// Painel eleitoral (/eleicao/, sem link no site): resultado, votos por local e seção, votos por urna (até 3 candidatos, com o
 // botão "Traçar perfil"), comparecimento, perfil do eleitorado, histórico de candidatos e relatórios (Excel e PDF).
 // Dados do TSE recortados em public/dados-eleicao/.
 import { useEffect, useMemo, useState } from 'react';
@@ -456,10 +456,7 @@ function Moldura({ children }: { children: React.ReactNode }) {
       <Header page="dados" />
       <main id="conteudo" className="bg-[#F4F7FB] min-h-screen py-10 sm:py-14">
         <Container>
-          <a href={`${import.meta.env.BASE_URL}dados/`} className="text-sm font-bold text-[#0478CA] underline">
-            ← Voltar para Dados
-          </a>
-          <h1 className="mt-2 text-2xl sm:text-3xl font-bold font-display text-[#0F2053]">Eleições em dados</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold font-display text-[#0F2053]">Eleições em dados</h1>
           <p className="mt-1 mb-6 text-[15px] text-slate-600">Resultado, votos por local e por urna, perfil de onde cada candidato ganhou, comparecimento e eleitorado · dados do TSE</p>
           {children}
         </Container>

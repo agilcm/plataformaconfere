@@ -1,4 +1,4 @@
-// Painel eleitoral (/dados/eleicao/): cálculos sobre o recorte do TSE (scripts/eleicoes/gerar-dados.py).
+// Painel eleitoral (/eleicao/): cálculos sobre o recorte do TSE (scripts/eleicoes/gerar-dados.py).
 // Dados: turnout (comparecimento por seção), votes (votos por seção, cargo e votável) e profile (perfil do eleitorado).
 // Puro: sem tela, para testar.
 
