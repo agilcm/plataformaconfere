@@ -16,6 +16,7 @@ import {
   calcularDia,
   compararRegimes,
   dataBR,
+  explicarResultado,
   feriadosDoPeriodo,
   gerarEscala,
   horas,
@@ -48,6 +49,20 @@ const fimDoMes = (iso: string) => {
   return new Date(Date.UTC(a, m, 0, 12)).toISOString().slice(0, 10);
 };
 /** Véspera da mesma data n meses depois: 15/01 + 3 meses -> 14/04 */
+const proximoMes = (ym: string) => soma(fimDoMes(`${ym}-01`), 1).slice(0, 7);
+/** Meses de "AAAA-MM" de uma data até outra (no máximo 24) */
+const mesesEntre = (ini: string, fi: string) => {
+  const out: string[] = [];
+  if (!ini || !fi || fi < ini) return out;
+  for (let ym = ini.slice(0, 7); ym <= fi.slice(0, 7) && out.length < 24; ym = proximoMes(ym)) out.push(ym);
+  return out;
+};
+/** ["2027-01","2027-03","2027-05"] -> "jan, mar e mai de 2027" */
+const rotuloMeses = (lista: string[]) => {
+  const anos = new Map<string, string[]>();
+  for (const ym of lista) anos.set(ym.slice(0, 4), [...(anos.get(ym.slice(0, 4)) || []), MESES_CURTOS[Number(ym.slice(5, 7)) - 1]]);
+  return [...anos].map(([ano, ms]) => `${ms.length > 1 ? `${ms.slice(0, -1).join(', ')} e ${ms[ms.length - 1]}` : ms[0]} de ${ano}`).join(' · ');
+};
 const maisMeses = (iso: string, n: number) => {
   const [a, m, d] = iso.split('-').map(Number);
   const ultimo = new Date(Date.UTC(a, m - 1 + n + 1, 0, 12)).getUTCDate();
@@ -99,10 +114,16 @@ export default function JornadaHora() {
   const salvo = useMemo(lerSalvo, []);
   const [regime, setRegime] = useState<Regime>(salvo?.regime ?? 40);
   const [modo, setModo] = useState<'meses' | 'datas'>(salvo?.modo ?? 'meses');
-  const [inicio, setInicio] = useState<string>(salvo?.inicio ?? `${hojeISO().slice(0, 7)}-01`);
-  const [fim, setFim] = useState<string>(salvo?.fim ?? fimDoMes(hojeISO()));
-  const [anoMeses, setAnoMeses] = useState<number>(Number((salvo?.inicio ?? hojeISO()).slice(0, 4)));
-  const [ancora, setAncora] = useState('');
+  // modo "datas": as duas datas digitadas; modo "meses": os meses marcados (podem ser salteados)
+  const [dataIni, setDataIni] = useState<string>(salvo?.inicio ?? `${hojeISO().slice(0, 7)}-01`);
+  const [dataFim, setDataFim] = useState<string>(salvo?.fim ?? fimDoMes(hojeISO()));
+  const [mesesSel, setMesesSel] = useState<string[]>(
+    salvo?.mesesSel ?? (salvo?.inicio && salvo?.fim ? mesesEntre(salvo.inicio, salvo.fim) : [hojeISO().slice(0, 7)]),
+  );
+  const [anoMeses, setAnoMeses] = useState<number>(Number((mesesSel[0] ?? hojeISO()).slice(0, 4)));
+  const inicio = modo === 'meses' ? (mesesSel.length ? `${mesesSel[0]}-01` : '') : dataIni;
+  const fim = modo === 'meses' ? (mesesSel.length ? fimDoMes(`${mesesSel[mesesSel.length - 1]}-01`) : '') : dataFim;
+  const salteados = modo === 'meses' && mesesSel.some((ym, i) => i > 0 && proximoMes(mesesSel[i - 1]) !== ym);
   const [primeiroDia, setPrimeiroDia] = useState<0 | 1>(salvo?.primeiroDia ?? 1);
   const [semana, setSemana] = useState<DiaModelo[]>(salvo?.semana ?? semanaPadrao());
   const [folgasEscolhidas, setFolgasEscolhidas] = useState<number[]>(salvo?.folgas ?? [6, 0]);
@@ -127,8 +148,9 @@ export default function JornadaHora() {
         JSON.stringify({
           regime,
           modo,
-          inicio,
-          fim,
+          inicio: dataIni,
+          fim: dataFim,
+          mesesSel,
           primeiroDia,
           semana,
           folgas: folgasEscolhidas,
@@ -143,7 +165,7 @@ export default function JornadaHora() {
     } catch {
       /* sem armazenamento: segue sem salvar */
     }
-  }, [regime, modo, inicio, fim, primeiroDia, semana, folgasEscolhidas, cidade, doUsuario, desligados, facultativos, trabFeriados, ajustes]);
+  }, [regime, modo, dataIni, dataFim, mesesSel, primeiroDia, semana, folgasEscolhidas, cidade, doUsuario, desligados, facultativos, trabFeriados, ajustes]);
 
   // feriados municipais das comarcas de MG (TJMG), carregados uma vez
   useEffect(() => {
@@ -168,43 +190,49 @@ export default function JornadaHora() {
   const meus = doUsuario[chaveCidade] || [];
   const facultativosLivres = FACULTATIVOS.filter((f) => !f.regras.every((r) => daLista.some((x) => x.regra === r)));
 
-  const erroPeriodo = !inicio || !fim ? 'Informe as duas datas.' : fim < inicio ? 'A data final vem antes da inicial.' : '';
+  const erroPeriodo =
+    modo === 'meses' && !mesesSel.length
+      ? 'Marque pelo menos um mês.'
+      : !inicio || !fim
+        ? 'Informe as duas datas.'
+        : fim < inicio
+          ? 'A data final vem antes da inicial.'
+          : '';
+  const noPeriodo = (iso: string) => (salteados ? mesesSel.includes(iso.slice(0, 7)) : true);
   const feriados = useMemo(() => {
     if (erroPeriodo) return [];
     const municipais = [...daLista.filter((f) => !desligadosCidade.includes(f.regra)), ...meus];
-    return feriadosDoPeriodo(inicio, fim, { municipais, facultativos });
-  }, [inicio, fim, erroPeriodo, daLista, desligadosCidade, meus, facultativos]);
+    return feriadosDoPeriodo(inicio, fim, { municipais, facultativos }).filter((f) => noPeriodo(f.data));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inicio, fim, erroPeriodo, daLista, desligadosCidade, meus, facultativos, salteados, mesesSel]);
   const base = useMemo(() => {
     if (erroPeriodo) return [];
     try {
-      return gerarEscala({ inicio, fim, semana, feriados, trabalharFeriados: trabFeriados });
+      return gerarEscala({ inicio, fim, semana, feriados, trabalharFeriados: trabFeriados }).filter((d) => noPeriodo(d.data));
     } catch {
       return [];
     }
-  }, [inicio, fim, semana, feriados, trabFeriados, erroPeriodo]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inicio, fim, semana, feriados, trabFeriados, erroPeriodo, salteados, mesesSel]);
   const dias = useMemo(() => base.map((d: any) => ({ ...d, ...(ajustes[d.data] || {}) })), [base, ajustes]);
   const a = useMemo(() => (dias.length ? avaliarEscala(dias, { regime, primeiroDia }) : null), [dias, regime, primeiroDia]);
   const comparativo = useMemo(() => (dias.length ? compararRegimes(dias, primeiroDia) : []), [dias, primeiroDia]);
-  const ajustados = Object.keys(ajustes).filter((d) => d >= inicio && d <= fim).length;
+  const ajustados = Object.keys(ajustes).filter((d) => d >= inicio && d <= fim && noPeriodo(d)).length;
   const ordemDias = primeiroDia === 1 ? [1, 2, 3, 4, 5, 6, 0] : [0, 1, 2, 3, 4, 5, 6];
   const totalModelo = semana.reduce((t, d) => (d.trabalha ? t + calcularDia(d).computados : t), 0);
   const folgasModelo = semana.filter((d) => !d.trabalha).length;
   const regraDaData = regimeDaData(inicio || hojeISO()) as Regime;
-  const totalDias = erroPeriodo ? 0 : Math.round((Date.parse(`${fim}T12:00:00Z`) - Date.parse(`${inicio}T12:00:00Z`)) / 86400e3) + 1;
+  const spanDias = erroPeriodo ? 0 : Math.round((Date.parse(`${fim}T12:00:00Z`) - Date.parse(`${inicio}T12:00:00Z`)) / 86400e3) + 1;
+  const totalDias = salteados ? mesesSel.reduce((t, ym) => t + Number(fimDoMes(`${ym}-01`).slice(8)), 0) : spanDias;
+  const rotuloPeriodo = salteados ? rotuloMeses(mesesSel) : `${dataBR(inicio)} a ${dataBR(fim)}`;
+  const ex = useMemo(() => (a ? explicarResultado(a, { inicio, fim, comparativo }) : null), [a, inicio, fim, comparativo]);
+  const regraUnica = !erroPeriodo && regimeDaData(inicio) === regimeDaData(fim) ? (regimeDaData(inicio) as Regime) : null;
   const mudancas = erroPeriodo ? [] : mudancasDeRegra(inicio, fim);
 
-  const clicarMes = (ym: string) => {
-    if (ancora) {
-      const [x, y] = ancora <= ym ? [ancora, ym] : [ym, ancora];
-      setInicio(`${x}-01`);
-      setFim(fimDoMes(`${y}-01`));
-      setAncora('');
-    } else {
-      setInicio(`${ym}-01`);
-      setFim(fimDoMes(`${ym}-01`));
-      setAncora(ym);
-    }
-  };
+  // cada clique marca ou desmarca o mês
+  const alternarMes = (ym: string) => setMesesSel((x) => (x.includes(ym) ? x.filter((y) => y !== ym) : [...x, ym].sort()));
+  const mesesDoAno = (ano: number) => MESES_CURTOS.map((_, i) => `${ano}-${String(i + 1).padStart(2, '0')}`);
+  const anoTodoMarcado = mesesDoAno(anoMeses).every((ym) => mesesSel.includes(ym));
   const incluirFeriado = () => {
     if (!novoFeriado.data) return;
     const regra = novoFeriado.todoAno ? novoFeriado.data.slice(5) : novoFeriado.data;
@@ -233,7 +261,7 @@ export default function JornadaHora() {
       await downloadPdf(
         nomeArquivo('pdf'),
         `Escala ${regime}h`,
-        blocosEscala(a, { inicio, fim, dataText: dateText(), comparativo, primeiroDia, cidade: chaveCidade, feriados }) as never,
+        blocosEscala(a, { inicio, fim, dataText: dateText(), comparativo, primeiroDia, cidade: chaveCidade, feriados, rotuloPeriodo }) as never,
       );
     } finally {
       setGerando('');
@@ -320,9 +348,16 @@ export default function JornadaHora() {
                 type="button"
                 aria-pressed={modo === id}
                 onClick={() => {
+                  if (id === modo) return;
+                  if (id === 'meses') {
+                    const ms = erroPeriodo ? [] : mesesEntre(inicio, fim);
+                    if (ms.length) setMesesSel(ms);
+                    setAnoMeses(Number((ms[0] || hojeISO()).slice(0, 4)));
+                  } else if (!erroPeriodo) {
+                    setDataIni(inicio);
+                    setDataFim(fim);
+                  }
                   setModo(id);
-                  setAncora('');
-                  if (id === 'meses') setAnoMeses(Number((inicio || hojeISO()).slice(0, 4)));
                 }}
                 className={`px-3 py-1.5 rounded-lg text-sm font-bold cursor-pointer ${modo === id ? 'bg-white text-[#0F2053] shadow-sm' : 'text-slate-600 hover:text-[#0F2053]'}`}
               >
@@ -356,38 +391,48 @@ export default function JornadaHora() {
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  setInicio(`${anoMeses}-01-01`);
-                  setFim(`${anoMeses}-12-31`);
-                  setAncora('');
-                }}
+                onClick={() =>
+                  setMesesSel((x) => (anoTodoMarcado ? x.filter((ym) => !ym.startsWith(`${anoMeses}-`)) : [...new Set([...x, ...mesesDoAno(anoMeses)])].sort()))
+                }
                 className="ml-1 px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-sm font-semibold text-[#0F2053] hover:border-[#0478CA] cursor-pointer"
               >
-                Ano inteiro de {anoMeses}
+                {anoTodoMarcado ? `Desmarcar ${anoMeses}` : `Marcar ${anoMeses} inteiro`}
               </button>
+              {mesesSel.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setMesesSel([])}
+                  className="px-3 py-1.5 rounded-lg text-sm font-semibold text-slate-600 hover:text-[#0F2053] underline cursor-pointer"
+                >
+                  Limpar
+                </button>
+              )}
             </div>
             <div className="mt-3 grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-12 gap-2" role="group" aria-label={`Meses de ${anoMeses}`}>
               {MESES_CURTOS.map((m, i) => {
                 const ym = `${anoMeses}-${String(i + 1).padStart(2, '0')}`;
-                const marcado = !erroPeriodo && ym >= inicio.slice(0, 7) && ym <= fim.slice(0, 7);
+                const marcado = mesesSel.includes(ym);
                 return (
                   <button
                     key={ym}
                     type="button"
                     aria-pressed={marcado}
                     aria-label={nomeDoMes(ym)}
-                    onClick={() => clicarMes(ym)}
-                    className={`py-2 rounded-lg border-2 text-sm font-bold capitalize cursor-pointer ${ancora === ym ? 'ring-2 ring-offset-1 ring-[#0478CA]' : ''} ${marcado ? 'bg-[#0F2053] border-[#0F2053] text-white' : 'bg-white border-slate-300 text-[#0F2053] hover:border-[#0478CA]'}`}
+                    onClick={() => alternarMes(ym)}
+                    className={`py-2 rounded-lg border-2 text-sm font-bold capitalize cursor-pointer ${marcado ? 'bg-[#0F2053] border-[#0F2053] text-white' : 'bg-white border-slate-300 text-[#0F2053] hover:border-[#0478CA]'}`}
                   >
+                    {marcado && (
+                      <span aria-hidden="true" className="mr-1">
+                        ✓
+                      </span>
+                    )}
                     {m}
                   </button>
                 );
               })}
             </div>
             <p className="mt-2 text-sm text-slate-600">
-              {ancora
-                ? `Começa em ${nomeDoMes(ancora)}. Clique no último mês do período (pode trocar o ano nas setas) ou em outro trabalho.`
-                : 'Clique num mês para escolher só ele. Para um período, clique no primeiro mês e depois no último.'}
+              Clique nos meses que quiser: cada clique marca ou desmarca. Dá para marcar meses salteados e de anos diferentes (troque o ano nas setas).
             </p>
           </div>
         ) : (
@@ -395,27 +440,27 @@ export default function JornadaHora() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl">
               <label>
                 <span className="block text-sm font-semibold text-slate-700 mb-1">Data inicial</span>
-                <input id="hora-inicio" type="date" value={inicio} onChange={(e) => setInicio(e.target.value)} className={campo} />
-                {inicio && <span className="block mt-1 text-xs text-slate-500">{diaSemana(inicio)}</span>}
+                <input id="hora-inicio" type="date" value={dataIni} onChange={(e) => setDataIni(e.target.value)} className={campo} />
+                {dataIni && <span className="block mt-1 text-xs text-slate-500">{diaSemana(dataIni)}</span>}
               </label>
               <label>
                 <span className="block text-sm font-semibold text-slate-700 mb-1">Data final</span>
-                <input id="hora-fim" type="date" value={fim} onChange={(e) => setFim(e.target.value)} className={campo} />
-                {fim && <span className="block mt-1 text-xs text-slate-500">{diaSemana(fim)}</span>}
+                <input id="hora-fim" type="date" value={dataFim} onChange={(e) => setDataFim(e.target.value)} className={campo} />
+                {dataFim && <span className="block mt-1 text-xs text-slate-500">{diaSemana(dataFim)}</span>}
               </label>
             </div>
             <div className="mt-3 flex flex-wrap gap-2 text-sm">
               <span className="self-center font-semibold text-slate-700">Atalhos:</span>
               {[
-                ['4 semanas', () => setFim(soma(inicio, 27))],
-                ['Mês da data inicial', () => (setInicio(`${inicio.slice(0, 7)}-01`), setFim(fimDoMes(inicio)))],
-                ['3 meses', () => setFim(maisMeses(inicio, 3))],
-                ['12 meses', () => setFim(maisMeses(inicio, 12))],
+                ['4 semanas', () => setDataFim(soma(dataIni, 27))],
+                ['Mês da data inicial', () => (setDataIni(`${dataIni.slice(0, 7)}-01`), setDataFim(fimDoMes(dataIni)))],
+                ['3 meses', () => setDataFim(maisMeses(dataIni, 3))],
+                ['12 meses', () => setDataFim(maisMeses(dataIni, 12))],
               ].map(([rot, fn]) => (
                 <button
                   key={rot as string}
                   type="button"
-                  disabled={!inicio}
+                  disabled={!dataIni}
                   onClick={fn as () => void}
                   className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white font-semibold text-[#0F2053] hover:border-[#0478CA] cursor-pointer disabled:opacity-40"
                 >
@@ -436,18 +481,19 @@ export default function JornadaHora() {
           </label>
           {!erroPeriodo && (
             <p className="pb-2 text-[15px] text-slate-700" aria-live="polite">
-              <strong className="text-[#0F2053]">
-                {dataBR(inicio)} a {dataBR(fim)}
-              </strong>{' '}
-              · {diaSemana(inicio)} a {diaSemana(fim)} ·{' '}
-              {inicio.endsWith('-01') && fim === fimDoMes(fim)
-                ? `${quantosMeses(inicio, fim)} ${quantosMeses(inicio, fim) === 1 ? 'mês' : 'meses'} · ${totalDias} dias`
-                : `${totalDias} dias · ${quantosMeses(inicio, fim) === 1 ? 'dentro de 1 mês' : `passa por ${quantosMeses(inicio, fim)} meses`}`}
+              <strong className="text-[#0F2053]">{rotuloPeriodo}</strong>{' '}
+              {salteados
+                ? `· ${mesesSel.length} meses salteados · ${totalDias} dias`
+                : `· ${diaSemana(inicio)} a ${diaSemana(fim)} · ${
+                    inicio.endsWith('-01') && fim === fimDoMes(fim)
+                      ? `${quantosMeses(inicio, fim)} ${quantosMeses(inicio, fim) === 1 ? 'mês' : 'meses'} · ${totalDias} dias`
+                      : `${totalDias} dias · ${quantosMeses(inicio, fim) === 1 ? 'dentro de 1 mês' : `passa por ${quantosMeses(inicio, fim)} meses`}`
+                  }`}
             </p>
           )}
         </div>
         {erroPeriodo && <p className="mt-2 text-sm font-semibold text-red-700">{erroPeriodo}</p>}
-        {totalDias > LIMITE_DIAS && <p className="mt-2 text-sm font-semibold text-red-700">Escolha um período de até 24 meses.</p>}
+        {spanDias > LIMITE_DIAS && <p className="mt-2 text-sm font-semibold text-red-700">Do primeiro ao último dia, o período pode ter até 24 meses.</p>}
         {mudancas.map((m) => (
           <p key={m.data} className="mt-2 p-3 rounded-xl bg-amber-50 border border-amber-200 text-sm text-amber-900">
             Em {dataBR(m.data)} a regra muda de {m.de} para {m.para} horas (EC 141/2026). A conferência usa uma regra só para o período todo: confira a parte
@@ -768,10 +814,30 @@ export default function JornadaHora() {
             {a.resumo.dentro ? `Dentro da regra de ${regime} horas` : `Fora da regra de ${regime} horas`}
           </h2>
           <p className="mt-1 text-[15px] text-slate-700">
-            {dataBR(inicio)} a {dataBR(fim)} · {a.resumo.erros} {a.resumo.erros === 1 ? 'problema' : 'problemas'} e {a.resumo.atencao}{' '}
+            {rotuloPeriodo} · {a.resumo.erros} {a.resumo.erros === 1 ? 'problema' : 'problemas'} e {a.resumo.atencao}{' '}
             {a.resumo.atencao === 1 ? 'ponto' : 'pontos'} de atenção
             {ajustados > 0 && ` · ${ajustados} ${ajustados === 1 ? 'dia ajustado' : 'dias ajustados'} à mão`}
           </p>
+
+          {ex && ex.frases.length > 0 && (
+            <div className={`mt-4 p-4 rounded-xl ${a.resumo.dentro ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
+              <h3 className="font-bold text-[#0F2053]">Entenda o resultado</h3>
+              <ul className="mt-2 space-y-1.5 list-disc pl-5 text-[15px] text-slate-800">
+                {ex.frases.map((f) => (
+                  <li key={f}>{f}</li>
+                ))}
+              </ul>
+              {regraUnica && regraUnica !== regime && (
+                <button
+                  type="button"
+                  onClick={() => setRegime(regraUnica)}
+                  className="mt-3 px-4 py-2 rounded-lg bg-[#0F2053] text-white font-bold cursor-pointer"
+                >
+                  Conferir na regra de {regraUnica} horas (a que vale nessas datas)
+                </button>
+              )}
+            </div>
+          )}
 
           <ul className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3" aria-label="Comparativo entre as regras">
             {comparativo.map((c: any) => (
@@ -838,7 +904,9 @@ export default function JornadaHora() {
           <div className="mt-5 flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={() => baixarXlsx(nomeArquivo('xlsx'), abasEscala(a, { inicio, fim, cidade: chaveCidade, feriados }) as never)}
+              onClick={() =>
+                baixarXlsx(nomeArquivo('xlsx'), abasEscala(a, { inicio, fim, cidade: chaveCidade, feriados, comparativo, rotuloPeriodo }) as never)
+              }
               className="inline-flex items-center gap-2 px-4 py-3 rounded-xl bg-[#1D6F42] hover:bg-[#185C37] text-white font-bold cursor-pointer"
             >
               <Icon name="sheet" className="w-5 h-5" /> Baixar Excel da escala

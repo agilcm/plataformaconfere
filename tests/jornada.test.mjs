@@ -2,6 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   abasEscala,
+  agruparProblemas,
+  explicarResultado,
   avaliarEscala,
   blocosEscala,
   calcularDia,
@@ -186,4 +188,56 @@ test('uma página por mês: meses da escala, abas do Excel e páginas do PDF', (
   assert.equal(b.filter((x) => x.type === 'pagebreak').length, 13, 'cada mês começa numa página e a lei também');
   for (const t of b.filter((x) => x.type === 'table')) for (const r of t.rows) assert.equal(r.length, t.widths.length);
   assert.match(b[2].text, /Cataguases/);
+});
+
+test('entenda o resultado: 8h24 por dia na regra de 40h (jan a mai/2027, fase de 42h)', () => {
+  const inicio = '2027-01-01';
+  const fim = '2027-05-31';
+  // o caso do relatório: Cataguases (padroeira e Corpus Christi) com Carnaval marcado
+  const feriados = feriadosDoPeriodo(inicio, fim, {
+    municipais: [
+      { regra: '05-22', nome: 'Dia de Santa Rita' },
+      { regra: 'P+60', nome: 'Corpus Christi' },
+    ],
+    facultativos: ['carnaval'],
+  });
+  const dias = gerarEscala({ inicio, fim, semana: semanaPadrao({ saida: '17:24' }), feriados });
+  const a = avaliarEscala(dias, { regime: 40 });
+  assert.deepEqual(
+    [a.resumo.erros, a.resumo.atencao, a.resumo.mediaSemanal],
+    [17, 101, 2400],
+    'os números do relatório: 17 problemas, 101 atenções, média 40h',
+  );
+  const comparativo = compararRegimes(dias);
+  const g = agruparProblemas(a.problemas);
+  assert.deepEqual(
+    g.map((x) => [x.regra, x.nivel]),
+    [
+      ['Limite semanal', 'erro'],
+      ['Mais de 8h no dia', 'atencao'],
+    ],
+    'os problemas vêm antes dos pontos de atenção',
+  );
+  const ex = explicarResultado(a, { inicio, fim, comparativo });
+  assert.match(ex.titulo, /não cabe na regra de 40 horas/);
+  assert.ok(ex.frases.some((f) => /semanas passam das 40h: 5 dias de trabalho somam 42h na semana, 2h acima do limite/.test(f)));
+  assert.ok(ex.frases.some((f) => /o limite vale para cada semana, não para a média/i.test(f)));
+  assert.ok(ex.frases.some((f) => /cada dia pode ter até 8h\./.test(f)));
+  assert.ok(ex.frases.some((f) => /vale a regra de 42 horas, e não a de 40\. Na regra de 42 horas a escala cabe/.test(f)));
+  const ex42 = explicarResultado(avaliarEscala(dias, { regime: 42 }), { inicio, fim, comparativo });
+  assert.match(ex42.titulo, /cabe na regra de 42 horas/);
+  assert.ok(ex42.frases.some((f) => /convenção ou acordo coletivo/.test(f)));
+  // PDF: problemas agrupados (uma linha por regra) e a explicação logo no começo
+  const b = blocosEscala(a, { inicio, fim, dataText: 'hoje', comparativo, feriados });
+  const tabela = b[b.findIndex((x) => x.type === 'heading' && x.text === 'O que precisa de ajuste') + 1];
+  assert.equal(tabela.rows.length, 2);
+  assert.ok(b.some((x) => x.type === 'heading' && x.text === 'Entenda o resultado'));
+});
+
+test('meses salteados: não emenda dias seguidos entre um mês e outro', () => {
+  const semana = semanaPadrao({ folgas: [] }); // trabalha todo dia
+  const tudo = gerarEscala({ inicio: '2027-01-25', fim: '2027-03-06', semana });
+  const salteado = tudo.filter((d) => d.data <= '2027-01-29' || d.data >= '2027-03-01');
+  const a = avaliarEscala(salteado, { regime: 44 });
+  assert.equal(problemasDe(a, 'Dias seguidos de trabalho').length, 0, '5 dias em janeiro + 6 em março não são 11 seguidos');
 });

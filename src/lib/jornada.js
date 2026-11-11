@@ -358,7 +358,10 @@ export function avaliarEscala(dias, { regime, primeiroDia = 1 }) {
     }
   }
   let seguidos = 0;
+  let ontem = '';
   for (const l of linhas) {
+    if (ontem && somaDias(ontem, 1) !== l.data) seguidos = 0; // meses salteados: não emenda
+    ontem = l.data;
     seguidos = l.trabalha ? seguidos + 1 : 0;
     if (seguidos === 7) {
       add(
@@ -381,7 +384,10 @@ export function avaliarEscala(dias, { regime, primeiroDia = 1 }) {
   }
   const semanas = [];
   let semDomingo = 0;
+  let semanaAnterior = '';
   for (const [ini, ds] of grupos) {
+    if (semanaAnterior && somaDias(semanaAnterior, 7) !== ini) semDomingo = 0;
+    semanaAnterior = ini;
     const completa = ds.length === 7;
     const computados = ds.reduce((t, l) => t + (l.trabalha && l.valido ? l.computados : 0), 0);
     const folgas = ds.filter((l) => !l.trabalha).length;
@@ -488,6 +494,94 @@ export function avaliarEscala(dias, { regime, primeiroDia = 1 }) {
   };
 }
 
+/**
+ * Problemas agrupados por regra (primeiro os que tiram da lei, depois os de atenção; os mais frequentes antes),
+ * com a data de cada ocorrência (a semana conta pela data de início)
+ */
+export function agruparProblemas(problemas) {
+  const m = new Map();
+  for (const p of problemas) {
+    if (!m.has(p.regra)) m.set(p.regra, { regra: p.regra, nivel: p.nivel, base: p.base, itens: [] });
+    m.get(p.regra).itens.push(p);
+  }
+  return [...m.values()]
+    .map((g) => ({ ...g, quantidade: g.itens.length, datas: g.itens.map((p) => p.datas[0]).filter(Boolean) }))
+    .sort((x, y) => (x.nivel === y.nivel ? y.quantidade - x.quantidade : x.nivel === 'erro' ? -1 : 1));
+}
+
+/** "04/01, 11/01, 18/01 e mais 14" */
+export function listaDeDatas(datas, max = 8) {
+  const curtas = datas.map((d) => dataBR(d).slice(0, 5));
+  return curtas.length <= max ? curtas.join(', ') : `${curtas.slice(0, max).join(', ')} e mais ${curtas.length - max}`;
+}
+
+const mais = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
+
+/**
+ * Explica o resultado em frases curtas: por que cabe ou não cabe, o que fazer e qual regra vale pela data.
+ * @param {any} a resultado de avaliarEscala
+ * @param {{ inicio: string, fim: string, comparativo?: { regime: number, dentro: boolean }[] }} o
+ * @returns {{ titulo: string, frases: string[] }}
+ */
+export function explicarResultado(a, { inicio, fim, comparativo = [] }) {
+  const r = a.regime;
+  const grupos = agruparProblemas(a.problemas);
+  const frases = [];
+  const regraIni = regimeDaData(inicio);
+  const regraFim = regimeDaData(fim);
+  const regraData = regraIni === regraFim ? regraIni : null;
+  const oito = grupos.find((g) => g.regra === 'Mais de 8h no dia');
+
+  for (const g of grupos.filter((x) => x.nivel === 'erro')) {
+    if (g.regra === 'Limite semanal') {
+      const acima = a.semanas.filter((x) => x.excesso > 0);
+      const conta = new Map();
+      for (const x of acima) conta.set(x.computados, (conta.get(x.computados) || 0) + 1);
+      const tipica = [...conta.entries()].sort((x, y) => y[1] - x[1])[0][0];
+      const semanaTipica = acima.find((x) => x.computados === tipica);
+      const diasTrab = a.dias.filter((d) => d.trabalha && d.data >= semanaTipica.inicio && d.data <= semanaTipica.fim).length;
+      frases.push(
+        `${mais(acima.length, 'semana passa', 'semanas passam')} das ${r.id}h: ${diasTrab ? `${diasTrab} dias de trabalho somam ` : ''}${horas(tipica)} na semana, ${horas(tipica - r.semanal)} acima do limite${acima.length > 1 ? ` (${horas(a.resumo.excesso)} no período)` : ''}.`,
+      );
+      if (a.resumo.mediaSemanal != null && a.resumo.mediaSemanal <= r.semanal)
+        frases.push(
+          `A média por semana (${horas(a.resumo.mediaSemanal)}) fica dentro só porque as semanas com feriado têm menos horas. O limite vale para cada semana, não para a média.`,
+        );
+      if (diasTrab) frases.push(`Para caber em ${r.id}h com ${diasTrab} dias de trabalho, cada dia pode ter até ${horas(Math.floor(r.semanal / diasTrab))}.`);
+    } else if (g.regra === 'Duas folgas por semana (5x2)') {
+      frases.push(
+        `${mais(g.quantidade, 'semana tem', 'semanas têm')} menos de duas folgas. Na regra de ${r.id}h são dois dias de repouso por semana (escala 5x2).`,
+      );
+    } else {
+      frases.push(`${g.regra}: ${mais(g.quantidade, 'vez', 'vezes')}. Exemplo: ${g.itens[0].texto}`);
+    }
+  }
+
+  const cabem = comparativo.filter((c) => c.dentro).map((c) => c.regime);
+  if (regraData && regraData !== r.id) {
+    const cabe = cabem.includes(regraData);
+    frases.push(
+      `Pela EC 141/2026, de ${dataBR(inicio)} a ${dataBR(fim)} vale a regra de ${regraData} horas, e não a de ${r.id}. Na regra de ${regraData} horas a escala ${cabe ? 'cabe' : 'também não cabe'}.`,
+    );
+  } else if (!regraData) {
+    frases.push(`O período passa por uma mudança de regra da EC 141/2026 (${regraIni}h no começo e ${regraFim}h no fim): confira cada parte com a sua regra.`);
+  }
+  if (oito) {
+    const exige =
+      r.id === 42 || regraData === 42
+        ? 'Na fase de 42 horas, passar de 8h por dia só vale com convenção ou acordo coletivo.'
+        : 'Passar de 8h por dia exige acordo de compensação ou convenção coletiva.';
+    frases.push(`${mais(oito.quantidade, 'dia tem', 'dias têm')} mais de 8h de trabalho. ${exige}`);
+  }
+  for (const g of grupos.filter((x) => x.nivel === 'atencao' && x.regra !== 'Mais de 8h no dia'))
+    frases.push(`${g.regra}: ${mais(g.quantidade, 'vez', 'vezes')} (${g.itens[0].texto.replace(/^[^:]*: /, '')})`);
+
+  const titulo = a.resumo.dentro
+    ? `A escala cabe na regra de ${r.id} horas.`
+    : `A escala não cabe na regra de ${r.id} horas: ${mais(a.resumo.erros, 'problema', 'problemas')}.`;
+  return { titulo, frases };
+}
+
 /** A mesma escala nas três regras: cabe em 44h, 42h e 40h? */
 export function compararRegimes(dias, primeiroDia = 1) {
   return [44, 42, 40].map((r) => {
@@ -537,9 +631,9 @@ const horasDecimais = (min) => Math.round((min / 60) * 100) / 100;
 /**
  * Excel: os meses, uma aba por mês com a escala dia a dia, as semanas, os feriados, a verificação e a lei
  * @param {any} a resultado de avaliarEscala
- * @param {{ inicio: string, fim: string, cidade?: string, feriados?: { data: string, nome: string, tipo: string }[] }} o
+ * @param {{ inicio: string, fim: string, cidade?: string, feriados?: { data: string, nome: string, tipo: string }[], comparativo?: any[], rotuloPeriodo?: string }} o
  */
-export function abasEscala(a, { inicio, fim, cidade = '', feriados = [] }) {
+export function abasEscala(a, { inicio, fim, cidade = '', feriados = [], comparativo = [], rotuloPeriodo = '' }) {
   const r = a.regime;
   const meses = mesesDaEscala(a);
   return [
@@ -637,9 +731,10 @@ export function abasEscala(a, { inicio, fim, cidade = '', feriados = [] }) {
         [
           '',
           'Resultado',
-          `${a.resumo.dentro ? 'Dentro' : 'Fora'} da regra de ${r.id} horas (${dataBR(inicio)} a ${dataBR(fim)}${cidade ? `, ${cidade}` : ''}): ${a.resumo.erros} problema(s) e ${a.resumo.atencao} ponto(s) de atenção.`,
+          `${a.resumo.dentro ? 'Dentro' : 'Fora'} da regra de ${r.id} horas (${rotuloPeriodo || `${dataBR(inicio)} a ${dataBR(fim)}`}${cidade ? `, ${cidade}` : ''}): ${a.resumo.erros} problema(s) e ${a.resumo.atencao} ponto(s) de atenção.`,
           r.base,
         ],
+        ...explicarResultado(a, { inicio, fim, comparativo }).frases.map((f) => ['', 'Entenda', f, '']),
         ...a.problemas.map((p) => [p.nivel === 'erro' ? 'Problema' : 'Atenção', p.regra, p.texto, p.base]),
       ],
     },
@@ -657,9 +752,9 @@ export function abasEscala(a, { inicio, fim, cidade = '', feriados = [] }) {
 /**
  * PDF: resultado, comparação das regras, meses, feriados, problemas, semanas, uma página por mês e a lei
  * @param {any} a resultado de avaliarEscala
- * @param {{ inicio: string, fim: string, dataText: string, comparativo?: any[], primeiroDia?: 0|1, cidade?: string, feriados?: { data: string, nome: string, tipo: string }[] }} o
+ * @param {{ inicio: string, fim: string, dataText: string, comparativo?: any[], primeiroDia?: 0|1, cidade?: string, feriados?: { data: string, nome: string, tipo: string }[], rotuloPeriodo?: string }} o
  */
-export function blocosEscala(a, { inicio, fim, dataText, comparativo, primeiroDia = 1, cidade = '', feriados = [] }) {
+export function blocosEscala(a, { inicio, fim, dataText, comparativo, primeiroDia = 1, cidade = '', feriados = [], rotuloPeriodo = '' }) {
   const r = a.regime;
   const res = a.resumo;
   const meses = mesesDaEscala(a);
@@ -668,7 +763,7 @@ export function blocosEscala(a, { inicio, fim, dataText, comparativo, primeiroDi
     { type: 'title', text: `Escala de trabalho · regra de ${r.id} horas` },
     {
       type: 'para',
-      text: `Período de ${dataBR(inicio)} a ${dataBR(fim)}${cidade ? ` · ${cidade}` : ''} · semana de ${primeiroDia === 1 ? 'segunda a domingo' : 'domingo a sábado'} · ${r.detalhe}.`,
+      text: `Período: ${rotuloPeriodo || `${dataBR(inicio)} a ${dataBR(fim)}`}${cidade ? ` · ${cidade}` : ''} · semana de ${primeiroDia === 1 ? 'segunda a domingo' : 'domingo a sábado'} · ${r.detalhe}.`,
       size: 9.5,
       color: 'muted',
       gapAfter: 4,
@@ -698,6 +793,8 @@ export function blocosEscala(a, { inicio, fim, dataText, comparativo, primeiroDi
       ],
     },
   ];
+  const ex = explicarResultado(a, { inicio, fim, comparativo: comparativo || [] });
+  if (ex.frases.length) b.push({ type: 'heading', text: 'Entenda o resultado' }, { type: 'bullets', items: ex.frases });
   if (comparativo?.length)
     b.push({
       type: 'table',
@@ -737,15 +834,26 @@ export function blocosEscala(a, { inicio, fim, dataText, comparativo, primeiroDi
     });
   }
   if (a.problemas.length) {
+    const semanais = new Set(['Limite semanal', 'Duas folgas por semana (5x2)', 'Repouso semanal', 'Descanso semanal de 35h', 'Folga no domingo']);
     b.push({ type: 'heading', text: 'O que precisa de ajuste' });
     b.push({
       type: 'table',
       size: 8,
-      widths: [0.12, 0.2, 0.43, 0.25],
-      header: ['Nível', 'Regra', 'O que aconteceu', 'Base legal'],
-      rows: a.problemas.slice(0, 120).map((p) => [{ text: p.nivel === 'erro' ? 'Problema' : 'Atenção', bold: p.nivel === 'erro' }, p.regra, p.texto, p.base]),
+      widths: [0.11, 0.18, 0.1, 0.36, 0.25],
+      header: ['Nível', 'Regra', 'Quantas', 'Quando (dia ou início da semana)', 'Base legal'],
+      headerAlign: ['left', 'left', 'center', 'left', 'left'],
+      rows: agruparProblemas(a.problemas).map((g) => [
+        { text: g.nivel === 'erro' ? 'Problema' : 'Atenção', bold: g.nivel === 'erro' },
+        g.regra,
+        {
+          text: `${g.quantidade} ${semanais.has(g.regra) ? (g.quantidade === 1 ? 'semana' : 'semanas') : g.quantidade === 1 ? 'vez' : 'vezes'}`,
+          align: 'center',
+        },
+        listaDeDatas(g.datas, 10),
+        g.base,
+      ]),
     });
-    if (a.problemas.length > 120) b.push({ type: 'note', text: `Mais ${a.problemas.length - 120} itens no Excel.` });
+    b.push({ type: 'note', text: 'O texto de cada ocorrência está na aba Verificação do Excel; os alertas de cada dia estão nas páginas dos meses.' });
   }
   b.push({ type: 'heading', text: 'Semanas' });
   b.push({
