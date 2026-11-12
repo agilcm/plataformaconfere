@@ -1,5 +1,9 @@
 import { OPERATIONAL_GROUPS } from '../data/servicesData.ts';
 import { Container, Icon, SectionHeader } from './ui.tsx';
+import { rotaServico } from '../lib/routes.ts';
+
+// Página própria de cada grupo de serviços
+const PAGINA: Record<string, string> = { facilities: 'terceirizacao', urbana: 'limpeza-urbana', suprimentos: 'suprimentos' };
 
 interface OperationalHubProps {
   onQuote: (serviceId: string) => void;
@@ -27,7 +31,7 @@ export default function OperationalHub({ onQuote }: OperationalHubProps) {
               <ul className="mt-5 space-y-2.5 flex-1">
                 {g.items.map((it) => (
                   <li key={it} className="flex items-start gap-2.5 text-base text-slate-800">
-                    <Icon name="check" className="w-5 h-5 mt-0.5 text-[#0478CA] shrink-0" />
+                    <Icon name="check" className="w-5 h-5 mt-0.5 text-[#0369B3] shrink-0" />
                     {it}
                   </li>
                 ))}
@@ -35,11 +39,19 @@ export default function OperationalHub({ onQuote }: OperationalHubProps) {
               <button
                 type="button"
                 onClick={() => onQuote(g.quoteServiceId)}
-                className="mt-7 inline-flex items-center justify-center gap-2 w-full px-5 py-3 text-base font-bold text-[#0478CA] bg-white border-2 border-[#0478CA]/25 hover:border-[#0478CA] rounded-xl transition-colors cursor-pointer"
+                className="mt-7 inline-flex items-center justify-center gap-2 w-full px-5 py-3 text-base font-bold text-[#0369B3] bg-white border-2 border-[#0478CA]/25 hover:border-[#0478CA] rounded-xl transition-colors cursor-pointer"
               >
                 Pedir orçamento
                 <Icon name="arrow" className="w-5 h-5" />
               </button>
+              {PAGINA[g.id] && (
+                <a
+                  href={rotaServico(PAGINA[g.id])}
+                  className="mt-3 self-center text-base font-bold text-[#0369B3] hover:text-[#03609F] underline underline-offset-4"
+                >
+                  Saiba mais<span className="sr-only"> sobre {g.title}</span>
+                </a>
+              )}
             </article>
           ))}
         </div>

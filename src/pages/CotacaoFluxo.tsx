@@ -333,7 +333,7 @@ export default function CotacaoFluxo({
                             {esc && (
                               <p className="mt-1 text-xs text-slate-500 line-clamp-2">
                                 {esc.link ? (
-                                  <a href={esc.link} target="_blank" rel="noopener noreferrer" className="text-[#0478CA] font-semibold underline">
+                                  <a href={esc.link} target="_blank" rel="noopener noreferrer" className="text-[#0369B3] font-semibold underline">
                                     link de referência
                                   </a>
                                 ) : (
@@ -344,7 +344,7 @@ export default function CotacaoFluxo({
                             )}
                           </>
                         ) : (
-                          <span className="text-slate-400">Não encontrado nas planilhas</span>
+                          <span className="text-slate-500">Não encontrado nas planilhas</span>
                         )}
                       </td>
                     </tr>

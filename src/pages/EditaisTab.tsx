@@ -505,7 +505,7 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
                 </div>
                 <label className="relative flex-1 min-w-0 lg:min-w-[20rem]">
                   <span className="sr-only">Buscar editais</span>
-                  <Icon name="search" className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                  <Icon name="search" className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
                   <input
                     type="search"
                     value={busca}
@@ -522,7 +522,7 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
                     aria-controls="filtro-cnae-livre"
                     onClick={() => setPainelCnaes((v) => !v)}
                     className={`shrink-0 inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-base font-bold border-2 transition-colors cursor-pointer ${
-                      painelCnaes || livres.length ? 'border-[#0478CA] text-[#0478CA] bg-[#0478CA]/5' : 'border-slate-300 text-slate-700 hover:border-[#0478CA]'
+                      painelCnaes || livres.length ? 'border-[#0478CA] text-[#0369B3] bg-[#0478CA]/5' : 'border-slate-300 text-slate-700 hover:border-[#0478CA]'
                     }`}
                   >
                     <Icon name="building" className="w-5 h-5" />
@@ -538,7 +538,7 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
                         setSegmento(e.target.value);
                         setPainelCnaes(false);
                       }}
-                      className={`w-full sm:w-44 py-1.5 bg-transparent text-base font-bold focus:outline-none cursor-pointer truncate ${segmento ? 'text-[#0478CA]' : 'text-slate-700'}`}
+                      className={`w-full sm:w-44 py-1.5 bg-transparent text-base font-bold focus:outline-none cursor-pointer truncate ${segmento ? 'text-[#0369B3]' : 'text-slate-700'}`}
                     >
                       <option value="">CNAEs da Ágil CM</option>
                       {SEGMENTOS.map((s) => (
@@ -556,7 +556,7 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
                     aria-controls="filtro-cnaes"
                     onClick={() => setPainelCnaes((v) => !v)}
                     className={`shrink-0 inline-flex items-center justify-center gap-2 px-3 sm:px-4 py-3 rounded-xl text-base font-bold border-2 transition-colors cursor-pointer ${
-                      painelCnaes || cnaesSel.length ? 'border-[#0478CA] text-[#0478CA] bg-[#0478CA]/5' : 'border-slate-300 text-slate-700 hover:border-[#0478CA]'
+                      painelCnaes || cnaesSel.length ? 'border-[#0478CA] text-[#0369B3] bg-[#0478CA]/5' : 'border-slate-300 text-slate-700 hover:border-[#0478CA]'
                     }`}
                   >
                     <Icon name="building" className="w-5 h-5" />
@@ -569,7 +569,7 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
                   aria-controls="filtro-locais"
                   onClick={() => setPainelLocais((v) => !v)}
                   className={`shrink-0 inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-base font-bold border-2 transition-colors cursor-pointer whitespace-nowrap ${
-                    painelLocais || locais.length ? 'border-[#0478CA] text-[#0478CA] bg-[#0478CA]/5' : 'border-slate-300 text-slate-700 hover:border-[#0478CA]'
+                    painelLocais || locais.length ? 'border-[#0478CA] text-[#0369B3] bg-[#0478CA]/5' : 'border-slate-300 text-slate-700 hover:border-[#0478CA]'
                   }`}
                 >
                   <Icon name="gavel" className="w-5 h-5" />
@@ -583,7 +583,7 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
                     aria-controls="filtro-avancado"
                     onClick={() => setPainelMais((v) => !v)}
                     className={`shrink-0 inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-base font-bold border-2 transition-colors cursor-pointer whitespace-nowrap ${
-                      painelMais || extrasAtivos ? 'border-[#0478CA] text-[#0478CA] bg-[#0478CA]/5' : 'border-slate-300 text-slate-700 hover:border-[#0478CA]'
+                      painelMais || extrasAtivos ? 'border-[#0478CA] text-[#0369B3] bg-[#0478CA]/5' : 'border-slate-300 text-slate-700 hover:border-[#0478CA]'
                     }`}
                   >
                     <Icon name="filter" className="w-5 h-5" />
@@ -667,7 +667,7 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
                       CNAEs da Ágil CM {cnaesSel.length ? '' : '(nenhum marcado = todos)'}
                     </p>
                     {cnaesSel.length > 0 && (
-                      <button type="button" onClick={() => setCnaesSel([])} className="text-sm font-bold text-[#0478CA] underline cursor-pointer">
+                      <button type="button" onClick={() => setCnaesSel([])} className="text-sm font-bold text-[#0369B3] underline cursor-pointer">
                         Limpar ({cnaesSel.length})
                       </button>
                     )}
@@ -707,7 +707,7 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
                       CNAE · mostra os editais cujo objeto tem relação com os CNAEs escolhidos {livres.length ? '' : '(nenhum = todos os editais)'}
                     </p>
                     {livres.length > 0 && (
-                      <button type="button" onClick={() => setLivres([])} className="text-sm font-bold text-[#0478CA] underline cursor-pointer">
+                      <button type="button" onClick={() => setLivres([])} className="text-sm font-bold text-[#0369B3] underline cursor-pointer">
                         Limpar ({livres.length})
                       </button>
                     )}
@@ -734,7 +734,7 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
                   )}
                   <label className="relative block">
                     <span className="sr-only">Buscar CNAE</span>
-                    <Icon name="search" className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                    <Icon name="search" className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
                     <input
                       type="search"
                       value={buscaCnae}
@@ -782,7 +782,7 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
                       Local do pregão · plataforma onde acontece a disputa {locais.length ? '' : '(nenhum marcado = todos)'}
                     </p>
                     {locais.length > 0 && (
-                      <button type="button" onClick={() => setLocais([])} className="text-sm font-bold text-[#0478CA] underline cursor-pointer">
+                      <button type="button" onClick={() => setLocais([])} className="text-sm font-bold text-[#0369B3] underline cursor-pointer">
                         Limpar ({locais.length})
                       </button>
                     )}
@@ -807,7 +807,7 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
                               {on ? '✓' : ''}
                             </span>
                             {f.nome}
-                            <span className={`tabular-nums ${on ? 'text-white/75' : 'text-slate-400'}`}>{f.total.toLocaleString('pt-BR')}</span>
+                            <span className={`tabular-nums ${on ? 'text-white/75' : 'text-slate-500'}`}>{f.total.toLocaleString('pt-BR')}</span>
                           </button>
                         );
                       })}
@@ -853,7 +853,7 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
                       setTimeout(() => document.getElementById('tendencia')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
                     }}
                     title="Quantos editais com essa palavra saíram por mês: em alta ou em baixa, meses fortes e quem mais compra"
-                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border-2 border-[#0478CA]/40 text-[#0478CA] hover:bg-[#0478CA]/5 text-sm font-bold cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border-2 border-[#0478CA]/40 text-[#0369B3] hover:bg-[#0478CA]/5 text-sm font-bold cursor-pointer"
                   >
                     <Icon name="chart" className="w-4 h-4" />
                     Tendência de “{q.length > 24 ? `${q.slice(0, 22)}…` : q}”
@@ -880,7 +880,7 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
                           setTentativa((t) => t + 1);
                         }}
                         title="Lê a lista de novo no PNCP (normalmente ela fica guardada por 30 minutos)"
-                        className="font-bold text-[#0478CA] underline cursor-pointer"
+                        className="font-bold text-[#0369B3] underline cursor-pointer"
                       >
                         atualizar
                       </button>
@@ -964,7 +964,7 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
                 >
                   Tentar novamente
                 </button>
-                <a href="https://pncp.gov.br/app/editais?status=recebendo_proposta&ufs=MG" target="_blank" rel="noopener noreferrer" className="mt-2 inline-block font-bold text-[#0478CA] underline">
+                <a href="https://pncp.gov.br/app/editais?status=recebendo_proposta&ufs=MG" target="_blank" rel="noopener noreferrer" className="mt-2 inline-block font-bold text-[#0369B3] underline">
                   Abrir a busca diretamente no PNCP
                 </a>
               </div>
@@ -991,7 +991,7 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
                     title="Mostrar só os que encerram em até 3 dias"
                     className="text-left cursor-pointer group"
                   >
-                    <p className="text-sm text-slate-500 group-hover:text-[#0478CA]">Encerram em até 3 dias</p>
+                    <p className="text-sm text-slate-500 group-hover:text-[#0369B3]">Encerram em até 3 dias</p>
                     <p className="text-2xl font-extrabold text-red-700 tabular-nums">{resumo.encerra3.toLocaleString('pt-BR')}</p>
                   </button>
                   <button
@@ -1003,7 +1003,7 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
                     title="Mostrar só registro de preços"
                     className="text-left cursor-pointer group"
                   >
-                    <p className="text-sm text-slate-500 group-hover:text-[#0478CA]">Registro de preços</p>
+                    <p className="text-sm text-slate-500 group-hover:text-[#0369B3]">Registro de preços</p>
                     <p className="text-2xl font-extrabold text-[#0F2053] tabular-nums">{resumo.srp.toLocaleString('pt-BR')}</p>
                   </button>
                 </div>
@@ -1021,7 +1021,7 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
                             on ? 'bg-[#0F2053] border-[#0F2053] text-white' : 'bg-[#F7FAFD] border-slate-200 text-slate-700 hover:border-[#0478CA]'
                           }`}
                         >
-                          {m.nome} <span className={on ? 'text-white/75' : 'text-slate-400'}>· {m.total.toLocaleString('pt-BR')}</span>
+                          {m.nome} <span className={on ? 'text-white/75' : 'text-slate-500'}>· {m.total.toLocaleString('pt-BR')}</span>
                         </button>
                       );
                     })}
@@ -1040,7 +1040,7 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
                     <li key={e.id}>
                       <article className="p-5 sm:p-6 rounded-2xl bg-white border border-slate-200 hover:border-[#0478CA]/40 hover:shadow-md hover:shadow-[#0F2053]/5 transition-all">
                         <div className="flex flex-wrap items-center gap-2 text-sm">
-                          <span className="px-2.5 py-1 rounded-full bg-[#0478CA]/10 text-[#0478CA] font-bold">{e.modalidade || 'Licitação'}</span>
+                          <span className="px-2.5 py-1 rounded-full bg-[#0478CA]/10 text-[#0369B3] font-bold">{e.modalidade || 'Licitação'}</span>
                           {e.srp && <span className="px-2.5 py-1 rounded-full bg-violet-50 text-violet-800 font-bold">Registro de preços</span>}
                           {(() => {
                               const km = kmAte(e);
@@ -1052,7 +1052,7 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
                               );
                             })()}
                           {e.microrregiao && (
-                            <span className="px-2.5 py-1 rounded-full bg-[#128C4A]/10 text-[#0E7A40] font-bold">Zona da Mata · {e.microrregiao}</span>
+                            <span className="px-2.5 py-1 rounded-full bg-[#0E7A3F]/10 text-[#0E7A40] font-bold">Zona da Mata · {e.microrregiao}</span>
                           )}
                           {(e.local || e.fonte) && (
                             <span className="px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 font-semibold" title={e.fonte ? `Publicado no PNCP por: ${e.fonte}` : undefined}>
@@ -1121,7 +1121,7 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
                             <dt className="text-sm text-slate-500">Local do pregão</dt>
                             <dd className="font-semibold text-slate-800 truncate">
                               {e.linkLocal ? (
-                                <a href={e.linkLocal} target="_blank" rel="noopener noreferrer" className="text-[#0478CA] underline" title={e.linkLocal}>
+                                <a href={e.linkLocal} target="_blank" rel="noopener noreferrer" className="text-[#0369B3] underline" title={e.linkLocal}>
                                   {e.local}
                                 </a>
                               ) : (
@@ -1192,7 +1192,7 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
                     <button
                       type="button"
                       onClick={() => setPagina((p) => p + 1)}
-                      className="w-full py-3.5 rounded-xl bg-white border-2 border-[#0478CA]/30 hover:border-[#0478CA] text-[#0478CA] text-base font-bold cursor-pointer"
+                      className="w-full py-3.5 rounded-xl bg-white border-2 border-[#0478CA]/30 hover:border-[#0478CA] text-[#0369B3] text-base font-bold cursor-pointer"
                     >
                       Mostrar mais editais ({(total - items.length).toLocaleString('pt-BR')} restantes)
                     </button>

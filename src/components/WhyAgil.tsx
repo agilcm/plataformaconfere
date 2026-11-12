@@ -12,7 +12,7 @@ export default function WhyAgil() {
     <section id="diferenciais" aria-labelledby="titulo-diferenciais" className="py-12 sm:py-16 bg-[#F4F7FB]">
       <Container>
         <header className="mb-10 max-w-3xl">
-          <p className="text-sm font-bold text-[#0478CA] mb-2">Por que a Ágil CM</p>
+          <p className="text-sm font-bold text-[#0369B3] mb-2">Por que a Ágil CM</p>
           <h2 id="titulo-diferenciais" className="text-3xl sm:text-4xl font-bold font-display text-[#0F2053] tracking-tight [text-wrap:balance]">
             Quem contrata a Ágil CM não se preocupa com a operação
           </h2>

@@ -48,6 +48,8 @@ export const COMPANY_PROFILE = {
   representativeRole: 'Representante legal da empresa',
   coverage: 'Atendimento a órgãos públicos e empresas privadas em Minas Gerais, Rio de Janeiro, São Paulo e todo o território nacional.',
   domain: 'agilcm.com.br',
+  /** Endereço oficial do site (com www: o endereço sem www redireciona para este) */
+  siteUrl: 'https://www.agilcm.com.br',
 };
 
 // Services from Presentation 1 (Terceirização, Facilities, Suprimentos)

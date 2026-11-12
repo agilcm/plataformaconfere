@@ -544,7 +544,7 @@ export default function TermoReferenciaPanel() {
                             </thead>
                             <tbody>
                               {i.ocorrencias.map((o, n) => (
-                                <tr key={n} className={`border-b border-slate-100 align-top ${o.suspeito ? 'text-slate-400' : ''}`}>
+                                <tr key={n} className={`border-b border-slate-100 align-top ${o.suspeito ? 'text-slate-500' : ''}`}>
                                   <td className="py-2 pr-3 font-bold tabular-nums whitespace-nowrap">
                                     {brl(o.valorUnitario)}
                                     {o.suspeito && <span className="block text-xs font-semibold text-amber-700">fora da curva</span>}
@@ -562,7 +562,7 @@ export default function TermoReferenciaPanel() {
                                   </td>
                                   <td className="py-2 pr-3 tabular-nums">{pct(o.aderencia)}</td>
                                   <td className="py-2 pr-3">
-                                    <a href={o.link} target="_blank" rel="noopener noreferrer" className="text-[#0478CA] font-bold underline whitespace-nowrap">
+                                    <a href={o.link} target="_blank" rel="noopener noreferrer" className="text-[#0369B3] font-bold underline whitespace-nowrap">
                                       PNCP
                                     </a>
                                   </td>

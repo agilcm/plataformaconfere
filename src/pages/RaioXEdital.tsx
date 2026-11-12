@@ -70,7 +70,7 @@ export function DetalheCompra({
         type="button"
         onClick={toggle}
         aria-expanded={aberto}
-        className="inline-flex items-center gap-2 text-[15px] font-bold text-[#0F2053] hover:text-[#0478CA] cursor-pointer"
+        className="inline-flex items-center gap-2 text-[15px] font-bold text-[#0F2053] hover:text-[#0369B3] cursor-pointer"
       >
         <span className={`inline-block transition-transform ${aberto ? 'rotate-90' : ''}`} aria-hidden="true">
           ›
@@ -101,7 +101,7 @@ export function DetalheCompra({
                           href={a.url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-sm font-semibold text-[#0478CA] hover:border-[#0478CA]"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-sm font-semibold text-[#0369B3] hover:border-[#0478CA]"
                         >
                           <Icon name="doc" className="w-4 h-4" />
                           {a.tipo}
@@ -186,7 +186,7 @@ export function RaioX({ edital, itens, lendo }: { edital: EditalRaioX; itens: It
   const mpe = r && (r.exclusivos || r.cota || r.subcontratacao);
   return (
     <div className="p-4 rounded-xl bg-white border border-[#0478CA]/25">
-      <p className="text-sm font-extrabold tracking-wide text-[#0478CA] uppercase">Raio-X do edital</p>
+      <p className="text-sm font-extrabold tracking-wide text-[#0369B3] uppercase">Raio-X do edital</p>
       {lendo && <p className="mt-2 px-3 py-2 rounded-lg bg-slate-50 text-[15px] text-slate-600">Conferindo os itens exclusivos para ME/EPP…</p>}
       {r && (
         <p className={`mt-2 px-3 py-2 rounded-lg text-[15px] font-bold ${mpe ? 'bg-emerald-50 text-emerald-800' : 'bg-slate-50 text-slate-700'}`}>

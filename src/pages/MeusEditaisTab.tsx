@@ -141,7 +141,7 @@ export default function MeusEditaisTab() {
                       etapa === e.id ? 'bg-[#0F2053] border-[#0F2053] text-white' : 'bg-white border-slate-300 text-slate-700 hover:border-[#0478CA]'
                     }`}
                   >
-                    {e.nome} <span className={etapa === e.id ? 'text-white/75' : 'text-slate-400'}>· {n}</span>
+                    {e.nome} <span className={etapa === e.id ? 'text-white/75' : 'text-slate-500'}>· {n}</span>
                   </button>
                 );
               })}
@@ -188,7 +188,7 @@ function Cartao({ m }: { m: MeuEdital }) {
   return (
     <li className="p-5 rounded-2xl bg-white border border-slate-200">
       <div className="flex flex-wrap items-center gap-2 text-sm">
-        <span className="px-2.5 py-1 rounded-full bg-[#0478CA]/10 text-[#0478CA] font-bold">{e.modalidade || 'Licitação'}</span>
+        <span className="px-2.5 py-1 rounded-full bg-[#0478CA]/10 text-[#0369B3] font-bold">{e.modalidade || 'Licitação'}</span>
         <strong className="text-slate-800">
           {e.municipio} · {e.uf || 'MG'}
         </strong>
@@ -234,7 +234,7 @@ function Cartao({ m }: { m: MeuEdital }) {
           <dt className="text-sm text-slate-500">Local do pregão</dt>
           <dd className="font-semibold text-slate-800 truncate">
             {e.linkLocal ? (
-              <a href={e.linkLocal} target="_blank" rel="noopener noreferrer" className="text-[#0478CA] underline">
+              <a href={e.linkLocal} target="_blank" rel="noopener noreferrer" className="text-[#0369B3] underline">
                 {e.local}
               </a>
             ) : (

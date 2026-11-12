@@ -63,7 +63,7 @@ export default function RaioXTab() {
           >
             <label className="relative flex-1 min-w-0">
               <span className="sr-only">Link ou número de controle do edital no PNCP</span>
-              <Icon name="search" className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+              <Icon name="search" className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
               <input
                 value={texto}
                 onChange={(ev) => {
@@ -122,10 +122,10 @@ export default function RaioXTab() {
         {estado === 'ok' && e && (
           <article className="mt-6 p-5 sm:p-6 rounded-2xl bg-white border border-slate-200">
             <div className="flex flex-wrap items-center gap-2 text-sm">
-              <span className="px-2.5 py-1 rounded-full bg-[#0478CA]/10 text-[#0478CA] font-bold">{e.modalidade || 'Licitação'}</span>
+              <span className="px-2.5 py-1 rounded-full bg-[#0478CA]/10 text-[#0369B3] font-bold">{e.modalidade || 'Licitação'}</span>
               {e.srp && <span className="px-2.5 py-1 rounded-full bg-violet-50 text-violet-800 font-bold">Registro de preços</span>}
               {e.situacao && <span className="px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 font-semibold">{e.situacao}</span>}
-              {e.microrregiao && <span className="px-2.5 py-1 rounded-full bg-[#128C4A]/10 text-[#0E7A40] font-bold">Zona da Mata · {e.microrregiao}</span>}
+              {e.microrregiao && <span className="px-2.5 py-1 rounded-full bg-[#0E7A3F]/10 text-[#0E7A40] font-bold">Zona da Mata · {e.microrregiao}</span>}
               <button
                 type="button"
                 onClick={() => alternarMeuEdital(e)}

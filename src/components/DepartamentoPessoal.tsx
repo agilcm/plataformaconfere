@@ -214,7 +214,7 @@ export default function DepartamentoPessoal({ onContact }: DepartamentoPessoalPr
                 <strong className="text-[#0F2053]">{regimeInfo.label}:</strong> {regimeInfo.note}
                 <span className="block mt-1 text-slate-600">
                   Encargos sobre a folha neste regime:{' '}
-                  <strong className="text-[#0478CA] tabular-nums">
+                  <strong className="text-[#0369B3] tabular-nums">
                     {result.encargosPerc.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%
                   </strong>
                   {regime === 'presumido' || regime === 'real' ? (
@@ -300,7 +300,7 @@ export default function DepartamentoPessoal({ onContact }: DepartamentoPessoalPr
                 />
               </div>
               <details className="group">
-                <summary className="cursor-pointer text-sm font-semibold text-[#0478CA] hover:text-[#03609F] list-none [&::-webkit-details-marker]:hidden">
+                <summary className="cursor-pointer text-sm font-semibold text-[#0369B3] hover:text-[#03609F] list-none [&::-webkit-details-marker]:hidden">
                   <span className="group-open:hidden">+ Ajustar dias para o cálculo do DSR</span>
                   <span className="hidden group-open:inline">− Ocultar dias do DSR</span>
                 </summary>
@@ -334,7 +334,7 @@ export default function DepartamentoPessoal({ onContact }: DepartamentoPessoalPr
             <details className="group border-t border-slate-200 pt-6">
               <summary className="cursor-pointer flex items-center justify-between gap-3 list-none [&::-webkit-details-marker]:hidden">
                 <span className="text-base font-bold font-display text-[#0F2053]">5. Ajustar alíquotas e provisões</span>
-                <span className="text-sm font-semibold text-[#0478CA]">
+                <span className="text-sm font-semibold text-[#0369B3]">
                   {ratesChanged ? 'Alíquotas personalizadas' : 'Padrão do regime'}
                 </span>
               </summary>
@@ -387,7 +387,7 @@ export default function DepartamentoPessoal({ onContact }: DepartamentoPessoalPr
                   Por ano: <strong className="text-[#0F2053] tabular-nums">{fmt2(result.totalAnual)}</strong>
                 </span>
                 <span>
-                  <strong className="text-[#0478CA] tabular-nums">
+                  <strong className="text-[#0369B3] tabular-nums">
                     {result.fatorSobreSalario.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}×
                   </strong>{' '}
                   o salário-base
@@ -416,7 +416,7 @@ export default function DepartamentoPessoal({ onContact }: DepartamentoPessoalPr
               <div className="mt-6">
                 <h3 className="flex items-baseline justify-between gap-3 text-sm font-bold text-[#0F2053] border-b border-slate-200 pb-2">
                   <span>Custos fixos mensais</span>
-                  <span className="text-[#0478CA] tabular-nums">{fmt2(result.totalFixos)}</span>
+                  <span className="text-[#0369B3] tabular-nums">{fmt2(result.totalFixos)}</span>
                 </h3>
                 <p className="text-sm text-slate-500 mt-1 mb-2">Saem do caixa todo mês</p>
                 <dl className="space-y-1.5 text-sm">
@@ -433,7 +433,7 @@ export default function DepartamentoPessoal({ onContact }: DepartamentoPessoalPr
               <div className="mt-6">
                 <h3 className="flex items-baseline justify-between gap-3 text-sm font-bold text-[#0F2053] border-b border-slate-200 pb-2">
                   <span>Custos mensais provisionados</span>
-                  <span className="text-[#0478CA] tabular-nums">{fmt2(result.totalProvisoes)}</span>
+                  <span className="text-[#0369B3] tabular-nums">{fmt2(result.totalProvisoes)}</span>
                 </h3>
                 <p className="text-sm text-slate-500 mt-1 mb-2">Reserve todo mês para pagar férias, 13º e rescisão</p>
                 <dl className="space-y-1.5 text-sm">

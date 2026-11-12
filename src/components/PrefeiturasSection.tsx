@@ -1,5 +1,13 @@
 import { CONSULTING_SERVICES, CONSULTING_TO_CONTACT } from '../data/servicesData.ts';
 import { Container, Icon } from './ui.tsx';
+import { rotaServico } from '../lib/routes.ts';
+
+// Página própria de cada serviço
+const PAGINA: Record<string, string> = {
+  'readequacao-gilrat': 'gilrat',
+  'reparcelamento-previdenciario': 'reparcelamento-previdenciario',
+  'gestao-rh-compliance': 'prefeituras',
+};
 
 interface Props {
   onContact: (service?: string) => void;
@@ -19,9 +27,9 @@ const STEPS = [
 ];
 
 const ALSO = [
-  { icon: 'building', text: 'Limpeza e portaria de prédios públicos' },
-  { icon: 'tree', text: 'Capina, roçada e jardinagem urbana' },
-  { icon: 'box', text: 'Merenda, material escolar e suprimentos' },
+  { icon: 'building', text: 'Limpeza e portaria de prédios públicos', pagina: 'terceirizacao' },
+  { icon: 'tree', text: 'Capina, roçada e jardinagem urbana', pagina: 'limpeza-urbana' },
+  { icon: 'box', text: 'Merenda, material escolar e suprimentos', pagina: 'suprimentos' },
 ];
 
 // Deixa só a primeira letra maiúscula (mantém siglas como GILRAT, INSS, RH e nomes como eSocial)
@@ -70,13 +78,13 @@ export default function PrefeiturasSection({ onContact }: Props) {
               <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#0478CA] to-[#0F2053] text-white flex items-center justify-center">
                 <Icon name={ICONS[s.id] ?? 'check'} className="w-7 h-7" />
               </div>
-              <span className="mt-4 self-start px-2.5 py-1 rounded-full bg-[#0478CA]/10 text-[#0478CA] text-sm font-bold">{s.highlight}</span>
+              <span className="mt-4 self-start px-2.5 py-1 rounded-full bg-[#0478CA]/10 text-[#0369B3] text-sm font-bold">{s.highlight}</span>
               <h3 className="mt-3 text-xl font-bold font-display text-[#0F2053]">{s.title}</h3>
               <p className="mt-2 text-base text-slate-600 leading-relaxed">{s.shortDescription}</p>
               <ul className="mt-4 space-y-2 flex-1">
                 {s.benefits.slice(0, s.id === 'gestao-rh-compliance' ? 5 : 3).map((b) => (
                   <li key={b.title} className="flex items-start gap-2 text-[15px]">
-                    <Icon name="check" className="w-5 h-5 mt-0.5 text-[#0478CA] shrink-0" />
+                    <Icon name="check" className="w-5 h-5 mt-0.5 text-[#0369B3] shrink-0" />
                     {sentence(b.title)}
                   </li>
                 ))}
@@ -88,6 +96,12 @@ export default function PrefeiturasSection({ onContact }: Props) {
               >
                 Falar sobre o meu município
               </button>
+              <a
+                href={rotaServico(PAGINA[s.id])}
+                className="mt-3 self-center text-base font-bold text-[#0369B3] hover:text-[#03609F] underline underline-offset-4"
+              >
+                Saiba mais<span className="sr-only"> sobre {s.title}</span>
+              </a>
             </article>
           ))}
         </div>
@@ -112,7 +126,7 @@ export default function PrefeiturasSection({ onContact }: Props) {
           <ul className="flex flex-wrap gap-3">
             {ALSO.map((a) => (
               <li key={a.text}>
-                <a href="#terceirizacao" className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 text-base transition-colors">
+                <a href={rotaServico(a.pagina)} className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 text-base transition-colors">
                   <Icon name={a.icon} className="w-5 h-5 text-[#9fd3ff]" />
                   {a.text}
                 </a>

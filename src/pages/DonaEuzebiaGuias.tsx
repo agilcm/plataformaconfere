@@ -342,7 +342,7 @@ export default function DonaEuzebiaGuias() {
                     }`}
                   >
                     {d.nome}
-                    {d.codigo ? ` (${d.codigo})` : ''} <span className={on ? 'text-white/75' : 'text-slate-400'}>· {d.centros} centros</span>
+                    {d.codigo ? ` (${d.codigo})` : ''} <span className={on ? 'text-white/75' : 'text-slate-500'}>· {d.centros} centros</span>
                   </button>
                 );
               })}
@@ -467,7 +467,7 @@ export default function DonaEuzebiaGuias() {
                   <tr key={`${c.depCodigo}-${c.ccCodigo}-${c.centro}`} className="border-t border-slate-100">
                     <td className="px-3 py-2">
                       {c.centro}
-                      {c.ccCodigo ? <span className="text-slate-400"> ({c.ccCodigo})</span> : null}
+                      {c.ccCodigo ? <span className="text-slate-500"> ({c.ccCodigo})</span> : null}
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums">{brl(c.baseTributavel)}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{brl(c.segurados)}</td>

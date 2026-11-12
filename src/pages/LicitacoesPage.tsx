@@ -3,7 +3,7 @@ import Header from '../components/Header.tsx';
 import Footer from '../components/Footer.tsx';
 import WhatsAppFloatingButton from '../components/WhatsAppFloatingButton.tsx';
 import { Container, Icon } from '../components/ui.tsx';
-import { ROUTES } from '../lib/routes.ts';
+import { ROUTES, rotaServico } from '../lib/routes.ts';
 import EditaisTab from './EditaisTab.tsx';
 import ContratosTab from './ContratosTab.tsx';
 import MeusEditaisTab from './MeusEditaisTab.tsx';
@@ -18,6 +18,26 @@ const ABAS: { id: Aba; label: string; desc: string; icon: string }[] = [
   { id: 'agil', label: 'AGIL CNAE', desc: 'Editais abertos ligados aos CNAEs da Ágil CM', icon: 'building' },
   { id: 'raiox', label: 'RAIO-X', desc: 'Analise qualquer edital pelo link do PNCP', icon: 'doc' },
   { id: 'meus', label: 'MEUS EDITAIS', desc: 'Salvos, etapas e prazos na agenda', icon: 'star' },
+];
+
+// Texto fixo abaixo do painel: explica cada aba e de onde vêm os dados (também é o que o Google lê da página)
+const COMO_USAR = [
+  {
+    titulo: 'Editais abertos',
+    texto: 'Licitações de Minas Gerais que estão recebendo propostas agora. Filtre por palavra, cidade, valor e distância até a cidade do edital, e ordene do jeito que preferir.',
+  },
+  {
+    titulo: 'Contratos',
+    texto: 'O histórico de compras das prefeituras: o órgão que comprou, o produto ou serviço, a quantidade, o fornecedor vencedor e o valor do contrato.',
+  },
+  {
+    titulo: 'Raio-X',
+    texto: 'Cole o link ou o número de controle de um edital do PNCP para ver o órgão, o prazo das propostas, o valor estimado, os itens e os documentos.',
+  },
+  {
+    titulo: 'Meus editais',
+    texto: 'Salve os editais que interessam, anote documentos e dúvidas e acompanhe as etapas e os prazos de cada um.',
+  },
 ];
 
 const HASH_ABA: Record<string, Aba> = { '#contratos': 'contratos', '#agil-cnae': 'agil', '#raio-x': 'raiox', '#meus-editais': 'meus' };
@@ -78,7 +98,7 @@ export default function LicitacoesPage() {
               prefeituras, com foco na Zona da Mata.
             </p>
             <a
-              href={`${ROUTES.home}#licitacoes`}
+              href={rotaServico('assessoria-licitacoes')}
               className="mt-6 inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-white text-[#0F2053] font-bold hover:bg-slate-100"
             >
               Como a Ágil CM ajuda sua empresa a vencer
@@ -125,6 +145,40 @@ export default function LicitacoesPage() {
             <EditaisTab key={aba} agil={aba === 'agil'} />
           )}
         </div>
+
+        <section aria-labelledby="titulo-como-usar" className="py-12 sm:py-16 bg-white border-t border-slate-200">
+          <Container>
+            <h2 id="titulo-como-usar" className="text-2xl sm:text-3xl font-bold font-display text-[#0F2053] tracking-tight">
+              Como usar o painel de licitações
+            </h2>
+            <p className="mt-3 max-w-3xl text-lg text-slate-700 leading-relaxed">
+              O painel é gratuito e reúne, numa tela só, os editais abertos e o histórico de contratos das prefeituras de Minas Gerais, com foco na Zona
+              da Mata. Os dados são oficiais: vêm do Portal Nacional de Contratações Públicas (PNCP) e são consultados na hora em que você abre a página.
+            </p>
+            <ul className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {COMO_USAR.map((c) => (
+                <li key={c.titulo} className="p-6 rounded-2xl bg-[#F7FAFD] border border-slate-200">
+                  <h3 className="text-lg font-bold font-display text-[#0F2053]">{c.titulo}</h3>
+                  <p className="mt-2 text-base text-slate-700 leading-relaxed">{c.texto}</p>
+                </li>
+              ))}
+            </ul>
+            <div className="mt-8 p-6 sm:p-8 rounded-3xl bg-[#0F2053] text-white max-w-4xl">
+              <h2 className="text-2xl font-bold font-display">Quer ajuda para disputar e vencer?</h2>
+              <p className="mt-2 text-lg text-white/90 leading-relaxed">
+                A Ágil CM também vende para o poder público. Na assessoria em licitações, monitoramos os editais, preparamos a habilitação, montamos a
+                proposta e operamos o pregão eletrônico até o empenho.
+              </p>
+              <a
+                href={rotaServico('assessoria-licitacoes')}
+                className="mt-5 inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-white text-[#0F2053] font-bold hover:bg-slate-100"
+              >
+                Conhecer a assessoria em licitações
+                <Icon name="arrow" className="w-5 h-5" />
+              </a>
+            </div>
+          </Container>
+        </section>
       </main>
       <Footer page="licitacoes" />
       <WhatsAppFloatingButton />

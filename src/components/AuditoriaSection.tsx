@@ -1,4 +1,5 @@
 import { Container, Icon } from './ui.tsx';
+import { rotaServico } from '../lib/routes.ts';
 
 interface Props {
   onContact: (service?: string) => void;
@@ -24,7 +25,7 @@ export default function AuditoriaSection({ onContact }: Props) {
       <Container>
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
           <div className="lg:col-span-7">
-            <p className="text-sm font-bold text-[#0478CA] mb-2">Auditoria de folha e recuperação tributária</p>
+            <p className="text-sm font-bold text-[#0369B3] mb-2">Auditoria de folha e recuperação tributária</p>
             <h2 id="titulo-recuperacao" className="text-3xl sm:text-4xl font-bold font-display text-[#0F2053] tracking-tight [text-wrap:balance]">
               Sua empresa pode estar pagando imposto a mais na folha
             </h2>
@@ -37,7 +38,7 @@ export default function AuditoriaSection({ onContact }: Props) {
               {STEPS.map((s, i) => (
                 <li key={s.title} className="p-5 rounded-2xl bg-[#F7FAFD] border border-slate-200">
                   <div className="flex items-center gap-3">
-                    <span className="w-10 h-10 rounded-xl bg-[#0478CA]/10 text-[#0478CA] flex items-center justify-center">
+                    <span className="w-10 h-10 rounded-xl bg-[#0478CA]/10 text-[#0369B3] flex items-center justify-center">
                       <Icon name={s.icon} className="w-5 h-5" />
                     </span>
                     <span className="text-sm font-bold text-slate-500">Etapa {i + 1}</span>
@@ -47,6 +48,11 @@ export default function AuditoriaSection({ onContact }: Props) {
                 </li>
               ))}
             </ol>
+            <p className="mt-6 text-base text-slate-700">
+              <a href={rotaServico('recuperacao-tributaria')} className="font-bold text-[#0369B3] hover:text-[#03609F] underline underline-offset-4">
+                Veja como funciona a auditoria de folha e a recuperação tributária
+              </a>
+            </p>
           </div>
 
           <aside className="lg:col-span-5 p-7 sm:p-8 rounded-3xl bg-gradient-to-br from-[#0478CA] to-[#0F2053] text-white shadow-xl shadow-[#0F2053]/20">

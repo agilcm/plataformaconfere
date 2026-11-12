@@ -1,6 +1,7 @@
+# As áreas internas não aparecem no Google porque levam a marcação "noindex" na própria página.
+# Os arquivos de dados (.json) não são páginas e ficam fora da varredura.
 User-agent: *
 Allow: /
-Disallow: /privado/
-Disallow: /dados/
+Disallow: /*.json$
 
-Sitemap: https://agilcm.com.br/sitemap.xml
+Sitemap: https://www.agilcm.com.br/sitemap.xml

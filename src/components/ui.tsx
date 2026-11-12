@@ -16,7 +16,7 @@ export function SectionHeader({
 }) {
   return (
     <header className={`mb-10 sm:mb-12 max-w-3xl ${center ? 'mx-auto text-center' : ''}`}>
-      <p className="text-sm font-bold text-[#0478CA] mb-2">{eyebrow}</p>
+      <p className="text-sm font-bold text-[#0369B3] mb-2">{eyebrow}</p>
       <h2 id={id} className="text-3xl sm:text-4xl font-bold font-display text-[#0F2053] tracking-tight [text-wrap:balance]">
         {title}
       </h2>
@@ -75,4 +75,4 @@ export const btnPrimary =
 export const btnSecondary =
   'inline-flex items-center justify-center gap-2 px-6 py-3.5 text-base font-semibold text-[#0F2053] bg-white hover:bg-slate-50 border-2 border-[#0F2053]/15 rounded-xl transition-colors cursor-pointer';
 export const btnWhatsApp =
-  'inline-flex items-center justify-center gap-2 px-6 py-3.5 text-base font-bold text-white bg-[#128C4A] hover:bg-[#0E7A40] rounded-xl transition-colors shadow-sm cursor-pointer';
+  'inline-flex items-center justify-center gap-2 px-6 py-3.5 text-base font-bold text-white bg-[#0E7A3F] hover:bg-[#0B6535] rounded-xl transition-colors shadow-sm cursor-pointer';

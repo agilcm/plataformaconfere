@@ -248,7 +248,7 @@ Aguardo a análise e a proposta da Ágil CM.`;
 
             {/* Inclusions */}
             <div className="space-y-2.5 pt-4 border-t border-slate-200">
-              <span className="block text-sm font-semibold text-[#0478CA] mb-2">
+              <span className="block text-sm font-semibold text-[#0369B3] mb-2">
                 O que você precisa
               </span>
 
@@ -344,7 +344,7 @@ Aguardo a análise e a proposta da Ágil CM.`;
                 <button
                   type="button"
                   onClick={handleSendWhatsApp}
-                  className="w-full py-3.5 px-3 bg-[#128C4A] hover:bg-[#0E7A40] text-white font-bold text-[15px] whitespace-nowrap rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-md"
+                  className="w-full py-3.5 px-3 bg-[#0E7A3F] hover:bg-[#0B6535] text-white font-bold text-[15px] whitespace-nowrap rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-md"
                 >
                   Enviar pelo WhatsApp
                 </button>

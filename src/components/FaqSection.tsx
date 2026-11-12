@@ -11,7 +11,7 @@ export default function FaqSection() {
             <details key={item.q} className="group rounded-2xl border border-slate-200 bg-[#F7FAFD] open:bg-white open:border-[#0478CA]/40">
               <summary className="flex items-center justify-between gap-4 cursor-pointer list-none p-5 text-[#0F2053] [&::-webkit-details-marker]:hidden">
                 <h3 className="text-lg font-semibold">{item.q}</h3>
-                <svg className="w-6 h-6 shrink-0 text-[#0478CA] transition-transform group-open:rotate-45" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="w-6 h-6 shrink-0 text-[#0369B3] transition-transform group-open:rotate-45" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v14m-7-7h14" />
                 </svg>
               </summary>

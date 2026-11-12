@@ -1,4 +1,5 @@
 import { Container, Icon, SectionHeader } from './ui.tsx';
+import { rotaServico } from '../lib/routes.ts';
 
 interface Props {
   onContact: (service?: string) => void;
@@ -49,7 +50,7 @@ export default function RhDpSection({ onContact }: Props) {
             <ul className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3 flex-1">
               {DP_ITEMS.map((it) => (
                 <li key={it} className="flex items-start gap-2.5 text-base text-slate-800">
-                  <Icon name="check" className="w-5 h-5 mt-0.5 text-[#0478CA] shrink-0" />
+                  <Icon name="check" className="w-5 h-5 mt-0.5 text-[#0369B3] shrink-0" />
                   {it}
                 </li>
               ))}
@@ -57,7 +58,7 @@ export default function RhDpSection({ onContact }: Props) {
             <button
               type="button"
               onClick={() => onContact('Folha de Pagamento & DP')}
-              className="mt-7 inline-flex items-center gap-1.5 text-base font-bold text-[#0478CA] hover:text-[#03609F] cursor-pointer self-start"
+              className="mt-7 inline-flex items-center gap-1.5 text-base font-bold text-[#0369B3] hover:text-[#03609F] cursor-pointer self-start"
             >
               Pedir consultoria de folha
               <Icon name="arrow" className="w-4 h-4" />
@@ -78,7 +79,7 @@ export default function RhDpSection({ onContact }: Props) {
             <ul className="mt-6 space-y-3 flex-1">
               {RH_ITEMS.map((it) => (
                 <li key={it} className="flex items-start gap-2.5 text-base text-slate-800">
-                  <Icon name="check" className="w-5 h-5 mt-0.5 text-[#0478CA] shrink-0" />
+                  <Icon name="check" className="w-5 h-5 mt-0.5 text-[#0369B3] shrink-0" />
                   {it}
                 </li>
               ))}
@@ -89,13 +90,18 @@ export default function RhDpSection({ onContact }: Props) {
             <button
               type="button"
               onClick={() => onContact('Consultoria de RH para Empresas')}
-              className="mt-4 inline-flex items-center gap-1.5 text-base font-bold text-[#0478CA] hover:text-[#03609F] cursor-pointer self-start"
+              className="mt-4 inline-flex items-center gap-1.5 text-base font-bold text-[#0369B3] hover:text-[#03609F] cursor-pointer self-start"
             >
               Falar com um consultor de RH
               <Icon name="arrow" className="w-4 h-4" />
             </button>
           </article>
         </div>
+        <p className="mt-6 text-base text-slate-700">
+          <a href={rotaServico('folha-de-pagamento')} className="font-bold text-[#0369B3] hover:text-[#03609F] underline underline-offset-4">
+            Veja tudo sobre folha de pagamento, Departamento Pessoal e RH
+          </a>
+        </p>
       </Container>
     </section>
   );

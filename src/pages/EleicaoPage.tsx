@@ -286,7 +286,7 @@ export default function EleicaoPage() {
                         </span>
                       </span>
                       <span className="hidden sm:block sm:col-span-3">
-                        <Barra valor={res.candidatos[0].votos ? c.votos / res.candidatos[0].votos : 0} cor={c.posicao === 1 ? 'bg-[#128C4A]' : 'bg-[#0478CA]'} />
+                        <Barra valor={res.candidatos[0].votos ? c.votos / res.candidatos[0].votos : 0} cor={c.posicao === 1 ? 'bg-[#0E7A3F]' : 'bg-[#0478CA]'} />
                       </span>
                       <span className="col-span-3 sm:col-span-2 text-right tabular-nums font-semibold">{num(c.votos)}</span>
                       <span className="col-span-2 sm:col-span-1 text-right tabular-nums text-slate-600">{pct(c.pctValidos, 1)}</span>
@@ -294,7 +294,7 @@ export default function EleicaoPage() {
                   ))}
               </ol>
               {!busca && res.candidatos.length > 15 && (
-                <button type="button" onClick={() => setVerTodos((v) => !v)} className="mt-3 text-sm font-bold text-[#0478CA] underline cursor-pointer">
+                <button type="button" onClick={() => setVerTodos((v) => !v)} className="mt-3 text-sm font-bold text-[#0369B3] underline cursor-pointer">
                   {verTodos ? 'Mostrar só os 15 mais votados' : `Ver todos os ${res.candidatos.length} candidatos`}
                 </button>
               )}
@@ -404,7 +404,7 @@ export default function EleicaoPage() {
                 <button type="button" disabled={!!gerando} onClick={() => exportarPdf()} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#0478CA] hover:bg-[#03609F] text-white font-bold cursor-pointer disabled:opacity-50">
                   <Icon name="doc" className="w-5 h-5" /> PDF de {ano}
                 </button>
-                <button type="button" disabled={!!gerando} onClick={pdfTodosAnos} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 border-[#0478CA] text-[#0478CA] font-bold cursor-pointer disabled:opacity-50">
+                <button type="button" disabled={!!gerando} onClick={pdfTodosAnos} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 border-[#0478CA] text-[#0369B3] font-bold cursor-pointer disabled:opacity-50">
                   PDF de cada ano ({anos.join(', ')})
                 </button>
               </div>
@@ -581,7 +581,7 @@ function AbaEleitorado({
           {evo.map((e) => (
             <li key={e.ano}>
               <div className="flex justify-between gap-2">
-                <span className={`font-semibold ${e.ano === ano ? 'text-[#0478CA]' : 'text-slate-800'}`}>{e.ano}</span>
+                <span className={`font-semibold ${e.ano === ano ? 'text-[#0369B3]' : 'text-slate-800'}`}>{e.ano}</span>
                 <span className="tabular-nums">
                   {pct(e.pctComparecimento, 1)} · {num(e.aptos)} aptos
                 </span>
@@ -711,7 +711,7 @@ function AbaCandidato({
         {hist.slice(0, 60).map((h: any) => (
           <li key={`${h.ano}${h.id}`} className="p-4 rounded-xl border border-slate-200">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-              <span className="px-2.5 py-1 rounded-full bg-[#0478CA]/10 text-[#0478CA] text-sm font-bold">{h.ano}</span>
+              <span className="px-2.5 py-1 rounded-full bg-[#0478CA]/10 text-[#0369B3] text-sm font-bold">{h.ano}</span>
               <span className="font-bold text-[#0F2053]">{h.nome}</span>
               <span className="text-sm text-slate-600">
                 {h.nomeCivil && h.nomeCivil !== h.nome ? `${h.nomeCivil} · ` : ''}
@@ -741,7 +741,7 @@ function AbaCandidato({
             <button
               type="button"
               onClick={() => abrirUrnas(h)}
-              className="mt-2 inline-flex items-center gap-1.5 text-sm font-bold text-[#0478CA] underline cursor-pointer"
+              className="mt-2 inline-flex items-center gap-1.5 text-sm font-bold text-[#0369B3] underline cursor-pointer"
             >
               <Icon name="box" className="w-4 h-4" /> Ver votos por urna e traçar perfil
             </button>

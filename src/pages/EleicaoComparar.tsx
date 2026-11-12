@@ -143,7 +143,7 @@ function Escolher({
           <button
             type="button"
             onClick={() => setSel({ ano: sel.ano, cargo, id: '' })}
-            className="shrink-0 text-sm font-bold text-[#0478CA] underline cursor-pointer"
+            className="shrink-0 text-sm font-bold text-[#0369B3] underline cursor-pointer"
           >
             Trocar
           </button>
@@ -204,9 +204,9 @@ function Resultado({
   const q = Object.fromEntries(o.quadrantes.map((x: any) => [x.id, x]));
   return (
     <section aria-labelledby="cmp-titulo" className="p-5 sm:p-6 rounded-2xl bg-white border-2 border-[#0F2053]">
-      <p className="text-sm font-bold text-[#0478CA]">Conexões nas urnas de {cidade}</p>
+      <p className="text-sm font-bold text-[#0369B3]">Conexões nas urnas de {cidade}</p>
       <h2 id="cmp-titulo" className="mt-1 text-xl sm:text-2xl font-bold text-[#0F2053] leading-snug">
-        <span style={{ color: COR_A }}>●</span> {A} <span className="text-slate-400 font-semibold">e</span> <span style={{ color: COR_B }}>●</span> {B}
+        <span style={{ color: COR_A }}>●</span> {A} <span className="text-slate-500 font-semibold">e</span> <span style={{ color: COR_B }}>●</span> {B}
       </h2>
       <p className="mt-1 text-sm text-slate-600">
         {o.a.cargo} {o.a.ano} ({o.ca.partido}) · {o.b.cargo} {o.b.ano} ({o.cb.partido}) · {o.N} urnas comparadas
@@ -310,7 +310,7 @@ function Resultado({
       </div>
 
       <details className="mt-5">
-        <summary className="cursor-pointer font-bold text-[#0478CA]">Urna por urna ({o.N} urnas)</summary>
+        <summary className="cursor-pointer font-bold text-[#0369B3]">Urna por urna ({o.N} urnas)</summary>
         <div className="mt-2 overflow-auto max-h-[60vh] border border-slate-200 rounded-xl">
           <table className="w-full min-w-[36rem] text-sm">
             <thead className="sticky top-0 bg-slate-50 text-left text-slate-600">

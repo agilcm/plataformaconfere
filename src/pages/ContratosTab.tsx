@@ -255,7 +255,7 @@ export default function ContratosTab() {
               </p>
               <div className="mt-4 flex flex-col sm:flex-row gap-3">
                 <div className="relative flex-1 min-w-0">
-                  <Icon name="search" className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                  <Icon name="search" className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
                   <input
                     id="produto"
                     type="search"
@@ -341,7 +341,7 @@ export default function ContratosTab() {
                   ['chart', 'Compare os preços', 'Menor, médio e maior preço pago, e o fornecedor que venceu.'],
                 ].map(([icon, t, d]) => (
                   <div key={t} className="p-5 rounded-2xl bg-white border border-slate-200">
-                    <span className="w-11 h-11 rounded-xl bg-[#0478CA]/10 text-[#0478CA] flex items-center justify-center">
+                    <span className="w-11 h-11 rounded-xl bg-[#0478CA]/10 text-[#0369B3] flex items-center justify-center">
                       <Icon name={icon} className="w-6 h-6" />
                     </span>
                     <p className="mt-3 text-lg font-bold text-[#0F2053]">{t}</p>
@@ -416,9 +416,9 @@ export default function ContratosTab() {
                           <div className="flex flex-col md:flex-row md:items-start gap-4 md:gap-6">
                             <div className="flex-1 min-w-0">
                               <div className="flex flex-wrap items-center gap-2 text-sm">
-                                <span className="px-2.5 py-1 rounded-full bg-[#0478CA]/10 text-[#0478CA] font-bold">{r.modalidade || r.tipo}</span>
+                                <span className="px-2.5 py-1 rounded-full bg-[#0478CA]/10 text-[#0369B3] font-bold">{r.modalidade || r.tipo}</span>
                                 {r.microrregiao && (
-                                  <span className="px-2.5 py-1 rounded-full bg-[#128C4A]/10 text-[#0E7A40] font-bold">Zona da Mata · {r.microrregiao}</span>
+                                  <span className="px-2.5 py-1 rounded-full bg-[#0E7A3F]/10 text-[#0E7A40] font-bold">Zona da Mata · {r.microrregiao}</span>
                                 )}
                                 {r.assinadoEm && <span className="text-slate-500">Assinado em {dataBR(r.assinadoEm)}</span>}
                               </div>
@@ -527,7 +527,7 @@ export default function ContratosTab() {
                       <button
                         type="button"
                         onClick={() => busca && executar(busca, proxima)}
-                        className="w-full py-3.5 rounded-xl bg-white border-2 border-[#0478CA]/30 hover:border-[#0478CA] text-[#0478CA] text-base font-bold cursor-pointer"
+                        className="w-full py-3.5 rounded-xl bg-white border-2 border-[#0478CA]/30 hover:border-[#0478CA] text-[#0369B3] text-base font-bold cursor-pointer"
                       >
                         Buscar mais compras
                       </button>

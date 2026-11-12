@@ -561,7 +561,7 @@ function Empresas({
                                 ]);
                               }}
                               aria-label={`Relatório de ${compBR(a.comp)} em PDF`}
-                              className="text-sm font-bold text-[#0478CA] underline cursor-pointer"
+                              className="text-sm font-bold text-[#0369B3] underline cursor-pointer"
                             >
                               PDF
                             </button>
@@ -585,7 +585,7 @@ function Empresas({
           {venc.length > 0 && <ListaVencimentos venc={venc} />}
           {(escolhida.drive?.documentos?.length || 0) > 0 && (
             <details className="mt-4">
-              <summary className="cursor-pointer text-[15px] font-bold text-[#0478CA]">
+              <summary className="cursor-pointer text-[15px] font-bold text-[#0369B3]">
                 Documentos fora das pastas de mês ({escolhida.drive!.documentos!.length})
               </summary>
               <ul className="mt-2 space-y-1 text-sm text-slate-700">
@@ -943,7 +943,7 @@ function MesDetalhe({
 
       {av.arquivos.length > 0 && (
         <details className="mt-6">
-          <summary className="cursor-pointer text-[15px] font-bold text-[#0478CA]">Arquivos localizados ({av.arquivos.length})</summary>
+          <summary className="cursor-pointer text-[15px] font-bold text-[#0369B3]">Arquivos localizados ({av.arquivos.length})</summary>
           <div className="mt-2 overflow-x-auto">
             <table className="w-full min-w-[640px] text-sm">
               <thead className="text-left text-slate-500">
@@ -1489,11 +1489,11 @@ function Cadastro({ prestadoras, config, nomesDrive }: { prestadoras: Prestadora
                 a.click();
                 setTimeout(() => URL.revokeObjectURL(url), 1000);
               }}
-              className="text-sm font-bold text-[#0478CA] underline cursor-pointer disabled:opacity-50"
+              className="text-sm font-bold text-[#0369B3] underline cursor-pointer disabled:opacity-50"
             >
               Baixar cópia
             </button>
-            <button type="button" onClick={() => arquivo.current?.click()} className="text-sm font-bold text-[#0478CA] underline cursor-pointer">
+            <button type="button" onClick={() => arquivo.current?.click()} className="text-sm font-bold text-[#0369B3] underline cursor-pointer">
               Importar cópia
             </button>
             <input
@@ -1535,7 +1535,7 @@ function Cadastro({ prestadoras, config, nomesDrive }: { prestadoras: Prestadora
                   </span>
                 </span>
                 {p.pasta && (
-                  <a href={p.pasta} target="_blank" rel="noopener noreferrer" className="text-sm font-bold text-[#0478CA] underline">
+                  <a href={p.pasta} target="_blank" rel="noopener noreferrer" className="text-sm font-bold text-[#0369B3] underline">
                     Pasta no Drive
                   </a>
                 )}
@@ -1624,7 +1624,7 @@ function Cartilha({ config }: { config: ConfigDocPref }) {
               <span className="text-sm text-slate-500">
                 <strong className="text-slate-600">Pasta:</strong> {m.pasta}. <strong className="text-slate-600">O DocPref:</strong> {m.docpref}
               </span>
-              <a href={`${MODELOS_URL}${m.arquivo}`} download className="self-start text-sm font-bold text-[#0478CA] underline">
+              <a href={`${MODELOS_URL}${m.arquivo}`} download className="self-start text-sm font-bold text-[#0369B3] underline">
                 Baixar {m.arquivo.endsWith('.xlsx') ? 'planilha (.xlsx)' : 'modelo (.docx)'}
               </a>
             </li>
@@ -1677,7 +1677,7 @@ function ManualOperador({ config }: { config: ConfigDocPref }) {
         </div>
         <nav aria-label="Sumário do manual" className="mt-4 grid sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-1">
           {MANUAL_OPERADOR.map((sec) => (
-            <button key={sec.id} type="button" onClick={() => ir(sec.id)} className="text-left text-[15px] text-[#0478CA] hover:underline cursor-pointer">
+            <button key={sec.id} type="button" onClick={() => ir(sec.id)} className="text-left text-[15px] text-[#0369B3] hover:underline cursor-pointer">
               {sec.titulo}
             </button>
           ))}

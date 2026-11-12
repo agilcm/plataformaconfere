@@ -135,7 +135,7 @@ export default function SugestaoPanel({ onClose }: { onClose: () => void }) {
     <section id="sugestao" aria-labelledby="sugestao-titulo" className="mt-4 p-5 sm:p-7 rounded-2xl bg-white border-2 border-[#0478CA]/30 shadow-sm">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-sm font-bold uppercase tracking-wider text-[#0478CA]">Sugestão por CNAE</p>
+          <p className="text-sm font-bold uppercase tracking-wider text-[#0369B3]">Sugestão por CNAE</p>
           <h2 id="sugestao-titulo" className="mt-1 text-2xl font-bold font-display text-[#0F2053]">
             Qual empresa da carteira pode disputar qual edital?
           </h2>
@@ -149,7 +149,7 @@ export default function SugestaoPanel({ onClose }: { onClose: () => void }) {
         </button>
       </div>
 
-      <p className="mt-4 flex items-start gap-2 p-3.5 rounded-xl bg-[#128C4A]/8 border border-[#128C4A]/20 text-[15px] text-[#0E5C33]">
+      <p className="mt-4 flex items-start gap-2 p-3.5 rounded-xl bg-[#0E7A3F]/8 border border-[#128C4A]/20 text-[15px] text-[#0E5C33]">
         <Icon name="shield" className="w-5 h-5 shrink-0 mt-0.5" />
         <span>
           <strong>Privacidade:</strong> o arquivo é lido só neste navegador. Os dados das empresas não são enviados para a internet nem
@@ -177,7 +177,7 @@ export default function SugestaoPanel({ onClose }: { onClose: () => void }) {
               escolher(e.dataTransfer.files?.[0]);
             }}
           >
-            <Icon name="sheet" className="w-8 h-8 text-[#0478CA] shrink-0" />
+            <Icon name="sheet" className="w-8 h-8 text-[#0369B3] shrink-0" />
             <span className="min-w-0">
               <span className="block font-bold text-[#0F2053] truncate">{arquivo || 'Escolher ou arrastar o arquivo .csv'}</span>
               <span className="block text-sm text-slate-600">
@@ -263,7 +263,7 @@ export default function SugestaoPanel({ onClose }: { onClose: () => void }) {
             </ul>
           )}
           {etapa === 'pronto' && (
-            <button type="button" onClick={baixarDeNovo} className="mt-4 font-bold text-[#0478CA] underline cursor-pointer">
+            <button type="button" onClick={baixarDeNovo} className="mt-4 font-bold text-[#0369B3] underline cursor-pointer">
               Baixar PDF novamente
             </button>
           )}

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--head-servico-->
+    <!-- Modelo das páginas de serviço. No build, scripts/prerender.mjs troca este trecho pelo título, a descrição
+         e os dados estruturados de cada página (src/data/paginasServico.ts) e grava uma cópia em /<slug>/index.html. -->
+    <title>Serviços | Ágil CM</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <!--/head-servico-->
+    <meta name="theme-color" content="#0F2053" />
+    <meta name="geo.region" content="BR-MG" />
+    <meta name="geo.placename" content="Astolfo Dutra" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="apple-touch-icon" href="/favicon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <link rel="preload" as="font" type="font/woff2" href="/fonts/plus-jakarta-sans-latin.woff2" crossorigin />
+    <link rel="preload" as="font" type="font/woff2" href="/fonts/outfit-latin.woff2" crossorigin />
+  </head>
+  <body>
+    <div id="root"><!--app-html--></div>
+    <noscript>
+      <p style="padding:16px;font-family:sans-serif">Ágil CM Soluções Integradas · WhatsApp (32) 9 9921-7912 · contato@agilcm.com.br</p>
+    </noscript>
+    <script type="module" src="/src/servico-main.tsx"></script>
+  </body>
+</html>

@@ -39,7 +39,7 @@ function Campo({ label, valor, onChange, prefixo, sufixo, dica }: { label: strin
     <label className="block">
       <span className="block text-sm font-semibold text-slate-700 mb-1.5">{label}</span>
       <span className="relative block">
-        {prefixo && <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">{prefixo}</span>}
+        {prefixo && <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">{prefixo}</span>}
         <input
           inputMode="decimal"
           value={texto}
@@ -50,7 +50,7 @@ function Campo({ label, valor, onChange, prefixo, sufixo, dica }: { label: strin
           }}
           className={`${inputCls} ${prefixo ? 'pl-10' : ''} ${sufixo ? 'pr-10' : ''}`}
         />
-        {sufixo && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">{sufixo}</span>}
+        {sufixo && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">{sufixo}</span>}
       </span>
       {dica && <span className="mt-1 block text-sm text-slate-500">{dica}</span>}
     </label>
@@ -461,7 +461,7 @@ function SimuladorSimplesProLabore() {
                 <div>
                   <div className="flex items-center justify-between gap-2">
                     <p className="font-semibold text-slate-700">Alíquotas do Lucro Presumido</p>
-                    <button type="button" onClick={() => setAliqP(aliquotasPresumido(atividadeAtual))} className="text-sm font-bold text-[#0478CA] underline cursor-pointer">
+                    <button type="button" onClick={() => setAliqP(aliquotasPresumido(atividadeAtual))} className="text-sm font-bold text-[#0369B3] underline cursor-pointer">
                       Voltar ao padrão
                     </button>
                   </div>
@@ -517,7 +517,7 @@ function SimuladorSimplesProLabore() {
                 )}
               </p>
             )}
-            <div className="mt-4 overflow-x-auto">
+            <div className="mt-4 overflow-x-auto" tabIndex={0} role="region" aria-label="Tabela mês a mês (role para os lados)">
               <table className="w-full min-w-[60rem] text-sm">
                 <thead>
                   <tr className="text-left text-slate-500 border-b border-slate-200">

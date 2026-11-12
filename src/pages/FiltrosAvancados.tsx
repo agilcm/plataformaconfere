@@ -81,7 +81,7 @@ export default function FiltrosAvancados({
               onChange({ ...AVANCADO_VAZIO, base: valor.base });
               onOrdem('recentes');
             }}
-            className="text-sm font-bold text-[#0478CA] underline cursor-pointer"
+            className="text-sm font-bold text-[#0369B3] underline cursor-pointer"
           >
             Limpar filtros
           </button>
@@ -102,7 +102,7 @@ export default function FiltrosAvancados({
               className={chip(on)}
             >
               {m}
-              {n ? <span className={on ? 'text-white/75' : 'text-slate-400'}> · {n.toLocaleString('pt-BR')}</span> : null}
+              {n ? <span className={on ? 'text-white/75' : 'text-slate-500'}> · {n.toLocaleString('pt-BR')}</span> : null}
             </button>
           );
         })}

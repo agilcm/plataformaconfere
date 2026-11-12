@@ -45,7 +45,7 @@ function EditalIllustration() {
       <div className="absolute top-4 right-5 sm:top-6 sm:right-7 w-[62%] max-w-[280px] rotate-3 origin-top-right scale-[0.8] sm:scale-100 rounded-2xl bg-white p-4 shadow-2xl">
         <div className="flex items-center justify-between">
           <span className="text-xs font-bold text-[#0F2053]">PREGÃO ELETRÔNICO</span>
-          <span className="text-[10px] font-bold text-white bg-[#128C4A] rounded-full px-2 py-0.5">GANHO</span>
+          <span className="text-[10px] font-bold text-white bg-[#0E7A3F] rounded-full px-2 py-0.5">GANHO</span>
         </div>
         <div className="mt-2 h-1.5 w-2/3 rounded bg-slate-200" />
         <ul className="mt-3 space-y-2">
@@ -93,7 +93,7 @@ export default function Hero() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 items-center">
           {/* Texto principal */}
           <div className="lg:col-span-6">
-            <p className="text-sm font-bold text-[#0478CA] mb-3">Astolfo Dutra · Zona da Mata · MG</p>
+            <p className="text-sm font-bold text-[#0369B3] mb-3">Astolfo Dutra · Zona da Mata · MG</p>
             <h1
               id="titulo-principal"
               className="text-4xl sm:text-5xl font-bold font-display text-[#0F2053] leading-[1.1] tracking-tight [text-wrap:balance]"
@@ -116,7 +116,7 @@ export default function Hero() {
             <ul className="mt-8 grid grid-cols-1 sm:grid-cols-3 gap-3 text-[15px] text-slate-700">
               {['Equipe própria e treinada', 'Regularidade fiscal em dia', 'Atendimento em MG, RJ e SP'].map((t) => (
                 <li key={t} className="flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-full bg-[#0478CA]/10 text-[#0478CA] flex items-center justify-center shrink-0">
+                  <span className="w-6 h-6 rounded-full bg-[#0478CA]/10 text-[#0369B3] flex items-center justify-center shrink-0">
                     <Icon name="check" className="w-4 h-4" />
                   </span>
                   {t}

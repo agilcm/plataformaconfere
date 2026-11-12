@@ -50,7 +50,7 @@ function TextoCurto({ texto }: { texto: string }) {
             e.stopPropagation();
             setAberto((v) => !v);
           }}
-          className="text-sm font-bold text-[#0478CA] underline cursor-pointer"
+          className="text-sm font-bold text-[#0369B3] underline cursor-pointer"
         >
           {aberto ? 'ver menos' : 'ver mais'}
         </button>
@@ -119,7 +119,7 @@ function Login({ onEntrar }: { onEntrar: () => void }) {
 
   return (
     <form onSubmit={enviar} className="max-w-md mx-auto p-6 sm:p-8 rounded-2xl bg-white border border-slate-200 shadow-sm">
-      <p className="inline-flex items-center gap-2 text-sm font-bold text-[#0478CA]">
+      <p className="inline-flex items-center gap-2 text-sm font-bold text-[#0369B3]">
         <Icon name="shield" className="w-5 h-5" /> Área restrita
       </p>
       <h1 className="mt-2 text-2xl sm:text-3xl font-bold font-display text-[#0F2053]">Privado</h1>
@@ -227,7 +227,7 @@ function Painel({ onSair }: { onSair: () => void }) {
             {leitura ? (
               <>
                 Pasta{' '}
-                <a href={leitura.raiz.webViewLink} target="_blank" rel="noopener noreferrer" className="font-semibold text-[#0478CA] underline">
+                <a href={leitura.raiz.webViewLink} target="_blank" rel="noopener noreferrer" className="font-semibold text-[#0369B3] underline">
                   {leitura.raiz.name}
                 </a>{' '}
                 · lida em {dataBR(leitura.atualizadoEm, true)} ({leitura.arquivos} arquivos) · o GitHub relê a pasta a cada 3 horas
@@ -342,7 +342,7 @@ function Painel({ onSair }: { onSair: () => void }) {
                       {p.ilegiveis ? ` · ${p.ilegiveis} PDF sem texto (escaneado?), confira` : ''}
                     </span>
                     {p.link && (
-                      <a href={p.link} target="_blank" rel="noopener noreferrer" className="ml-auto text-sm font-bold text-[#0478CA] underline">
+                      <a href={p.link} target="_blank" rel="noopener noreferrer" className="ml-auto text-sm font-bold text-[#0369B3] underline">
                         Abrir no Drive
                       </a>
                     )}
@@ -359,10 +359,10 @@ function Painel({ onSair }: { onSair: () => void }) {
                   <li key={a.id}>
                     {a.link ? (
                       <a href={a.link} target="_blank" rel="noopener noreferrer" className="font-semibold underline">
-                        {a.nome}
+                        {a.nome || 'Arquivo sem nome (abrir no Drive)'}
                       </a>
                     ) : (
-                      <strong>{a.nome}</strong>
+                      <strong>{a.nome || 'Arquivo sem nome'}</strong>
                     )}
                     : {a.motivo}
                   </li>
@@ -468,7 +468,7 @@ function Painel({ onSair }: { onSair: () => void }) {
             </div>
             <label className="relative flex-1 min-w-[14rem]">
               <span className="sr-only">Filtrar</span>
-              <Icon name="search" className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+              <Icon name="search" className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
               <input
                 type="search"
                 value={busca}
@@ -512,7 +512,7 @@ function Processo({ p }: { p: any }) {
     <li className={`rounded-2xl bg-white border ${v.situacao === 'vencido' ? 'border-red-300' : alerta ? 'border-amber-300' : 'border-slate-200'}`}>
       <button type="button" onClick={() => setAberto((v) => !v)} aria-expanded={aberto} className="w-full text-left p-4 sm:p-5 cursor-pointer">
         <div className="flex flex-wrap items-center gap-2 text-sm">
-          <span className="px-2.5 py-1 rounded-full bg-[#0478CA]/10 text-[#0478CA] font-bold">Processo {rotulo(p)}</span>
+          <span className="px-2.5 py-1 rounded-full bg-[#0478CA]/10 text-[#0369B3] font-bold">Processo {rotulo(p)}</span>
           {p.edital && (
             <span className="px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 font-semibold">
               {p.modalidade} {String(Number(p.edital.numero)).padStart(3, '0')}/{p.edital.ano}
@@ -543,12 +543,12 @@ function Processo({ p }: { p: any }) {
         <div className="px-4 sm:px-5 pb-5">
           <div className="flex flex-wrap gap-3 text-sm">
             {p.pasta?.link && (
-              <a href={p.pasta.link} target="_blank" rel="noopener noreferrer" className="font-bold text-[#0478CA] underline">
+              <a href={p.pasta.link} target="_blank" rel="noopener noreferrer" className="font-bold text-[#0369B3] underline">
                 Abrir pasta do processo
               </a>
             )}
             {p.termos.map((t: any) => (
-              <a key={t.id} href={t.link} target="_blank" rel="noopener noreferrer" className="font-semibold text-[#0478CA] underline">
+              <a key={t.id} href={t.link} target="_blank" rel="noopener noreferrer" className="font-semibold text-[#0369B3] underline">
                 {t.nome}
               </a>
             ))}

@@ -1,5 +1,31 @@
 @import "tailwindcss";
 
+/* Fontes servidas pelo próprio site (antes vinham do Google Fonts e seguravam a primeira pintura da página).
+   Arquivos variáveis, subconjunto latino: Outfit 500–700 e Plus Jakarta Sans 400–700 (licença SIL OFL). */
+@font-face {
+  font-family: 'Outfit';
+  font-style: normal;
+  font-weight: 500 700;
+  font-display: swap;
+  src: url('/fonts/outfit-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/plus-jakarta-sans-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* Cinza dos textos de apoio um pouco mais escuro: passa no contraste mínimo (4,5:1) também sobre os fundos claros do site */
+@theme {
+  --color-slate-500: #5d6d85;
+}
+
 @layer base {
   html {
     scroll-behavior: smooth;

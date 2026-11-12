@@ -1,21 +1,13 @@
 import BrandLogo from './BrandLogo.tsx';
 import { COMPANY_PROFILE, whatsappLink } from '../data/servicesData.ts';
 import { LICITACOES_PAGE, NAV_LINKS } from './Header.tsx';
-import { ROUTES } from '../lib/routes.ts';
+import { ROUTES, rotaServico } from '../lib/routes.ts';
+import { PAGINAS_SERVICO } from '../data/paginasServico.ts';
 
-const SERVICE_LINKS = [
-  { href: '#terceirizacao', label: 'Limpeza, conservação e portaria' },
-  { href: '#terceirizacao', label: 'Manutenção urbana e jardinagem' },
-  { href: '#terceirizacao', label: 'Fornecimento de suprimentos' },
-  { href: '#licitacoes', label: 'Assessoria em licitações públicas' },
-  { href: '#rh-dp', label: 'Folha de pagamento e DP' },
-  { href: '#rh-dp', label: 'Consultoria de RH' },
-  { href: '#recuperacao-tributaria', label: 'Recuperação tributária' },
-  { href: '#prefeituras', label: 'Estudo do GILRAT' },
-  { href: '#prefeituras', label: 'Reparcelamento previdenciário' },
-];
+// Cada serviço tem a sua página (/terceirizacao/, /gilrat/…)
+const SERVICE_LINKS = PAGINAS_SERVICO.map((p) => ({ href: rotaServico(p.slug), label: p.nav }));
 
-export default function Footer({ page = 'home' }: { page?: 'home' | 'licitacoes' }) {
+export default function Footer({ page = 'home' }: { page?: 'home' | 'licitacoes' | 'servico' }) {
   const base = page === 'home' ? '' : ROUTES.home;
   return (
     <footer className="bg-[#0A1640] text-white/80">
@@ -33,7 +25,7 @@ export default function Footer({ page = 'home' }: { page?: 'home' | 'licitacoes'
             <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-2 text-[15px]">
               {SERVICE_LINKS.map((l) => (
                 <li key={l.label}>
-                  <a href={base + l.href} className="hover:text-white">
+                  <a href={l.href} className="hover:text-white">
                     {l.label}
                   </a>
                 </li>

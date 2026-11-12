@@ -6,6 +6,7 @@ O site institucional ocupa a raiz. O botão **Licitações** no cabeçalho abre 
 | --- | --- |
 | `/` | Site principal da Ágil CM |
 | `/licitacoes/` | Consulta de licitações: Editais abertos, Contratos e AGIL CNAE (`#agil-cnae`) |
+| `/terceirizacao/`, `/gilrat/`… | Uma página por serviço (9 páginas), geradas no build a partir de `src/data/paginasServico.ts` |
 | `/dados/` | Simuladores internos (sem link no site): RH e Simples, pró-labore e regime (Simples × Lucro Presumido) |
 | `/privado/` | Área restrita: organiza no Google Drive os termos de homologação/adjudicação e gera relatórios |
 | `/api/*` | Funções de consulta ao PNCP, para hospedagem compatível |
@@ -29,6 +30,15 @@ npm run preview -- --host 0.0.0.0
 ```
 
 O build gera o site completo em `dist/`, com a página principal e Licitações pré-renderizadas.
+
+## Google e assistentes de IA (SEO)
+
+- **Endereço oficial:** `https://www.agilcm.com.br` (o endereço sem `www` redireciona para ele). Canônico, Open Graph, dados estruturados, sitemap e `robots.txt` usam sempre o `www`; o valor fica em `COMPANY_PROFILE.siteUrl`.
+- **Páginas de serviço:** cada serviço tem a sua página, com título, descrição, H1, conteúdo, perguntas frequentes e dados estruturados (`Service`, `BreadcrumbList`, `FAQPage`). Para criar ou editar uma página, mexa só em `src/data/paginasServico.ts`; o build copia o modelo `servico/index.html` para `/<slug>/index.html` (`scripts/prerender.mjs`). Os textos repetem o que a empresa já afirma na página inicial: não invente números, prazos ou certificações.
+- **Gerados no build:** `sitemap.xml` (só as páginas públicas) e `llms.txt` (a empresa em texto simples para assistentes de IA), a partir dos mesmos dados.
+- **Áreas internas** (`/privado/`, `/dados/`, `/docpref/`, `/eleicao/`): levam `noindex` na própria página e ficam fora do sitemap. Não as liste no `robots.txt`.
+- **Fontes e logos:** as fontes ficam em `public/fonts/` (sem Google Fonts) e o site usa os logos `.webp`; os `.png` continuam para os PDFs.
+- **Conferência:** `tests/paginasServico.test.mjs` confere tamanho de título e descrição e os links internos.
 
 ## Hospedagem
 

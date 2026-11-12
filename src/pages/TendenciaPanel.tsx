@@ -92,7 +92,7 @@ export default function TendenciaPanel({ termoInicial, regiaoInicial, onClose }:
       >
         <label className="relative flex-1 min-w-0">
           <span className="sr-only">Produto ou serviço</span>
-          <Icon name="search" className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+          <Icon name="search" className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
           <input
             value={termo}
             onChange={(e) => setTermo(e.target.value)}
@@ -213,7 +213,7 @@ export default function TendenciaPanel({ termoInicial, regiaoInicial, onClose }:
                     </>
                   )}
                 </span>
-                <button type="button" onClick={() => setTabela((v) => !v)} className="font-bold text-[#0478CA] underline cursor-pointer">
+                <button type="button" onClick={() => setTabela((v) => !v)} className="font-bold text-[#0369B3] underline cursor-pointer">
                   {tabela ? 'Esconder tabela' : 'Ver em tabela'}
                 </button>
               </div>
@@ -259,7 +259,7 @@ export default function TendenciaPanel({ termoInicial, regiaoInicial, onClose }:
                   <div className="flex flex-wrap gap-2">
                     {a.modalidades.slice(0, 6).map((m) => (
                       <span key={m.nome} className="px-3 py-1.5 rounded-full text-sm font-semibold bg-[#F7FAFD] border border-slate-200 text-slate-700">
-                        {m.nome} <span className="text-slate-400">· {m.n.toLocaleString('pt-BR')}</span>
+                        {m.nome} <span className="text-slate-500">· {m.n.toLocaleString('pt-BR')}</span>
                       </span>
                     ))}
                   </div>
@@ -277,7 +277,7 @@ export default function TendenciaPanel({ termoInicial, regiaoInicial, onClose }:
                         <strong className="text-slate-800">{e.municipio}</strong> <span className="text-slate-600 line-clamp-1">{e.objeto}</span>
                       </span>
                       {e.link && (
-                        <a href={e.link} target="_blank" rel="noopener noreferrer" className="shrink-0 text-sm font-bold text-[#0478CA] underline">
+                        <a href={e.link} target="_blank" rel="noopener noreferrer" className="shrink-0 text-sm font-bold text-[#0369B3] underline">
                           Ver no PNCP
                         </a>
                       )}

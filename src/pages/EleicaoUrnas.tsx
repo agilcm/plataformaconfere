@@ -237,7 +237,7 @@ export default function AbaUrnas({
             })}
           </ul>
           {!termo && lista.length > 12 && (
-            <button type="button" onClick={() => setVerTodos((v) => !v)} className="mt-2 text-sm font-bold text-[#0478CA] underline cursor-pointer">
+            <button type="button" onClick={() => setVerTodos((v) => !v)} className="mt-2 text-sm font-bold text-[#0369B3] underline cursor-pointer">
               {verTodos ? 'Mostrar só os 12 mais votados' : `Ver todos os ${lista.length} candidatos`}
             </button>
           )}
@@ -409,7 +409,7 @@ export default function AbaUrnas({
                       {l.cand.map((x: any, i: number) => (
                         <td key={i} className="p-2 text-right tabular-nums" style={heat(x.pct)}>
                           <span className="font-bold">{num(x.votos)}</span>
-                          {x.venceu && <span className="ml-1 px-1.5 rounded bg-[#128C4A] text-white text-[11px] font-bold">1º</span>}
+                          {x.venceu && <span className="ml-1 px-1.5 rounded bg-[#0E7A3F] text-white text-[11px] font-bold">1º</span>}
                           <span className="block text-xs">
                             {pct(x.pct)}
                             {x.posicao ? ` · ${x.posicao}º` : ''}
@@ -505,11 +505,11 @@ function UrnasNasEleicoes({ u }: { u: any }) {
                     {p ? (
                       <>
                         <span className="font-bold">{num(p.votos)}</span>
-                        {p.venceu && <span className="ml-1 px-1.5 rounded bg-[#128C4A] text-white text-[11px] font-bold">1º</span>}
+                        {p.venceu && <span className="ml-1 px-1.5 rounded bg-[#0E7A3F] text-white text-[11px] font-bold">1º</span>}
                         <span className="block text-xs text-slate-500">{pct(p.pct)}</span>
                       </>
                     ) : (
-                      <span className="text-slate-400">—</span>
+                      <span className="text-slate-500">—</span>
                     )}
                   </td>
                 ))}
@@ -591,7 +591,7 @@ function PainelPerfil({ p, tr, cidade, cor }: { p: any; tr: any; cidade: string;
   const valor = (k: string, d: any) => (!g[k].urnas ? '—' : d.tipo === 'pct' ? pct(g[k].ind[d.id]) : `${dec(g[k].ind[d.id])} anos`);
   return (
     <section aria-labelledby="perfil-titulo" className="p-5 sm:p-6 rounded-2xl bg-white border-2 border-[#0F2053]">
-      <p className="text-sm font-bold text-[#0478CA]">Perfil de onde ganhou</p>
+      <p className="text-sm font-bold text-[#0369B3]">Perfil de onde ganhou</p>
       <h2 id="perfil-titulo" className="mt-1 text-xl sm:text-2xl font-bold text-[#0F2053]">
         <span className="inline-block w-3 h-3 mr-2 rounded-full align-middle" style={{ background: cor }} aria-hidden="true" />
         {p.candidato.nome}{' '}
@@ -718,7 +718,7 @@ function PainelPerfil({ p, tr, cidade, cor }: { p: any; tr: any; cidade: string;
       <Trajetoria tr={tr} cidade={cidade} />
 
       <details className="mt-5">
-        <summary className="cursor-pointer font-bold text-[#0478CA]">Tabela completa: onde ficou em 1º, urnas mais fortes, mais fracas e cidade</summary>
+        <summary className="cursor-pointer font-bold text-[#0369B3]">Tabela completa: onde ficou em 1º, urnas mais fortes, mais fracas e cidade</summary>
         <div className="mt-2 overflow-auto border border-slate-200 rounded-xl">
           <table className="w-full min-w-[40rem] text-sm">
             <thead className="bg-slate-50 text-slate-600">
@@ -762,7 +762,7 @@ function PainelPerfil({ p, tr, cidade, cor }: { p: any; tr: any; cidade: string;
 }
 
 const corSituacao = (s: string) =>
-  /^eleito/i.test(s) ? 'bg-[#128C4A] text-white' : /^suplente/i.test(s) ? 'bg-amber-100 text-amber-900' : 'bg-slate-100 text-slate-700';
+  /^eleito/i.test(s) ? 'bg-[#0E7A3F] text-white' : /^suplente/i.test(s) ? 'bg-amber-100 text-amber-900' : 'bg-slate-100 text-slate-700';
 
 /** A mesma pessoa em outras eleições (cadastro do TSE): um cartão por ano, comparativo, redutos e locais */
 function Trajetoria({ tr, cidade }: { tr: any; cidade: string }) {
@@ -795,7 +795,7 @@ function Trajetoria({ tr, cidade }: { tr: any; cidade: string }) {
             </div>
             <p className="mt-1 font-semibold text-slate-800">
               {c.cargo}
-              {c.atual && <span className="ml-2 text-xs font-bold text-[#0478CA]">(esta eleição)</span>}
+              {c.atual && <span className="ml-2 text-xs font-bold text-[#0369B3]">(esta eleição)</span>}
             </p>
             <p className="text-sm text-slate-600">
               {c.nome} · nº {c.numero} · {c.partido}

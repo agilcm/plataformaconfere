@@ -331,11 +331,11 @@ export default function SuperSugestaoPanel({
           <span className="text-sm text-slate-500">
             Histórico: {historico.processos.length} processos, {historico.processos.reduce((s: number, p: any) => s + p.itens.length, 0)} itens · atualizado em{' '}
             {dataBR(historico.atualizadoEm)} ({ORIGEM[origem] || origem}) ·{' '}
-            <button type="button" onClick={() => baixarHistorico(historico)} className="font-bold text-[#0478CA] underline cursor-pointer">
+            <button type="button" onClick={() => baixarHistorico(historico)} className="font-bold text-[#0369B3] underline cursor-pointer">
               baixar cache
             </button>{' '}
             ·{' '}
-            <button type="button" onClick={() => arquivo.current?.click()} className="font-bold text-[#0478CA] underline cursor-pointer">
+            <button type="button" onClick={() => arquivo.current?.click()} className="font-bold text-[#0369B3] underline cursor-pointer">
               importar cache
             </button>
           </span>
@@ -417,7 +417,7 @@ export default function SuperSugestaoPanel({
                     <button
                       type="button"
                       onClick={() => setVerFracas((v) => [...v, bloco])}
-                      className="mt-2 text-[15px] font-bold text-[#0478CA] underline cursor-pointer"
+                      className="mt-2 text-[15px] font-bold text-[#0369B3] underline cursor-pointer"
                     >
                       Mostrar {doNivel.length} {doNivel.length === 1 ? 'edital' : 'editais'}
                     </button>
@@ -468,7 +468,7 @@ function Card({ r, n }: { r: any; n: Nivel }) {
         href={r.edital.link}
         target="_blank"
         rel="noopener noreferrer"
-        className="mt-2 inline-flex items-center gap-1 text-sm font-bold text-[#0478CA] underline"
+        className="mt-2 inline-flex items-center gap-1 text-sm font-bold text-[#0369B3] underline"
       >
         Ver edital no PNCP <Icon name="arrow" className="w-4 h-4" />
       </a>

@@ -1,5 +1,5 @@
 import { Container, Icon } from './ui.tsx';
-import { ROUTES } from '../lib/routes.ts';
+import { ROUTES, rotaServico } from '../lib/routes.ts';
 
 interface Props {
   onContact: (service?: string) => void;
@@ -68,7 +68,10 @@ export default function LicitacoesSection({ onContact }: Props) {
               Quero vender para o governo
               <Icon name="arrow" className="w-5 h-5" />
             </button>
-            <a href={ROUTES.licitacoes} className="mt-3 inline-flex items-center gap-2 self-start text-base font-bold text-[#0478CA] hover:text-[#03609F] underline underline-offset-4">
+            <a href={rotaServico('assessoria-licitacoes')} className="mt-3 inline-flex items-center gap-2 self-start text-base font-bold text-[#0369B3] hover:text-[#03609F] underline underline-offset-4">
+              Saiba mais sobre a assessoria em licitações
+            </a>
+            <a href={ROUTES.licitacoes} className="mt-2 inline-flex items-center gap-2 self-start text-base font-bold text-[#0369B3] hover:text-[#03609F] underline underline-offset-4">
               Ver editais abertos em MG e na Zona da Mata
             </a>
           </div>
@@ -108,7 +111,7 @@ export default function LicitacoesSection({ onContact }: Props) {
             <ul className="space-y-2">
               {PORTALS.map((p) => (
                 <li key={p} className="flex items-center gap-2 text-base text-slate-700">
-                  <Icon name="check" className="w-5 h-5 text-[#0478CA] shrink-0" />
+                  <Icon name="check" className="w-5 h-5 text-[#0369B3] shrink-0" />
                   {p}
                 </li>
               ))}

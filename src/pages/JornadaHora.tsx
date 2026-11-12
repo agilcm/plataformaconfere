@@ -323,7 +323,7 @@ export default function JornadaHora() {
         <p className="mt-3 text-sm text-slate-600">
           Pela EC 141/2026, em {dataBR(inicio || hojeISO())} vale a regra de <strong>{regraDaData} horas</strong>.
           {regraDaData !== regime && (
-            <button type="button" onClick={() => setRegime(regraDaData)} className="ml-2 font-bold text-[#0478CA] underline cursor-pointer">
+            <button type="button" onClick={() => setRegime(regraDaData)} className="ml-2 font-bold text-[#0369B3] underline cursor-pointer">
               Usar a regra dessa data
             </button>
           )}
@@ -559,7 +559,7 @@ export default function JornadaHora() {
                 ))}
                 {meus.map((f) => (
                   <li key={f.regra} className="flex items-start gap-2 text-sm text-slate-700">
-                    <span className="mt-0.5 w-4 text-center text-[#0478CA]" aria-hidden="true">
+                    <span className="mt-0.5 w-4 text-center text-[#0369B3]" aria-hidden="true">
                       ●
                     </span>
                     <span className="flex-1">
@@ -696,7 +696,7 @@ export default function JornadaHora() {
           <h2 id="h-semana" className="text-lg font-bold text-[#0F2053]">
             4. Semana padrão
           </h2>
-          <p className={`text-sm font-bold ${totalModelo > REGIMES[regime].semanal ? 'text-red-700' : 'text-[#128C4A]'}`}>
+          <p className={`text-sm font-bold ${totalModelo > REGIMES[regime].semanal ? 'text-red-700' : 'text-[#0E7A3F]'}`}>
             {horas(totalModelo)} na semana · {folgasModelo} {folgasModelo === 1 ? 'folga' : 'folgas'} · limite {regime}h
           </p>
         </div>
@@ -810,7 +810,7 @@ export default function JornadaHora() {
           aria-labelledby="h-resultado"
           className={`p-5 sm:p-6 rounded-2xl bg-white border-2 ${a.resumo.dentro ? 'border-[#128C4A]' : 'border-red-600'}`}
         >
-          <h2 id="h-resultado" className={`text-xl sm:text-2xl font-bold ${a.resumo.dentro ? 'text-[#128C4A]' : 'text-red-700'}`}>
+          <h2 id="h-resultado" className={`text-xl sm:text-2xl font-bold ${a.resumo.dentro ? 'text-[#0E7A3F]' : 'text-red-700'}`}>
             {a.resumo.dentro ? `Dentro da regra de ${regime} horas` : `Fora da regra de ${regime} horas`}
           </h2>
           <p className="mt-1 text-[15px] text-slate-700">
@@ -843,7 +843,7 @@ export default function JornadaHora() {
             {comparativo.map((c: any) => (
               <li key={c.regime} className={`p-4 rounded-xl border-2 ${c.regime === regime ? 'border-[#0F2053]' : 'border-slate-200'} bg-[#F4F7FB]`}>
                 <p className="text-sm text-slate-600">Regra de {c.regime} horas</p>
-                <p className={`text-lg font-bold ${c.dentro ? 'text-[#128C4A]' : 'text-red-700'}`}>{c.dentro ? '✓ Cabe' : '✗ Não cabe'}</p>
+                <p className={`text-lg font-bold ${c.dentro ? 'text-[#0E7A3F]' : 'text-red-700'}`}>{c.dentro ? '✓ Cabe' : '✗ Não cabe'}</p>
                 <p className="text-xs text-slate-600">
                   {c.erros} {c.erros === 1 ? 'problema' : 'problemas'}
                   {c.excesso > 0 && ` · ${horas(c.excesso)} acima do limite`}
@@ -1038,7 +1038,7 @@ export default function JornadaHora() {
                     <tr key={d.data} className={`border-t border-slate-100 ${ajustes[d.data] ? 'bg-amber-50/60' : ''}`}>
                       <td className="p-2 whitespace-nowrap">
                         <span className="font-semibold text-[#0F2053]">{dataBR(d.data).slice(0, 5)}</span> <span className="text-slate-600">{DIAS[d.dow]}</span>
-                        {d.feriado && <span className="block text-xs font-semibold text-[#0478CA]">{d.feriado}</span>}
+                        {d.feriado && <span className="block text-xs font-semibold text-[#0369B3]">{d.feriado}</span>}
                       </td>
                       <td className="p-2">
                         <select

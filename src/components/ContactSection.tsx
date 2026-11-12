@@ -80,7 +80,7 @@ export default function ContactSection({ defaultService }: ContactSectionProps) 
               rel="noopener noreferrer"
               className="flex items-center gap-4 p-5 rounded-2xl bg-white border border-slate-200 hover:border-[#128C4A] transition-colors"
             >
-              <span className="w-12 h-12 rounded-xl bg-[#128C4A] text-white flex items-center justify-center shrink-0">
+              <span className="w-12 h-12 rounded-xl bg-[#0E7A3F] text-white flex items-center justify-center shrink-0">
                 <WhatsAppIcon className="w-6 h-6" />
               </span>
               <span>
