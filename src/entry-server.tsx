@@ -62,7 +62,14 @@ export function headServico(slug: string) {
         image: imagem,
         telephone: '+55 32 99921-7912',
         email: COMPANY_PROFILE.email,
-        address: { '@type': 'PostalAddress', addressLocality: COMPANY_PROFILE.cityShort, addressRegion: 'MG', addressCountry: 'BR' },
+        address: {
+          '@type': 'PostalAddress',
+          streetAddress: `${COMPANY_PROFILE.street} - ${COMPANY_PROFILE.district}`,
+          addressLocality: COMPANY_PROFILE.cityShort,
+          addressRegion: 'MG',
+          postalCode: COMPANY_PROFILE.postalCode,
+          addressCountry: 'BR',
+        },
       },
       {
         '@type': 'Service',
@@ -134,6 +141,7 @@ Sede em ${COMPANY_PROFILE.city} (${COMPANY_PROFILE.region}). ${COMPANY_PROFILE.c
 Segunda a sexta, das 8h às 18h.
 
 ## Contato
+- Endereço: ${COMPANY_PROFILE.street} - ${COMPANY_PROFILE.district}, ${COMPANY_PROFILE.cityShort} - MG, ${COMPANY_PROFILE.postalCode}
 - WhatsApp e telefone: ${COMPANY_PROFILE.phoneDisplay}
 - E-mail: ${COMPANY_PROFILE.email}
 - CNPJ: ${COMPANY_PROFILE.cnpj}

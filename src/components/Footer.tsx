@@ -60,7 +60,11 @@ export default function Footer({ page = 'home' }: { page?: 'home' | 'licitacoes'
               <a href={`mailto:${COMPANY_PROFILE.email}`} className="block hover:text-white break-words">
                 {COMPANY_PROFILE.email}
               </a>
-              <span className="block">{COMPANY_PROFILE.city}</span>
+              <span className="block">
+                {COMPANY_PROFILE.street} - {COMPANY_PROFILE.district}
+                <br />
+                {COMPANY_PROFILE.cityShort} - MG, {COMPANY_PROFILE.postalCode}
+              </span>
               <span className="block">Seg a sex, 8h às 18h</span>
             </address>
           </div>

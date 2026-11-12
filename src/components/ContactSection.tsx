@@ -104,6 +104,9 @@ export default function ContactSection({ defaultService }: ContactSectionProps) 
               <span>
                 <span className="block text-sm text-slate-500">Sede</span>
                 <span className="block text-lg font-bold text-[#0F2053]">{COMPANY_PROFILE.city}</span>
+                <span className="block text-sm text-slate-600">
+                  {COMPANY_PROFILE.street} - {COMPANY_PROFILE.district}, {COMPANY_PROFILE.postalCode}
+                </span>
                 <span className="block text-sm text-slate-600">CNPJ {COMPANY_PROFILE.cnpj}</span>
               </span>
             </div>

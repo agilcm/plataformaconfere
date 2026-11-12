@@ -42,6 +42,10 @@ export const COMPANY_PROFILE = {
   city: 'Astolfo Dutra, MG',
   region: 'Zona da Mata mineira',
   cityShort: 'Astolfo Dutra',
+  // Endereço escrito igual ao do Perfil da Empresa no Google (nome, endereço e telefone têm de bater letra por letra)
+  street: 'Av. Olintho Almada, 563',
+  district: 'Nossa Senhora de Fátima',
+  postalCode: '36780-000',
   cnpj: '51.328.978/0001-18',
   inscricaoEstadual: '0046589030065',
   representative: 'Elizangela Y Pinho Correa',
