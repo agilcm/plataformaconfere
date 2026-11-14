@@ -159,7 +159,7 @@ function mesCompleto(comp) {
   };
 }
 
-test('semáforo: pode pagar, não pagar ainda e travar', () => {
+test('semáforo: pagamento liberado, aguardando documentos e pagamento condicionado', () => {
   const ok = avaliarMes(mesCompleto('2026-03'), { hoje: '2026-04-10' });
   assert.equal(ok.sinal, 'pagar', ok.pendencias.map((p) => p.id).join());
   // DARF não é cobrado quando a DCTFWeb não tem saldo a pagar; VT declarado como não aplicável
@@ -316,7 +316,7 @@ test('vencimentos, regularidade e planilhas do Excel', async () => {
   assert.ok(ano[0].linhas.every((l) => l.length === ano[0].colunas.length));
   assert.ok(abasMes(avs[1])[0].linhas.length > 20);
   const farol = abasFarol([{ nome: 'Empresa Exemplo', avs, venc: v }], ['2026-02', '2026-03']);
-  assert.equal(farol[0].linhas[0][1], 'Pode pagar (100%)');
+  assert.equal(farol[0].linhas[0][1], 'Pagamento liberado (100%)');
 });
 
 test('organização da pasta: várias prestadoras, pastas de ano, documentos da empresa e pastas ignoradas', async () => {
@@ -519,7 +519,7 @@ test('folha: total líquido de todos os departamentos × soma dos comprovantes',
   assert.equal(pg.rescisoes.situacao, 'sem-comprovante');
 });
 
-test('relatório rápido em itens a), b), c) e "não se aplica nesta prestadora"', async () => {
+test('relatório rápido em itens a), b), c) e "não se aplica nesta contratada"', async () => {
   const { relatorioRapido, pendenciasSinteticas, FUNDAMENTO_LEGAL, blocosNotificacao, mensagemPendencias } = await import('../src/lib/docpref.js');
   const m = mesCompleto('2026-03');
   m.arquivos = m.arquivos.filter((a) => !['crf', 'fgts-pagamento', 'folha'].includes(a.tipo));
@@ -532,12 +532,12 @@ test('relatório rápido em itens a), b), c) e "não se aplica nesta prestadora"
   assert.ok(itens.includes('Certidões: CRF'));
   assert.ok(itens.some((t) => t.startsWith('Divergência em férias: traz 02/2026')));
   const r = relatorioRapido([{ nome: 'Empresa Exemplo', avs: [av], venc: [] }], { contratante: 'Prefeitura de Exemplo', hoje: '2026-05-02' });
-  assert.match(r.texto, /03\/2026 · Travar pagamento/);
+  assert.match(r.texto, /03\/2026 · Pagamento condicionado/);
   assert.match(r.texto, /\na\) /);
   assert.match(r.texto, /Contratante: Prefeitura de Exemplo/);
   assert.ok(r.blocos.length > 4);
 
-  // VT não se aplica a esta prestadora: some de todos os meses
+  // VT não se aplica a esta contratada: some de todos os meses
   const semVt = mesCompleto('2026-03');
   semVt.arquivos = semVt.arquivos.filter((a) => a.tipo !== 'vt-relacao');
   assert.equal(avaliarMes(semVt, { hoje: '2026-04-10' }).itens.find((x) => x.id === 'vt-guia').status, 'faltando');
@@ -622,4 +622,59 @@ test('manual do operador: todas as seções, situações e pagamentos explicados
       s.titulo,
     );
   assert.ok(!/energisa/i.test(texto));
+});
+
+test('painel do órgão: resumo, providências do fiscal e parecer do mês', async () => {
+  const { resumoOrgao, providencias, blocosParecer, nomeSinal } = await import('../src/lib/docpref.js');
+  assert.deepEqual(['pagar', 'aguardando', 'travar'].map(nomeSinal), ['Pagamento liberado', 'Aguardando documentos', 'Pagamento condicionado']);
+
+  // contratada A: março em dia, abril sem o CRF e com o prazo encerrado; contratada B: abril ainda no prazo, faltando o CRF
+  const semCrf = (comp) => {
+    const m = mesCompleto(comp);
+    m.arquivos = m.arquivos.filter((a) => a.tipo !== 'crf');
+    return m;
+  };
+  const hoje = '2026-06-05';
+  const avsA = [avaliarMes(mesCompleto('2026-03'), { hoje }), avaliarMes(semCrf('2026-04'), { hoje })];
+  const avsB = [avaliarMes(semCrf('2026-04'), { hoje: '2026-05-27' })];
+  assert.deepEqual([avsA[0].sinal, avsA[1].sinal, avsB[0].sinal], ['pagar', 'travar', 'aguardando']);
+  assert.match(avsA[0].titulo, /^Pagamento liberado/);
+  assert.match(avsA[1].titulo, /^Pagamento condicionado à regularização: 1 pendência/);
+
+  const lista = [
+    { chave: 'a', nome: 'Empresa A', avs: avsA, fiscal: 'Maria Souza', venc: [{ nome: 'CRF', status: 'vencido', validade: '2026-05-01' }] },
+    { chave: 'b', nome: 'Empresa B', avs: avsB, venc: [{ nome: 'CNDT', status: 'a-vencer', validade: '2026-06-20' }] },
+  ];
+  const r = resumoOrgao(lista, '2026');
+  assert.deepEqual([r.contratos, r.liberados, r.condicionados, r.aguardando, r.contratosComPendencia, r.vencidos, r.aVencer], [2, 1, 1, 1, 1, 1, 1]);
+
+  const p = providencias(lista, { contratante: '' });
+  assert.deepEqual(
+    p.map((x) => x.nivel),
+    ['urgente', 'atencao', 'atencao', 'atencao', 'cadastro', 'cadastro'],
+    'primeiro notificar, depois prazos e certidões, por último o cadastro',
+  );
+  assert.equal(p[0].titulo, 'Notificar Empresa A');
+  assert.match(p[0].texto, /1 mês com prazo encerrado e pendência \(04\/2026\)/);
+  assert.deepEqual([p[0].chave, p[0].comp, p[0].acao], ['a', '2026-04', 'mes']);
+  assert.match(p[1].titulo, /^Prazo de Empresa B termina em 31\/05\/2026$/);
+  assert.match(p[2].titulo, /renovação de 1 documento vencido/);
+  assert.equal(p[4].titulo, 'Informar o órgão contratante');
+  assert.equal(p[5].titulo, 'Indicar o fiscal do contrato de Empresa B', 'a Empresa A já tem fiscal');
+  assert.ok(!providencias(lista, { contratante: 'Prefeitura de Exemplo' }).some((x) => x.acao === 'orgao'));
+
+  // parecer para o processo de pagamento
+  const cfg = { contratante: 'Prefeitura de Exemplo', unidade: 'Secretaria de Administração', fiscal: 'Maria Souza', objeto: 'Limpeza predial' };
+  const cond = blocosParecer({ razao: 'Empresa A Ltda', cnpj: '00.000.000/0001-00', contrato: '12/2026' }, avsA[1], cfg);
+  assert.equal(cond[0].text, 'Parecer de fiscalização documental');
+  assert.deepEqual(cond[1].rows[0], ['Órgão contratante', 'Prefeitura de Exemplo']);
+  assert.ok(cond[1].rows.some((l) => l[0] === 'Contrato' && l[1] === 'nº 12/2026 · Limpeza predial'));
+  const conclusao = cond.find((b) => b.type === 'para' && b.bold && /^Pagamento condicionado\./.test(b.text));
+  assert.match(conclusao.text, /condicionar o pagamento à regularização, quando o edital ou o contrato assim previr \(art\. 121, § 3º, II/);
+  assert.ok(cond.some((b) => b.type === 'bullets' && b.items[0] === 'Certidões: CRF'));
+  assert.ok(cond.some((b) => b.type === 'para' && /Fiscal do contrato \(art\. 117/.test(b.text)));
+  for (const t of cond.filter((b) => b.type === 'table')) for (const l of t.rows) assert.equal(l.length, t.widths.length);
+  const livre = blocosParecer({ razao: 'Empresa A Ltda' }, avsA[0], cfg);
+  assert.ok(livre.some((b) => b.type === 'para' && /^Pagamento liberado\. .*o pagamento pode ser liberado/.test(b.text)));
+  assert.ok(!livre.some((b) => b.type === 'heading' && b.text === 'Pendências a regularizar'));
 });

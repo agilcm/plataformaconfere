@@ -778,11 +778,11 @@ export function avaliarMes(mes, o = {}) {
     for (const i of g.itens) {
       const evid = arquivos.filter((a) => a.tipo === i.id || a.tambem?.includes(i.id));
       let st;
-      if (o.naoAplica?.includes(i.id)) st = { status: 'na', detalhe: 'Não se aplica a esta prestadora (ajuste do cadastro).' };
+      if (o.naoAplica?.includes(i.id)) st = { status: 'na', detalhe: 'Não se aplica a esta contratada (ajuste do cadastro).' };
       else if (evid.length) st = statusPorEvidencia(evid, comp);
       else if (g.quando && situacao?.valor === false) st = { status: 'na', detalhe: `Não houve (${situacao.fonte}).` };
       else if (i.quando === 'darf' && darfDevido === false) st = { status: 'na', detalhe: 'A DCTFWeb não tem saldo a pagar no mês.' };
-      else if (declNa) st = { status: 'na', detalhe: 'A prestadora declarou que não se aplica.' };
+      else if (declNa) st = { status: 'na', detalhe: 'A contratada declarou que não se aplica.' };
       else if (soltos.length && !i.eventual)
         st = { status: 'candidato', detalhe: `Há ${soltos.length} ${soltos.length === 1 ? 'arquivo' : 'arquivos'} na pasta a classificar.` };
       else if (i.eventual) st = { status: 'eventual', detalhe: 'Enviar só se houve no mês.' };
@@ -825,7 +825,7 @@ export function avaliarMes(mes, o = {}) {
         .at(-1) || null;
     if (o.naoAplica?.includes(c.id)) {
       status = 'na';
-      detalhe = 'Não se aplica a esta prestadora (ajuste do cadastro).';
+      detalhe = 'Não se aplica a esta contratada (ajuste do cadastro).';
     } else if (evid.length) {
       if (validade && validade < fimDoMes(comp)) {
         status = 'vencida';
@@ -896,13 +896,15 @@ export function avaliarMes(mes, o = {}) {
     titulo = `Aguardando o envio: prazo ${dataBR(prazo)}`;
   } else if (!travam.length) {
     sinal = 'pagar';
-    titulo = `Pode pagar: documentos do mês recebidos${conta('conferir') ? ` (${conta('conferir')} a conferir o conteúdo)` : ''}`;
+    titulo = `Pagamento liberado: documentos do mês recebidos${conta('conferir') ? ` (${conta('conferir')} a conferir o conteúdo)` : ''}`;
   } else if (diasParaPrazo >= 0) {
     sinal = 'aguardando';
-    titulo = `Não pagar ainda: ${travam.length} ${travam.length === 1 ? 'pendência' : 'pendências'} · prazo ${dataBR(prazo)}`;
+    titulo = `Não liberar ainda: ${travam.length} ${travam.length === 1 ? 'pendência' : 'pendências'} · prazo ${dataBR(prazo)}`;
   } else {
     sinal = 'travar';
-    titulo = semArquivos ? 'Travar o pagamento: nada foi enviado' : `Travar o pagamento: ${travam.length} ${travam.length === 1 ? 'pendência' : 'pendências'}`;
+    titulo = semArquivos
+      ? 'Pagamento condicionado: nada foi enviado'
+      : `Pagamento condicionado à regularização: ${travam.length} ${travam.length === 1 ? 'pendência' : 'pendências'}`;
   }
 
   const av = {
@@ -1400,7 +1402,7 @@ export function abasFarol(lista, comps, { dias = 30 } = {}) {
     {
       nome: 'Farol',
       colunas: [
-        { titulo: 'Prestadora', largura: 34 },
+        { titulo: 'Contratada', largura: 34 },
         ...comps.map((c) => ({ titulo: compBR(c), largura: 18 })),
         { titulo: 'Exigidos', largura: 9, tipo: 'numero' },
         { titulo: 'Recebidos', largura: 10, tipo: 'numero' },
@@ -1426,7 +1428,7 @@ export function abasFarol(lista, comps, { dias = 30 } = {}) {
     {
       nome: 'Vencimentos',
       colunas: [
-        { titulo: 'Prestadora', largura: 34 },
+        { titulo: 'Contratada', largura: 34 },
         { titulo: 'Documento', largura: 50 },
         { titulo: 'Situação', largura: 22 },
         { titulo: 'Validade', largura: 11 },
@@ -1448,10 +1450,12 @@ export function abasFarol(lista, comps, { dias = 30 } = {}) {
   ];
 }
 
+// Nomes do semáforo na linguagem do contrato público: o pagamento é liberado, aguarda os documentos (prazo aberto) ou
+// fica condicionado à regularização (art. 121, § 3º, II, da Lei nº 14.133/2021, quando previsto no edital ou no contrato)
 const SINAL_NOME = {
-  pagar: 'Pode pagar',
-  aguardando: 'Aguardando / dentro do prazo',
-  travar: 'Travar pagamento',
+  pagar: 'Pagamento liberado',
+  aguardando: 'Aguardando documentos',
+  travar: 'Pagamento condicionado',
   futuro: 'Mês em curso',
   fora: 'Antes do início',
 };
@@ -1541,6 +1545,174 @@ export function blocosNotificacao(prestadora, av, cfg = {}) {
   ];
 }
 
+// ---------------------------------------------------------------- painel do órgão
+
+/**
+ * Resumo do órgão no ano: contratos acompanhados e meses com pagamento liberado, condicionado ou aguardando documentos.
+ * @param {{ avs: any[], venc?: any[] }[]} lista um item por contrato
+ * @param {string} ano
+ */
+export function resumoOrgao(lista, ano) {
+  const doAno = lista.flatMap((l) => l.avs.filter((a) => a.comp.startsWith(ano)));
+  const conta = (sinal) => doAno.filter((a) => a.sinal === sinal).length;
+  const venc = lista.flatMap((l) => l.venc || []);
+  return {
+    contratos: lista.length,
+    liberados: conta('pagar'),
+    condicionados: conta('travar'),
+    aguardando: conta('aguardando'),
+    contratosComPendencia: lista.filter((l) => l.avs.some((a) => a.comp.startsWith(ano) && a.sinal === 'travar')).length,
+    vencidos: venc.filter((v) => v.status === 'vencido').length,
+    aVencer: venc.filter((v) => v.status === 'a-vencer').length,
+    regularidade: performance(doAno).regularidade,
+  };
+}
+
+const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
+
+/**
+ * O que o fiscal precisa fazer agora, do mais urgente para o menos: notificar a contratada que tem mês com prazo
+ * encerrado e pendência, acompanhar os prazos que terminam em até 7 dias, pedir a renovação de certidões e completar o cadastro.
+ * @param {{ chave: string, nome: string, avs: any[], venc?: any[], fiscal?: string }[]} lista um item por contrato
+ * @param {{ contratante?: string }} [o]
+ * @returns {{ nivel: 'urgente'|'atencao'|'cadastro', titulo: string, texto: string, chave?: string, comp?: string, acao: 'mes'|'orgao'|'contrato' }[]}
+ */
+export function providencias(lista, o = {}) {
+  const out = [];
+  for (const l of lista) {
+    const travados = l.avs.filter((a) => a.sinal === 'travar');
+    if (!travados.length) continue;
+    const periodo = travados.length === 1 ? compBR(travados[0].comp) : `${compBR(travados[0].comp)} a ${compBR(travados.at(-1).comp)}`;
+    out.push({
+      nivel: 'urgente',
+      titulo: `Notificar ${l.nome}`,
+      texto: `${plural(travados.length, 'mês', 'meses')} com prazo encerrado e pendência (${periodo}). O pagamento desses meses fica condicionado à regularização.`,
+      chave: l.chave,
+      comp: travados.at(-1).comp,
+      acao: 'mes',
+    });
+  }
+  for (const l of lista)
+    for (const a of l.avs.filter((x) => x.sinal === 'aguardando' && x.diasParaPrazo <= 7))
+      out.push({
+        nivel: 'atencao',
+        titulo: `Prazo de ${l.nome} termina em ${dataBR(a.prazo)}`,
+        texto: `Documentos de ${compBR(a.comp)}: ${a.conferidos} de ${a.total} exigências recebidas. ${a.diasParaPrazo === 0 ? 'O prazo termina hoje.' : `${plural(a.diasParaPrazo, 'dia', 'dias')} para o fim do prazo.`}`,
+        chave: l.chave,
+        comp: a.comp,
+        acao: 'mes',
+      });
+  for (const l of lista) {
+    const vencidas = (l.venc || []).filter((v) => v.status === 'vencido');
+    const aVencer = (l.venc || []).filter((v) => v.status === 'a-vencer');
+    if (vencidas.length)
+      out.push({
+        nivel: 'atencao',
+        titulo: `Pedir a ${l.nome} a renovação de ${plural(vencidas.length, 'documento vencido', 'documentos vencidos')}`,
+        texto: vencidas.map((v) => `${v.nome} (venceu em ${dataBR(v.validade)})`).join('; '),
+        chave: l.chave,
+        acao: 'mes',
+      });
+    if (aVencer.length)
+      out.push({
+        nivel: 'atencao',
+        titulo: `${plural(aVencer.length, 'documento', 'documentos')} de ${l.nome} ${aVencer.length === 1 ? 'vence' : 'vencem'} em até 30 dias`,
+        texto: aVencer.map((v) => `${v.nome} (vence em ${dataBR(v.validade)})`).join('; '),
+        chave: l.chave,
+        acao: 'mes',
+      });
+  }
+  if (!o.contratante)
+    out.push({
+      nivel: 'cadastro',
+      titulo: 'Informar o órgão contratante',
+      texto: 'O nome do órgão aparece no parecer, nos relatórios e na notificação à contratada.',
+      acao: 'orgao',
+    });
+  for (const l of lista)
+    if (!l.fiscal)
+      out.push({
+        nivel: 'cadastro',
+        titulo: `Indicar o fiscal do contrato de ${l.nome}`,
+        texto: 'O fiscal do contrato assina o parecer e a notificação (art. 117 da Lei nº 14.133/2021).',
+        chave: l.chave,
+        acao: 'contrato',
+      });
+  return out;
+}
+
+const CONCLUSAO_PARECER = {
+  pagar:
+    'Os documentos exigidos para a competência foram apresentados. Quanto à comprovação das obrigações trabalhistas, previdenciárias e do FGTS, o pagamento pode ser liberado.',
+  aguardando: 'O prazo de envio dos documentos ainda está aberto. Recomenda-se aguardar o envio completo antes de liberar o pagamento.',
+  travar:
+    'O prazo de envio está encerrado e há pendências. Recomenda-se notificar a contratada e condicionar o pagamento à regularização, quando o edital ou o contrato assim previr (art. 121, § 3º, II, da Lei nº 14.133/2021).',
+  futuro: 'O mês ainda está em curso: não há o que conferir por enquanto.',
+  fora: 'Competência anterior ao início do contrato: nada a exigir.',
+};
+
+/**
+ * Parecer do fiscal sobre os documentos do mês, para juntar ao processo de pagamento (layout Ágil CM, lib/pdfReport.ts).
+ * @param {{ razao?: string, cnpj?: string, contrato?: string }} contratada
+ * @param {any} av avaliação do mês
+ * @param {{ contratante?: string, cnpjOrgao?: string, unidade?: string, gestor?: string, fiscal?: string, objeto?: string, atualizadoEm?: string }} [cfg]
+ */
+export function blocosParecer(contratada, av, cfg = {}) {
+  const r = av.resumo;
+  const pend = pendenciasSinteticas(av);
+  const quadro = [
+    ['Órgão contratante', [cfg.contratante, cfg.cnpjOrgao && `CNPJ ${cfg.cnpjOrgao}`].filter(Boolean).join(' · ')],
+    ['Unidade responsável', cfg.unidade],
+    ['Contratada', [contratada?.razao, contratada?.cnpj && `CNPJ ${contratada.cnpj}`].filter(Boolean).join(' · ')],
+    ['Contrato', [contratada?.contrato && `nº ${contratada.contrato}`, cfg.objeto].filter(Boolean).join(' · ')],
+    ['Competência', `${nomeCompetencia(av.comp)} · prazo de envio: ${dataBR(av.prazo)}`],
+    ['Fiscal do contrato', cfg.fiscal],
+  ].filter(([, v]) => v);
+  return [
+    { type: 'title', text: 'Parecer de fiscalização documental' },
+    { type: 'table', widths: [1.3, 4], header: ['Dado', 'Informação'], headerAlign: ['left', 'left'], rows: quadro, size: 9 },
+    { type: 'heading', text: 'Conclusão' },
+    { type: 'para', text: `${nomeSinal(av.sinal)}. ${CONCLUSAO_PARECER[av.sinal] || ''}`, bold: true },
+    {
+      type: 'table',
+      size: 9,
+      widths: [1, 1, 1, 1, 1],
+      header: ['Exigências do mês', 'Recebidas', 'Não localizadas', 'Divergências', 'Certidões pendentes'],
+      headerAlign: ['center', 'center', 'center', 'center', 'center'],
+      rows: [[av.total, av.conferidos, r.naoLocalizados, r.divergencias, r.certPendentes].map((v) => ({ text: String(v), align: 'center' }))],
+    },
+    ...(pend.length
+      ? [
+          { type: 'heading', text: 'Pendências a regularizar' },
+          { type: 'bullets', items: pend },
+        ]
+      : []),
+    ...(r.arquivos > 0 && av.pagamentos?.length
+      ? [
+          { type: 'heading', text: 'Guias e pagamentos conferidos' },
+          {
+            type: 'table',
+            size: 8.6,
+            widths: [1.6, 1, 1, 1.4],
+            header: ['Obrigação', 'Guia / folha', 'Comprovantes', 'Situação'],
+            headerAlign: ['left', 'left', 'left', 'left'],
+            rows: av.pagamentos.map((p) => [p.nome, p.guia ? moeda(p.guia) : '-', p.pago ? moeda(p.pago) : '-', PAGAMENTO[p.situacao]?.nome || p.situacao]),
+          },
+        ]
+      : []),
+    { type: 'heading', text: 'Fundamento e alcance' },
+    { type: 'para', text: FUNDAMENTO_LEGAL, size: 9 },
+    {
+      type: 'note',
+      text: `Parecer sobre a documentação trabalhista, previdenciária e do FGTS enviada pela contratada${cfg.atualizadoEm ? `, lida em ${dataBR(cfg.atualizadoEm)}` : ''}. Não substitui o atesto da execução do serviço nem as demais verificações do processo de pagamento.`,
+    },
+    { type: 'space', h: 22 },
+    { type: 'para', text: '__________________________________________' },
+    { type: 'para', text: cfg.fiscal || 'Fiscal do contrato', bold: true },
+    { type: 'para', text: cfg.fiscal ? 'Fiscal do contrato (art. 117 da Lei nº 14.133/2021)' : 'Nome e assinatura', color: 'muted', size: 9 },
+  ];
+}
+
 // ---------------------------------------------------------------- relatório rápido
 
 const LETRAS = 'abcdefghijklmnopqrstuvwxyz';
@@ -1604,7 +1776,7 @@ export function relatorioRapido(lista, o = {}) {
   if (o.contratante) linhas.push(`Contratante: ${o.contratante}`);
   if (o.atualizadoEm) linhas.push(`Pasta do Drive lida em ${dataBR(o.atualizadoEm)}`);
   const blocos = [
-    { type: 'title', text: lista.length === 1 ? `Relatório rápido - ${lista[0].nome}` : 'Relatório rápido - todas as prestadoras' },
+    { type: 'title', text: lista.length === 1 ? `Relatório rápido - ${lista[0].nome}` : 'Relatório rápido - todos os contratos' },
     {
       type: 'para',
       text: `${o.contratante ? `Contratante: ${o.contratante}. ` : ''}O que falta, em poucas palavras, nos meses que travam o pagamento ou aguardam envio.${o.atualizadoEm ? ` Pasta do Drive lida em ${dataBR(o.atualizadoEm)}.` : ''}`,

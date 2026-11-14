@@ -15,9 +15,13 @@ export interface Prestadora {
   fiscal?: string; // fiscal do contrato (assina a notificação)
   objeto?: string; // objeto do contrato
 }
-/** Quem contrata (a prefeitura ou o órgão): aparece nos relatórios e na notificação */
+/** O órgão público que contrata e fiscaliza: aparece no cabeçalho da página, no parecer, nos relatórios e na notificação */
 export interface ConfigDocPref {
-  contratante: string;
+  contratante: string; // nome do órgão (ex.: Prefeitura Municipal de ...)
+  cnpj?: string; // CNPJ do órgão
+  unidade?: string; // secretaria ou setor responsável pela fiscalização
+  gestor?: string; // gestor dos contratos
+  cidade?: string; // município e UF
   prazoRegularizacao: number; // dias úteis para regularizar depois da notificação (0 = o previsto no contrato)
 }
 /** Ajustes por prestadora (chave da prestadora): exigências que não se aplicam a ela em nenhum mês */
@@ -39,7 +43,7 @@ export interface DadosDocPref {
 const CHAVE = 'agilcm:docpref';
 const ANTIGA = 'agilcm:bancodoc'; // nome anterior do sistema
 const EVENTO = 'agilcm:docpref';
-export const CONFIG_PADRAO: ConfigDocPref = { contratante: '', prazoRegularizacao: 5 };
+export const CONFIG_PADRAO: ConfigDocPref = { contratante: '', cnpj: '', unidade: '', gestor: '', cidade: '', prazoRegularizacao: 5 };
 const VAZIO: DadosDocPref = { prestadoras: [], conferencias: {}, config: CONFIG_PADRAO, ajustes: {} };
 let cache: DadosDocPref | null = null;
 

@@ -1,7 +1,8 @@
-// /docpref/: conferência mensal dos documentos das prestadoras de serviço (co-responsabilidade da tomadora).
-// O GitHub Actions lê a pasta compartilhada (uma pasta por prestadora, uma subpasta por mês) e publica
-// docpref/leitura.json; aqui cada prestadora ganha o relatório mês a mês, o semáforo do pagamento, as
-// notificações e os PDFs no modelo "AGIL ANÁLISE DOCUMENTAL". As marcações da equipe ficam neste navegador.
+// /docpref/: fiscalização documental dos contratos de um órgão público. O órgão (contratante) confere, todo mês, os
+// documentos trabalhistas, previdenciários e do FGTS de cada contratada (Lei nº 14.133/2021, arts. 50, 117 e 121).
+// O GitHub Actions lê a pasta compartilhada (uma pasta por contratada, uma subpasta por mês) e publica
+// docpref/leitura.json; aqui o fiscal vê o painel do órgão, analisa mês a mês e emite o parecer, os relatórios e a
+// notificação em PDF. As marcações da equipe ficam neste navegador.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Header from '../components/Header.tsx';
 import { Container, Icon } from '../components/ui.tsx';
@@ -17,6 +18,7 @@ import {
   abasMes,
   avaliarEmpresa,
   blocosNotificacao,
+  blocosParecer,
   blocosRelatorioGeral,
   blocosRelatorioMensal,
   compBR,
@@ -27,7 +29,9 @@ import {
   nomeCompetencia,
   nomeSinal,
   performance,
+  providencias,
   relatorioRapido,
+  resumoOrgao,
   vencimentos,
 } from '../lib/docpref.js';
 import { MODELOS, PASTAS_DO_MES, blocosCartilha } from '../lib/docprefCartilha.js';
@@ -134,7 +138,10 @@ function unir(leitura: Leitura | null, prestadoras: Prestadora[]): Unida[] {
 }
 
 export default function DocPrefPage() {
-  const [aba, setAba] = useState<Aba>(() => (location.hash === '#cartilha' ? 'cartilha' : location.hash === '#manual' ? 'manual' : 'empresas'));
+  // abre no Painel do órgão; um link com #empresa=... abre direto o contrato
+  const [aba, setAba] = useState<Aba>(() =>
+    location.hash === '#cartilha' ? 'cartilha' : location.hash === '#manual' ? 'manual' : location.hash.includes('empresa=') ? 'empresas' : 'farol',
+  );
   const dados = useDocPref();
   const [leitura, setLeitura] = useState<Leitura | null>(null);
   const [estadoLeitura, setEstadoLeitura] = useState<'carregando' | 'ok' | 'sem'>('carregando');
@@ -205,26 +212,58 @@ export default function DocPrefPage() {
     if (location.hash !== novo) history.replaceState(null, '', `${location.pathname}${location.search}${novo}`);
   }, [aba, sel, comp]);
 
+  const cfg = dados.config;
+  const orgao = cfg.contratante.trim();
+
   return (
     <>
       <Header page="docpref" />
-      <main id="conteudo" className="bg-[#F4F7FB] min-h-screen py-10 sm:py-14">
-        <Container>
-          <h1 className="text-2xl sm:text-3xl font-bold font-display text-[#0F2053]">DocPref</h1>
-          <p className="mt-1 max-w-3xl text-[15px] text-slate-600 leading-relaxed">
-            Documentos mensais das empresas contratadas. Quem contrata responde junto se a contratada não pagar salários, INSS ou FGTS (nos contratos públicos,
-            art. 121 da Lei 14.133/2021); por isso cada contratada comprova, todo mês, que está em dia. O DocPref lê a pasta de cada uma no Google Drive,
-            confere documentos, guias, pagamentos e prazos legais, e diz quando pode pagar.
-          </p>
-          <div role="tablist" aria-label="DocPref" className="mt-6 flex flex-wrap gap-2">
+      <main id="conteudo" className="bg-[#F4F7FB] min-h-screen pb-10 sm:pb-14">
+        <section aria-labelledby="titulo-docpref" className="bg-gradient-to-br from-[#0F2053] via-[#13306f] to-[#0A1640] text-white">
+          <Container className="py-8 sm:py-10">
+            <p className="text-sm font-bold text-[#9fd3ff]">DocPref · Fiscalização documental de contratos</p>
+            <h1 id="titulo-docpref" className="mt-1 text-2xl sm:text-4xl font-bold font-display tracking-tight [text-wrap:balance]">
+              {orgao || 'Documentos das contratadas do órgão público'}
+            </h1>
+            {(cfg.unidade || cfg.cidade) && <p className="mt-1 text-base text-white/90">{[cfg.unidade, cfg.cidade].filter(Boolean).join(' · ')}</p>}
+            <p className="mt-3 max-w-3xl text-[15px] sm:text-base text-white/85 leading-relaxed">
+              Nos contratos de serviços com dedicação exclusiva de mão de obra, o órgão responde pelos encargos previdenciários e trabalhistas da contratada se
+              ficar comprovada falha na fiscalização (art. 121, § 2º, da Lei nº 14.133/2021). O DocPref lê a pasta de cada contratada no Google Drive, confere
+              documentos, guias, pagamentos e prazos legais e entrega ao fiscal o parecer de cada mês.
+            </p>
+            <ul className="mt-4 flex flex-wrap gap-2 text-sm">
+              <li className="px-3 py-1.5 rounded-full bg-white/10 border border-white/15">
+                {empresas.length} {empresas.length === 1 ? 'contrato acompanhado' : 'contratos acompanhados'}
+              </li>
+              {leitura && (
+                <li className="px-3 py-1.5 rounded-full bg-white/10 border border-white/15">
+                  Pasta lida em {new Date(leitura.atualizadoEm).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
+                </li>
+              )}
+              {!orgao && (
+                <li>
+                  <button
+                    type="button"
+                    onClick={() => setAba('cadastro')}
+                    className="px-3 py-1.5 rounded-full bg-white text-[#0F2053] font-bold hover:bg-slate-100 cursor-pointer"
+                  >
+                    Informar o órgão contratante
+                  </button>
+                </li>
+              )}
+            </ul>
+          </Container>
+        </section>
+        <Container className="pt-6">
+          <div role="tablist" aria-label="DocPref" className="flex flex-wrap gap-2">
             {(
               [
-                ['empresas', `Prestadoras e meses${empresas.length ? ` (${empresas.length})` : ''}`, 'calendar'],
-                ['farol', 'Farol e vencimentos', 'chart'],
-                ['cadastro', 'Cadastro', 'building'],
-                ['cartilha', 'Cartilha do fornecedor', 'doc'],
-                ['manual', 'Manual do operador', 'users'],
-                ['como', 'Como funciona', 'shield'],
+                ['farol', 'Painel do órgão', 'chart'],
+                ['empresas', `Contratos e meses${empresas.length ? ` (${empresas.length})` : ''}`, 'calendar'],
+                ['cadastro', 'Órgão e contratos', 'building'],
+                ['cartilha', 'Orientações à contratada', 'doc'],
+                ['manual', 'Manual do fiscal', 'users'],
+                ['como', 'Base legal e funcionamento', 'shield'],
               ] as const
             ).map(([id, nome, icone]) => (
               <button
@@ -269,6 +308,7 @@ export default function DocPrefPage() {
                   setComp(c);
                   setAba('empresas');
                 }}
+                irParaOrgao={() => setAba('cadastro')}
               />
             )}
             {aba === 'cadastro' && <Cadastro prestadoras={dados.prestadoras} config={dados.config} nomesDrive={(leitura?.empresas || []).map((e) => e.nome)} />}
@@ -282,7 +322,7 @@ export default function DocPrefPage() {
   );
 }
 
-// ---------------------------------------------------------------- prestadoras e meses
+// ---------------------------------------------------------------- contratos e meses
 
 function Empresas({
   empresas,
@@ -325,6 +365,9 @@ function Empresas({
         cnpj: escolhida.cnpj,
         contrato: escolhida.contrato,
         contratante: config.contratante,
+        cnpjOrgao: config.cnpj,
+        unidade: config.unidade,
+        gestor: config.gestor,
         fiscal: escolhida.prestadora?.fiscal,
         objeto: escolhida.prestadora?.objeto,
       }
@@ -347,14 +390,14 @@ function Empresas({
         {estadoLeitura === 'carregando'
           ? 'Lendo o resultado da pasta do Drive…'
           : estadoLeitura === 'ok' && leitura
-            ? `Fonte: a pasta compartilhada${leitura.pasta ? ` “${leitura.pasta}”` : ''} no Google Drive, lida em ${new Date(leitura.atualizadoEm).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })} · ${leitura.empresas.length} ${leitura.empresas.length === 1 ? 'prestadora' : 'prestadoras'} · o site relê a pasta a cada 3 horas.${leitura.ignoradas?.length ? ` Pastas que não são prestadoras: ${leitura.ignoradas.join(', ')}.` : ''}`
-            : 'A leitura da pasta do Drive ainda não foi publicada: falta configurar o segredo DOCPREF_PASTA_ID no GitHub (veja “Como funciona”).'}
+            ? `Fonte: a pasta compartilhada${leitura.pasta ? ` “${leitura.pasta}”` : ''} no Google Drive, lida em ${new Date(leitura.atualizadoEm).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })} · ${leitura.empresas.length} ${leitura.empresas.length === 1 ? 'contratada' : 'contratadas'} · o site relê a pasta a cada 3 horas.${leitura.ignoradas?.length ? ` Pastas que não são de contratadas: ${leitura.ignoradas.join(', ')}.` : ''}`
+            : 'A leitura da pasta do Drive ainda não foi publicada: falta configurar o segredo DOCPREF_PASTA_ID no GitHub (veja “Base legal e funcionamento”).'}
       </p>
 
       {empresas.length > 6 && (
         <div className="flex flex-wrap items-end gap-3">
           <label className="block flex-1 min-w-[12rem]">
-            <span className="block text-sm font-bold text-slate-600 mb-1">Buscar prestadora</span>
+            <span className="block text-sm font-bold text-slate-600 mb-1">Buscar contratada</span>
             <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Nome, razão social ou CNPJ" className={campo} />
           </label>
           <label className="block">
@@ -369,15 +412,15 @@ function Empresas({
 
       {!empresas.length ? (
         <div className={`${card} text-center`}>
-          <p className="text-lg font-bold text-[#0F2053]">Nenhuma prestadora ainda</p>
-          <p className="mt-1 text-[15px] text-slate-600">Quando a pasta do Drive for lida, cada prestadora aparece aqui. Também dá para cadastrar à mão.</p>
+          <h2 className="text-lg font-bold text-[#0F2053]">Nenhum contrato ainda</h2>
+          <p className="mt-1 text-[15px] text-slate-600">Quando a pasta do Drive for lida, cada contratada aparece aqui. Também dá para cadastrar à mão.</p>
           <button type="button" onClick={irParaCadastro} className={`${botao} mt-4 bg-[#0F2053] hover:bg-[#13306f] text-white`}>
-            <Icon name="building" className="w-5 h-5" /> Cadastrar prestadora
+            <Icon name="building" className="w-5 h-5" /> Cadastrar contratada
           </button>
         </div>
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {!visiveis.length && <p className="text-[15px] text-slate-600">Nenhuma prestadora com esse nome.</p>}
+          {!visiveis.length && <p className="text-[15px] text-slate-600">Nenhuma contratada com esse nome.</p>}
           {visiveis.map((e) => {
             const lista = avaliacoes.get(e.chave) || [];
             const a = lista.find((x) => x.comp === atual) || lista.filter((x) => x.sinal !== 'futuro').at(-1);
@@ -405,7 +448,7 @@ function Empresas({
                     {travados ? (
                       <span className="text-red-700 font-semibold">
                         {' '}
-                        · {travados} {travados === 1 ? 'mês travado' : 'meses travados'}
+                        · {travados} {travados === 1 ? 'mês condicionado' : 'meses condicionados'}
                       </span>
                     ) : null}
                   </span>
@@ -420,7 +463,7 @@ function Empresas({
         <div className={card}>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-lg font-bold text-[#0F2053]">{escolhida.nome}</p>
+              <h2 className="text-lg font-bold text-[#0F2053]">{escolhida.nome}</h2>
               <p className="text-sm text-slate-500">
                 {[
                   escolhida.razao && escolhida.razao !== escolhida.nome && escolhida.razao,
@@ -430,12 +473,22 @@ function Empresas({
                   .filter(Boolean)
                   .join(' · ')}
               </p>
+              {(escolhida.prestadora?.objeto || escolhida.prestadora?.fiscal) && (
+                <p className="text-sm text-slate-500">
+                  {[
+                    escolhida.prestadora.objeto && `Objeto: ${escolhida.prestadora.objeto}`,
+                    escolhida.prestadora.fiscal && `Fiscal do contrato: ${escolhida.prestadora.fiscal}`,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </p>
+              )}
               <p className="text-sm text-slate-500">
                 Prazo: {escolhida.prestadora?.dia ? `dia ${escolhida.prestadora.dia}` : 'último dia'} do mês seguinte à competência ·{' '}
                 {(() => {
                   const inicio = avs.find((a) => a.sinal !== 'fora')?.comp;
                   return inicio
-                    ? `início considerado: ${compBR(inicio)}${escolhida.prestadora?.inicio ? ' (cadastro)' : ' (primeiro mês com arquivos; ajuste no Cadastro)'}`
+                    ? `início considerado: ${compBR(inicio)}${escolhida.prestadora?.inicio ? ' (cadastro)' : ' (primeiro mês com arquivos; ajuste em Órgão e contratos)'}`
                     : '';
                 })()}
               </p>
@@ -511,7 +564,7 @@ function Empresas({
                   <th className="px-2 py-2 font-semibold text-right">Não localizados</th>
                   <th className="px-2 py-2 font-semibold text-right">Divergências</th>
                   <th className="px-2 py-2 font-semibold text-right">Certidões</th>
-                  <th className="px-2 py-2 font-semibold">Semáforo</th>
+                  <th className="px-2 py-2 font-semibold">Pagamento</th>
                   <th className="px-2 py-2 font-semibold">Relatório</th>
                 </tr>
               </thead>
@@ -574,7 +627,7 @@ function Empresas({
             </table>
           </div>
           <p className="mt-2 text-sm text-slate-500">
-            Clique num mês para ver o que chegou, o que falta e os achados.
+            Clique num mês para ver o parecer, o que chegou, o que falta e os achados.
             {(() => {
               const p = performance(avs.filter((a) => a.comp.startsWith(anoSel)));
               return p.exigidos
@@ -605,7 +658,7 @@ function Empresas({
           empresa={escolhida}
           av={av}
           atualizadoEm={leitura?.atualizadoEm || ''}
-          cfg={{ ...ident, prazoRegularizacao: config.prazoRegularizacao }}
+          cfg={{ ...ident, prazoRegularizacao: config.prazoRegularizacao, atualizadoEm: leitura?.atualizadoEm }}
           naoAplica={ajustes[escolhida.chave]?.naoAplica || []}
         />
       )}
@@ -623,10 +676,20 @@ function MesDetalhe({
   empresa: Unida;
   av: ReturnType<typeof avaliarEmpresa>[number];
   atualizadoEm: string;
-  cfg: { contratante?: string; fiscal?: string; objeto?: string; prazoRegularizacao?: number };
+  cfg: {
+    contratante?: string;
+    cnpjOrgao?: string;
+    unidade?: string;
+    gestor?: string;
+    fiscal?: string;
+    objeto?: string;
+    prazoRegularizacao?: number;
+    atualizadoEm?: string;
+  };
   naoAplica: string[];
 }) {
   const [copiado, setCopiado] = useState(false);
+  const [ver, setVer] = useState<'tudo' | 'falta' | 'ok'>('tudo');
   const chave = empresa.chave;
   const mudarItem = (id: string, status: string, motivo?: string) =>
     atualizarConferencia(chave, av.comp, (c) => ({
@@ -652,57 +715,128 @@ function MesDetalhe({
   const neutro = av.sinal === 'futuro' || av.sinal === 'fora';
   const confManual = useDocPref().conferencias[chaveConferencia(chave, av.comp)];
 
+  // conferência: o que trava o pagamento, o que já foi recebido e o resto (não se aplica, só se houver)
+  // grupos sem nada a exigir (tudo "não se aplica", sem arquivo e sem marcação) não aparecem nem entram na contagem
+  const gruposComItens = GRUPOS.map((g) => ({ g, itens: av.itens.filter((i) => i.grupo === g.id) })).filter(
+    ({ itens }) => !itens.every((i) => i.status === 'na' && !i.evidencias.length && !i.manual),
+  );
+  const todosItens = [...gruposComItens.flatMap((x) => x.itens), ...av.certidoes.filter((c) => c.exigida || c.status !== 'na' || c.manual)];
+  const falta = (i: { status: string }) => !!STATUS[i.status as keyof typeof STATUS]?.trava;
+  const recebido = (i: { status: string }) => i.status === 'ok' || i.status === 'conferir';
+  const mostra = (i: { status: string }) => ver === 'tudo' || (ver === 'falta' ? falta(i) : recebido(i));
+  const pdfRelatorio = () =>
+    downloadPdf(`docpref-${slug(empresa.nome)}-${av.comp}.pdf`, `${empresa.nome} - Relatório mensal ${compBR(av.comp)}`, [
+      { type: 'date', text: dateText() },
+      ...(blocosRelatorioMensal(empresa.nome, av, {
+        atualizadoEm,
+        dia: empresa.prestadora?.dia || 0,
+        razao: empresa.razao,
+        cnpj: empresa.cnpj,
+        contrato: empresa.contrato,
+        contratante: cfg.contratante,
+        fiscal: cfg.fiscal,
+        objeto: cfg.objeto,
+      }) as any),
+    ]);
+  const ORIENTACAO: Partial<Record<Sinal, string>> = {
+    pagar: 'Documentação do mês em ordem. Junte o parecer ao processo de pagamento.',
+    aguardando: 'O prazo de envio ainda está aberto. Acompanhe o envio e, se quiser, avise a contratada do que falta.',
+    travar:
+      'Prazo encerrado com pendência. Notifique a contratada e condicione o pagamento à regularização, se o edital ou o contrato previr (art. 121, § 3º, II, da Lei nº 14.133/2021).',
+  };
+
   return (
     <div className={card}>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-lg font-bold text-[#0F2053]">
-            {empresa.nome} · {nomeCompetencia(av.comp)}
-          </p>
-          <p className="text-sm text-slate-500">
-            Folha e guias de {compBR(av.comp)} · envio até {dataBR(av.prazo)} · {av.resumo.arquivos} {av.resumo.arquivos === 1 ? 'arquivo' : 'arquivos'} na
-            pasta
-            {av.pastaExiste ? '' : ' (a pasta do mês não existe)'}
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() =>
-            downloadPdf(`docpref-${slug(empresa.nome)}-${av.comp}.pdf`, `${empresa.nome} - Relatório mensal ${compBR(av.comp)}`, [
-              { type: 'date', text: dateText() },
-              ...(blocosRelatorioMensal(empresa.nome, av, {
-                atualizadoEm,
-                dia: empresa.prestadora?.dia || 0,
-                razao: empresa.razao,
-                cnpj: empresa.cnpj,
-                contrato: empresa.contrato,
-              }) as any),
-            ])
-          }
-          className={`${botao} bg-[#0F2053] hover:bg-[#13306f] text-white`}
-        >
-          <Icon name="doc" className="w-5 h-5" /> Relatório do mês (PDF)
-        </button>
-        <button type="button" onClick={() => baixarXlsx(`docpref-${slug(empresa.nome)}-${av.comp}.xlsx`, abasMes(av))} className={botaoSec}>
-          <Icon name="sheet" className="w-5 h-5" /> Excel do mês
-        </button>
-      </div>
+      <h2 className="text-lg font-bold text-[#0F2053]">
+        {empresa.nome} · {nomeCompetencia(av.comp)}
+      </h2>
+      <p className="text-sm text-slate-500">
+        Folha e guias de {compBR(av.comp)} · envio até {dataBR(av.prazo)} · {av.resumo.arquivos} {av.resumo.arquivos === 1 ? 'arquivo' : 'arquivos'} na pasta
+        {av.pastaExiste ? '' : ' (a pasta do mês não existe)'}
+      </p>
 
-      <p role="status" className={`mt-4 p-4 rounded-xl border text-[15px] font-bold ${SINAL[av.sinal as Sinal].cor}`}>
-        {av.titulo}
+      <section aria-labelledby="titulo-parecer" className={`mt-4 p-4 sm:p-5 rounded-2xl border-2 ${SINAL[av.sinal as Sinal].cor}`}>
+        <h3 id="titulo-parecer" className="text-xs font-extrabold uppercase tracking-wide">
+          Parecer do mês
+        </h3>
+        <p role="status" className="mt-1 text-lg font-bold leading-snug">
+          {av.titulo}
+        </p>
         {!neutro && (
-          <span className="block text-sm font-normal">
+          <p className="text-sm">
             {av.conferidos} de {av.total} exigências recebidas
             {av.diasParaPrazo >= 0
               ? ` · faltam ${av.diasParaPrazo} ${av.diasParaPrazo === 1 ? 'dia' : 'dias'} para o prazo`
               : ` · prazo encerrado em ${dataBR(av.prazo)}`}
-          </span>
+          </p>
         )}
-      </p>
+        {ORIENTACAO[av.sinal as Sinal] && <p className="mt-2 max-w-3xl text-[15px]">{ORIENTACAO[av.sinal as Sinal]}</p>}
+        <div className="mt-4 flex flex-wrap gap-2">
+          {!neutro && (
+            <button
+              type="button"
+              onClick={() =>
+                downloadPdf(`parecer-${slug(empresa.nome)}-${av.comp}.pdf`, `Parecer de fiscalização documental - ${compBR(av.comp)}`, [
+                  { type: 'date', text: dateText() },
+                  ...(blocosParecer(prest, av, cfg) as any),
+                ])
+              }
+              className={`${botao} bg-[#0F2053] hover:bg-[#13306f] text-white`}
+            >
+              <Icon name="doc" className="w-5 h-5" /> Parecer para o processo de pagamento (PDF)
+            </button>
+          )}
+          {!neutro && av.sinal !== 'pagar' && (
+            <>
+              <button
+                type="button"
+                onClick={() =>
+                  downloadPdf(`notificacao-${slug(empresa.nome)}-${av.comp}.pdf`, 'Notificação de pendências documentais', [
+                    { type: 'date', text: dateText() },
+                    ...(blocosNotificacao(prest, av, cfg) as any),
+                  ])
+                }
+                className={botaoSec}
+              >
+                <Icon name="doc" className="w-5 h-5" /> Notificação à contratada (PDF)
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(mensagem);
+                    setCopiado(true);
+                    setTimeout(() => setCopiado(false), 2500);
+                  } catch {
+                    /* sem área de transferência */
+                  }
+                }}
+                className={botaoSec}
+              >
+                {copiado ? 'Mensagem copiada' : 'Copiar mensagem de cobrança'}
+              </button>
+              {empresa.prestadora?.email && (
+                <a
+                  href={`mailto:${encodeURIComponent(empresa.prestadora.email)}?subject=${encodeURIComponent(`Pendências documentais · ${nomeCompetencia(av.comp)}`)}&body=${encodeURIComponent(mensagem)}`}
+                  className={botaoSec}
+                >
+                  Enviar por e-mail
+                </a>
+              )}
+            </>
+          )}
+          <button type="button" onClick={pdfRelatorio} className={botaoSec}>
+            <Icon name="doc" className="w-5 h-5" /> Relatório completo (PDF)
+          </button>
+          <button type="button" onClick={() => baixarXlsx(`docpref-${slug(empresa.nome)}-${av.comp}.xlsx`, abasMes(av))} className={botaoSec}>
+            <Icon name="sheet" className="w-5 h-5" /> Excel do mês
+          </button>
+        </div>
+      </section>
 
       {av.indicadores.temPlanilha && (
         <div className="mt-5">
-          <p className="text-sm font-bold text-slate-600 mb-2">Indicadores do mês (planilha de força de trabalho)</p>
+          <h3 className="text-sm font-bold text-slate-600 mb-2">Indicadores do mês (planilha de força de trabalho)</h3>
           <dl className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
             {(
               [
@@ -725,7 +859,7 @@ function MesDetalhe({
 
       {!neutro && av.resumo.arquivos > 0 && av.pagamentos.length > 0 && (
         <div className="mt-5">
-          <p className="text-sm font-bold text-slate-600 mb-2">Guias e pagamentos</p>
+          <h3 className="text-sm font-bold text-slate-600 mb-2">Guias e pagamentos</h3>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] text-sm">
               <thead className="text-left text-slate-500">
@@ -766,7 +900,7 @@ function MesDetalhe({
         <div className="mt-5 grid lg:grid-cols-2 gap-4">
           {av.prazosLegais.length > 0 && (
             <div>
-              <p className="text-sm font-bold text-slate-600 mb-2">Prazos legais</p>
+              <h3 className="text-sm font-bold text-slate-600 mb-2">Prazos legais</h3>
               <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200">
                 {av.prazosLegais.map((p) => (
                   <li key={p.id} className="px-3 py-2 flex items-start justify-between gap-3">
@@ -798,7 +932,7 @@ function MesDetalhe({
           )}
           {av.cobertura.temPlanilha && (
             <div>
-              <p className="text-sm font-bold text-slate-600 mb-2">Pessoas do mês</p>
+              <h3 className="text-sm font-bold text-slate-600 mb-2">Pessoas do mês</h3>
               <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200 text-[15px]">
                 {(
                   [
@@ -847,7 +981,7 @@ function MesDetalhe({
 
       {av.achados.length > 0 && (
         <div className="mt-5">
-          <p className="text-sm font-bold text-slate-600 mb-2">Achados da leitura</p>
+          <h3 className="text-sm font-bold text-slate-600 mb-2">Achados da leitura</h3>
           <ul className="space-y-1.5">
             {av.achados.map((a, i) => (
               <li
@@ -862,7 +996,7 @@ function MesDetalhe({
       )}
 
       <div className="mt-5">
-        <p className="text-sm font-bold text-slate-600 mb-2">No mês</p>
+        <h3 className="text-sm font-bold text-slate-600 mb-2">Ocorrências do mês</h3>
         <div className="grid sm:grid-cols-2 gap-2">
           {SITUACOES.map((q) => {
             const s = av.situacoes[q.id];
@@ -899,47 +1033,96 @@ function MesDetalhe({
         </div>
       </div>
 
-      <div className="mt-6 space-y-5">
-        {GRUPOS.map((g) => {
-          const itens = av.itens.filter((i) => i.grupo === g.id);
-          if (itens.every((i) => i.status === 'na' && !i.evidencias.length && !i.manual)) return null;
-          return (
-            <div key={g.id}>
-              <p className="text-[15px] font-extrabold text-[#0F2053]">Pasta “{g.pasta}”</p>
-              <ul className="mt-2 divide-y divide-slate-100 rounded-xl border border-slate-200">
-                {itens.map((i) => (
-                  <ItemConferencia
-                    key={i.id}
-                    i={i}
-                    manual={confManual?.itens?.[i.id]}
-                    mudar={mudarItem}
-                    sempre={naoAplica.includes(i.id)}
-                    mudarSempre={mudarSempre}
-                  />
-                ))}
-              </ul>
-            </div>
-          );
-        })}
-        <div>
-          <p className="text-[15px] font-extrabold text-[#0F2053]">Certidões</p>
-          <p className="text-sm text-slate-500">CRF todo mês; federal, estadual, municipal, CNDT e falência nos meses pares e sempre que vencerem.</p>
-          <ul className="mt-2 divide-y divide-slate-100 rounded-xl border border-slate-200">
-            {av.certidoes
-              .filter((c) => c.exigida || c.status !== 'na' || c.manual)
-              .map((c) => (
-                <ItemConferencia
-                  key={c.id}
-                  i={c}
-                  manual={confManual?.itens?.[c.id]}
-                  mudar={mudarItem}
-                  sempre={naoAplica.includes(c.id)}
-                  mudarSempre={mudarSempre}
-                />
-              ))}
-          </ul>
+      <section aria-labelledby="titulo-conferencia" className="mt-6">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h3 id="titulo-conferencia" className="text-base font-extrabold text-[#0F2053]">
+              Conferência dos documentos
+            </h3>
+            <p className="text-sm text-slate-500">O que a leitura achou em cada pasta. Ao lado, o fiscal confirma, recusa ou marca que não se aplica.</p>
+          </div>
+          <div role="group" aria-label="Mostrar na conferência" className="flex rounded-xl bg-slate-100 p-1">
+            {(
+              [
+                ['tudo', `Tudo (${todosItens.length})`],
+                ['falta', `Falta (${todosItens.filter(falta).length})`],
+                ['ok', `Recebido (${todosItens.filter(recebido).length})`],
+              ] as const
+            ).map(([id, nome]) => (
+              <button
+                key={id}
+                type="button"
+                aria-pressed={ver === id}
+                onClick={() => setVer(id)}
+                className={`px-3 py-1.5 rounded-lg text-sm font-bold cursor-pointer ${ver === id ? 'bg-white text-[#0F2053] shadow-sm' : 'text-slate-600 hover:text-[#0F2053]'}`}
+              >
+                {nome}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+        <div className="mt-4 space-y-5">
+          {!todosItens.some(mostra) && (
+            <p className="text-[15px] text-slate-600">{ver === 'falta' ? 'Nada pendente neste mês.' : 'Nenhum documento recebido neste mês.'}</p>
+          )}
+          {gruposComItens.map(({ g, itens }) => {
+            const visiveis = itens.filter(mostra);
+            if (!visiveis.length) return null;
+            return (
+              <div key={g.id}>
+                <h4 className="text-[15px] font-extrabold text-[#0F2053]">
+                  Pasta “{g.pasta}”{' '}
+                  <span className="font-normal text-sm text-slate-500">
+                    · {itens.filter(recebido).length} {itens.filter(recebido).length === 1 ? 'recebido' : 'recebidos'} · {itens.filter(falta).length}{' '}
+                    {itens.filter(falta).length === 1 ? 'pendente' : 'pendentes'}
+                  </span>
+                </h4>
+                <ul className="mt-2 divide-y divide-slate-100 rounded-xl border border-slate-200">
+                  {visiveis.map((i) => (
+                    <ItemConferencia
+                      key={i.id}
+                      i={i}
+                      manual={confManual?.itens?.[i.id]}
+                      mudar={mudarItem}
+                      sempre={naoAplica.includes(i.id)}
+                      mudarSempre={mudarSempre}
+                    />
+                  ))}
+                </ul>
+              </div>
+            );
+          })}
+          {(() => {
+            const certs = av.certidoes.filter((c) => c.exigida || c.status !== 'na' || c.manual);
+            const visiveis = certs.filter(mostra);
+            if (!visiveis.length) return null;
+            return (
+              <div>
+                <h4 className="text-[15px] font-extrabold text-[#0F2053]">
+                  Certidões{' '}
+                  <span className="font-normal text-sm text-slate-500">
+                    · {certs.filter(recebido).length} {certs.filter(recebido).length === 1 ? 'recebida' : 'recebidas'} · {certs.filter(falta).length}{' '}
+                    {certs.filter(falta).length === 1 ? 'pendente' : 'pendentes'}
+                  </span>
+                </h4>
+                <p className="text-sm text-slate-500">CRF todo mês; federal, estadual, municipal, CNDT e falência nos meses pares e sempre que vencerem.</p>
+                <ul className="mt-2 divide-y divide-slate-100 rounded-xl border border-slate-200">
+                  {visiveis.map((c) => (
+                    <ItemConferencia
+                      key={c.id}
+                      i={c}
+                      manual={confManual?.itens?.[c.id]}
+                      mudar={mudarItem}
+                      sempre={naoAplica.includes(c.id)}
+                      mudarSempre={mudarSempre}
+                    />
+                  ))}
+                </ul>
+              </div>
+            );
+          })()}
+        </div>
+      </section>
 
       {av.arquivos.length > 0 && (
         <details className="mt-6">
@@ -975,46 +1158,6 @@ function MesDetalhe({
             </table>
           </div>
         </details>
-      )}
-
-      {!neutro && av.sinal !== 'pagar' && (
-        <div className="mt-6 flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() =>
-              downloadPdf(`notificacao-${slug(empresa.nome)}-${av.comp}.pdf`, 'Notificação de pendências documentais', [
-                { type: 'date', text: dateText() },
-                ...(blocosNotificacao(prest, av, cfg) as any),
-              ])
-            }
-            className={`${botao} bg-[#0F2053] hover:bg-[#13306f] text-white`}
-          >
-            <Icon name="doc" className="w-5 h-5" /> Notificação de pendências (PDF)
-          </button>
-          <button
-            type="button"
-            onClick={async () => {
-              try {
-                await navigator.clipboard.writeText(mensagem);
-                setCopiado(true);
-                setTimeout(() => setCopiado(false), 2500);
-              } catch {
-                /* sem área de transferência */
-              }
-            }}
-            className={botaoSec}
-          >
-            {copiado ? 'Mensagem copiada' : 'Copiar mensagem de cobrança'}
-          </button>
-          {empresa.prestadora?.email && (
-            <a
-              href={`mailto:${encodeURIComponent(empresa.prestadora.email)}?subject=${encodeURIComponent(`Pendências documentais · ${nomeCompetencia(av.comp)}`)}&body=${encodeURIComponent(mensagem)}`}
-              className={botaoSec}
-            >
-              Enviar por e-mail
-            </a>
-          )}
-        </div>
       )}
     </div>
   );
@@ -1064,7 +1207,7 @@ function ItemConferencia({
           <option value="ok">Conferido: recebido</option>
           <option value="recusado">Recusado</option>
           <option value="na">Não se aplica neste mês</option>
-          {mudarSempre && <option value="na-sempre">Não se aplica nesta prestadora (todos os meses)</option>}
+          {mudarSempre && <option value="na-sempre">Não se aplica nesta contratada (todos os meses)</option>}
         </select>
         {valor === 'recusado' && (
           <input
@@ -1131,7 +1274,7 @@ function PainelRapido({
   );
 }
 
-// ---------------------------------------------------------------- farol e vencimentos
+// ---------------------------------------------------------------- painel do órgão: resumo, providências, farol e vencimentos
 
 function ListaVencimentos({ venc, compacto = false }: { venc: ReturnType<typeof vencimentos>; compacto?: boolean }) {
   return (
@@ -1167,14 +1310,17 @@ function Farol({
   config,
   atualizadoEm,
   abrir,
+  irParaOrgao,
 }: {
   empresas: Unida[];
   avaliacoes: Map<string, Avaliacao[]>;
   config: ConfigDocPref;
   atualizadoEm: string;
   abrir: (chave: string, comp: string) => void;
+  irParaOrgao: () => void;
 }) {
   const [rapido, setRapido] = useState<{ texto: string; blocos: any[] } | null>(null);
+  const [todasProvidencias, setTodasProvidencias] = useState(false);
   const anos = [...new Set([...avaliacoes.values()].flat().map((a) => a.comp.slice(0, 4)))].sort();
   const [ano, setAno] = useState('');
   const anoSel = anos.includes(ano) ? ano : anos.at(-1) || String(new Date().getFullYear());
@@ -1192,21 +1338,127 @@ function Farol({
   const vencTodos = lista.flatMap((l) => l.venc.map((v) => ({ ...v, nome: v.nome, empresa: l.nome })));
   const vencVer = soPendentes ? vencTodos.filter((v) => v.status !== 'valido') : vencTodos;
 
+  const resumo = resumoOrgao(lista, anoSel);
+  const fazer = providencias(
+    lista.map((l) => ({ chave: l.e.chave, nome: l.nome, avs: l.avs, venc: l.venc, fiscal: l.e.prestadora?.fiscal })),
+    { contratante: config.contratante },
+  );
+  const NIVEL = {
+    urgente: { nome: 'Urgente', cor: 'bg-red-100 text-red-800' },
+    atencao: { nome: 'Atenção', cor: 'bg-amber-100 text-amber-900' },
+    cadastro: { nome: 'Cadastro', cor: 'bg-slate-100 text-slate-700' },
+  } as const;
+
   if (!empresas.length)
     return (
       <div className={`${card} text-center`}>
-        <p className="text-lg font-bold text-[#0F2053]">Nenhuma prestadora ainda</p>
-        <p className="mt-1 text-[15px] text-slate-600">O farol aparece quando a pasta do Drive for lida ou quando houver prestadoras cadastradas.</p>
+        <h2 className="text-lg font-bold text-[#0F2053]">Nenhum contrato acompanhado ainda</h2>
+        <p className="mt-1 text-[15px] text-slate-600">
+          O painel aparece quando a pasta do Drive for lida ou quando houver contratadas cadastradas. Comece informando o órgão e os contratos.
+        </p>
+        <button type="button" onClick={irParaOrgao} className={`${botao} mt-4 bg-[#0F2053] hover:bg-[#13306f] text-white`}>
+          <Icon name="building" className="w-5 h-5" /> Informar o órgão e os contratos
+        </button>
       </div>
     );
 
   return (
     <div className="space-y-6">
+      <section aria-labelledby="titulo-resumo">
+        <h2 id="titulo-resumo" className="sr-only">
+          Resumo do órgão em {anoSel}
+        </h2>
+        <dl className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+          {(
+            [
+              [
+                'Contratos acompanhados',
+                resumo.contratos,
+                resumo.regularidade == null ? 'sem mês encerrado' : `regularidade de ${resumo.regularidade}% em ${anoSel}`,
+                'border-slate-200',
+                'text-[#0F2053]',
+              ],
+              ['Meses com pagamento liberado', resumo.liberados, 'documentação em ordem', 'border-emerald-300', 'text-emerald-800'],
+              [
+                'Meses com pagamento condicionado',
+                resumo.condicionados,
+                resumo.condicionados
+                  ? `em ${resumo.contratosComPendencia} ${resumo.contratosComPendencia === 1 ? 'contrato' : 'contratos'}`
+                  : 'nenhuma pendência vencida',
+                resumo.condicionados ? 'border-red-300' : 'border-slate-200',
+                resumo.condicionados ? 'text-red-800' : 'text-[#0F2053]',
+              ],
+              [
+                'Meses aguardando documentos',
+                resumo.aguardando,
+                'prazo de envio aberto',
+                resumo.aguardando ? 'border-amber-300' : 'border-slate-200',
+                resumo.aguardando ? 'text-amber-900' : 'text-[#0F2053]',
+              ],
+              [
+                'Certidões e documentos vencidos',
+                resumo.vencidos,
+                resumo.aVencer ? `e ${resumo.aVencer} a vencer em 30 dias` : 'nenhum a vencer em 30 dias',
+                resumo.vencidos ? 'border-red-300' : 'border-slate-200',
+                resumo.vencidos ? 'text-red-800' : 'text-[#0F2053]',
+              ],
+            ] as const
+          ).map(([nome, valor, apoio, borda, cor]) => (
+            <div key={nome} className={`flex flex-col p-4 rounded-2xl bg-white border-2 ${borda}`}>
+              <dt className="text-sm font-semibold text-slate-600 leading-snug">{nome}</dt>
+              <dd className={`mt-1 text-3xl font-bold font-display tabular-nums ${cor}`}>{valor}</dd>
+              <dd className="mt-auto pt-1 text-sm text-slate-500">{apoio}</dd>
+            </div>
+          ))}
+        </dl>
+      </section>
+
+      <section aria-labelledby="titulo-providencias" className={card}>
+        <h2 id="titulo-providencias" className="text-lg font-bold text-[#0F2053]">
+          O que fazer agora
+        </h2>
+        <p className="text-sm text-slate-500">As providências do fiscal, da mais urgente para a menos urgente.</p>
+        {!fazer.length ? (
+          <p className="mt-3 text-[15px] font-semibold text-emerald-800">Nada pendente: todos os contratos estão em dia.</p>
+        ) : (
+          <>
+            <ul className="mt-3 divide-y divide-slate-100">
+              {(todasProvidencias ? fazer : fazer.slice(0, 6)).map((f, k) => (
+                <li key={k} className="py-3 flex flex-col sm:flex-row sm:items-start gap-x-4 gap-y-2">
+                  <span className={`shrink-0 self-start px-2.5 py-1 rounded-lg text-xs font-bold ${NIVEL[f.nivel].cor}`}>{NIVEL[f.nivel].nome}</span>
+                  <span className="flex-1 min-w-0">
+                    <strong className="block text-[15px] text-[#0F2053]">{f.titulo}</strong>
+                    <span className="block text-sm text-slate-600">{f.texto}</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => (f.acao === 'mes' && f.chave ? abrir(f.chave, f.comp || '') : irParaOrgao())}
+                    className={`${botaoSec} shrink-0 self-start !py-2`}
+                  >
+                    {f.acao === 'mes' ? 'Abrir o contrato' : 'Preencher'}
+                    <span className="sr-only">: {f.titulo}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+            {fazer.length > 6 && (
+              <button
+                type="button"
+                onClick={() => setTodasProvidencias((v) => !v)}
+                className="mt-2 text-[15px] font-bold text-[#0369B3] underline cursor-pointer"
+              >
+                {todasProvidencias ? 'Mostrar só as 6 primeiras' : `Ver as ${fazer.length} providências`}
+              </button>
+            )}
+          </>
+        )}
+      </section>
+
       <div className={card}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="text-lg font-bold text-[#0F2053]">Farol de regularidade · {anoSel}</p>
-            <p className="text-sm text-slate-500">Uma linha por prestadora e uma coluna por mês. Clique num mês para abrir o detalhe.</p>
+            <h2 className="text-lg font-bold text-[#0F2053]">Farol dos contratos · {anoSel}</h2>
+            <p className="text-sm text-slate-500">Uma linha por contratada e uma coluna por mês. Clique num mês para abrir a análise.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             {anos.length > 1 && (
@@ -1231,18 +1483,18 @@ function Farol({
               }
               className={botaoSec}
             >
-              <Icon name="check" className="w-5 h-5" /> Relatório rápido de todas
+              <Icon name="check" className="w-5 h-5" /> Relatório rápido de todos
             </button>
           </div>
         </div>
         {rapido && (
-          <PainelRapido conteudo={rapido} arquivo="docpref-rapido-todas" titulo="Relatório rápido - todas as prestadoras" fechar={() => setRapido(null)} />
+          <PainelRapido conteudo={rapido} arquivo="docpref-rapido-todas" titulo="Relatório rápido - todos os contratos" fechar={() => setRapido(null)} />
         )}
         <div className="mt-4 overflow-x-auto">
           <table className="w-full min-w-[900px] text-sm">
             <thead className="bg-[#F7FAFD] text-left text-slate-500">
               <tr>
-                <th className="px-2 py-2 font-semibold">Prestadora</th>
+                <th className="px-2 py-2 font-semibold">Contratada</th>
                 {comps.map((c) => (
                   <th key={c} className="px-1 py-2 font-semibold text-center">
                     {c.slice(5)}
@@ -1298,8 +1550,8 @@ function Farol({
       </div>
 
       <div className={card}>
-        <p className="text-lg font-bold text-[#0F2053]">Performance por prestadora · {anoSel}</p>
-        <p className="text-sm text-slate-500">Exigências recebidas ÷ exigidas, só nos meses com prazo encerrado. As piores primeiro.</p>
+        <h2 className="text-lg font-bold text-[#0F2053]">Regularidade por contratada · {anoSel}</h2>
+        <p className="text-sm text-slate-500">Exigências recebidas ÷ exigidas, só nos meses com prazo encerrado. As que mais precisam de atenção primeiro.</p>
         <ul className="mt-3 space-y-2">
           {ranking.map(({ e, p }) => (
             <li key={e.chave} className="grid sm:grid-cols-[minmax(0,14rem)_1fr_auto] items-center gap-x-3 gap-y-1">
@@ -1313,7 +1565,7 @@ function Farol({
               <span className="text-sm tabular-nums text-slate-700">
                 {p.regularidade == null
                   ? 'sem mês encerrado'
-                  : `${p.regularidade}% · ${p.recebidos}/${p.exigidos}${p.travados ? ` · ${p.travados} ${p.travados === 1 ? 'mês travado' : 'meses travados'}` : ''}`}
+                  : `${p.regularidade}% · ${p.recebidos}/${p.exigidos}${p.travados ? ` · ${p.travados} ${p.travados === 1 ? 'mês condicionado' : 'meses condicionados'}` : ''}`}
               </span>
             </li>
           ))}
@@ -1323,8 +1575,8 @@ function Farol({
       <div className={card}>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <p className="text-lg font-bold text-[#0F2053]">Vencimentos</p>
-            <p className="text-sm text-slate-500">A última certidão (e documento da empresa) de cada prestadora e quando vence. A vencer = até 30 dias.</p>
+            <h2 className="text-lg font-bold text-[#0F2053]">Certidões e documentos com validade</h2>
+            <p className="text-sm text-slate-500">A última certidão (e documento da empresa) de cada contratada e quando vence. A vencer = até 30 dias.</p>
           </div>
           <label className="inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
             <input type="checkbox" checked={soPendentes} onChange={(ev) => setSoPendentes(ev.target.checked)} className="w-4 h-4" />
@@ -1338,7 +1590,7 @@ function Farol({
             <table className="w-full min-w-[640px] text-sm">
               <thead className="text-left text-slate-500">
                 <tr>
-                  <th className="px-2 py-1.5 font-semibold">Prestadora</th>
+                  <th className="px-2 py-1.5 font-semibold">Contratada</th>
                   <th className="px-2 py-1.5 font-semibold">Documento</th>
                   <th className="px-2 py-1.5 font-semibold">Validade</th>
                   <th className="px-2 py-1.5 font-semibold">Situação</th>
@@ -1368,7 +1620,7 @@ function Farol({
   );
 }
 
-// ---------------------------------------------------------------- cadastro
+// ---------------------------------------------------------------- órgão e contratos
 
 const NOVA = { razao: '', cnpj: '', contrato: '', email: '', pasta: '', dia: 0, drive: '', inicio: '', fiscal: '', objeto: '' };
 
@@ -1382,23 +1634,36 @@ function Cadastro({ prestadoras, config, nomesDrive }: { prestadoras: Prestadora
   return (
     <div className="grid lg:grid-cols-5 gap-6 items-start">
       <div className={`${card} lg:col-span-5`}>
-        <p className="text-lg font-bold text-[#0F2053]">Contratante</p>
+        <h2 className="text-lg font-bold text-[#0F2053]">Órgão contratante</h2>
         <p className="text-sm text-slate-500">
-          Quem contrata as prestadoras (a prefeitura ou o órgão). Aparece nos relatórios, no relatório rápido e na notificação de pendências.
+          A prefeitura, a secretaria, a autarquia ou o consórcio que contrata e fiscaliza. Esses dados aparecem no topo da página, no parecer, nos relatórios e
+          na notificação à contratada.
         </p>
-        <div className="mt-3 grid sm:grid-cols-3 gap-3">
-          <label className="block sm:col-span-2">
-            <span className="block text-sm text-slate-600 mb-1">Nome do contratante</span>
-            <input
-              defaultValue={config.contratante}
-              onBlur={(e) => salvarConfig({ contratante: e.target.value.trim() })}
-              placeholder="Ex.: Prefeitura Municipal de ..."
-              className={campo}
-            />
-          </label>
+        <div className="mt-3 grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {(
+            [
+              ['contratante', 'Nome do órgão', 'Ex.: Prefeitura Municipal de ...', 'lg:col-span-2'],
+              ['cnpj', 'CNPJ do órgão', '00.000.000/0000-00', ''],
+              ['unidade', 'Secretaria ou setor responsável', 'Ex.: Secretaria de Administração', ''],
+              ['gestor', 'Gestor dos contratos', 'Nome de quem responde pelos contratos', ''],
+              ['cidade', 'Município e UF', 'Ex.: Astolfo Dutra - MG', ''],
+            ] as const
+          ).map(([k, nome, exemplo, largura]) => (
+            <label key={k} className={`block ${largura}`}>
+              <span className="block text-sm text-slate-600 mb-1">{nome}</span>
+              <input
+                id={`docpref-orgao-${k}`}
+                defaultValue={config[k] || ''}
+                onBlur={(e) => salvarConfig({ [k]: e.target.value.trim() })}
+                placeholder={exemplo}
+                className={campo}
+              />
+            </label>
+          ))}
           <label className="block">
             <span className="block text-sm text-slate-600 mb-1">Prazo para regularizar após a notificação (dias úteis)</span>
             <input
+              id="docpref-orgao-prazo"
               type="number"
               min={0}
               max={30}
@@ -1409,6 +1674,7 @@ function Cadastro({ prestadoras, config, nomesDrive }: { prestadoras: Prestadora
             />
           </label>
         </div>
+        <p className="mt-2 text-sm text-slate-500">Os dados são gravados ao sair de cada campo e ficam guardados neste navegador.</p>
       </div>
       <form
         className={`${card} lg:col-span-2 space-y-3`}
@@ -1416,21 +1682,23 @@ function Cadastro({ prestadoras, config, nomesDrive }: { prestadoras: Prestadora
           e.preventDefault();
           if (!form.razao.trim()) return;
           salvarPrestadora({ ...form, razao: form.razao.trim() });
-          setMsg(form.id ? 'Prestadora atualizada.' : 'Prestadora cadastrada.');
+          setMsg(form.id ? 'Contrato atualizado.' : 'Contratada cadastrada.');
           setForm(NOVA);
         }}
       >
-        <p className="text-lg font-bold text-[#0F2053]">{form.id ? 'Editar prestadora' : 'Nova prestadora'}</p>
-        <p className="text-sm text-slate-500">As prestadoras da pasta lida aparecem sozinhas; o cadastro completa e-mail, contrato, prazo e início.</p>
+        <h2 className="text-lg font-bold text-[#0F2053]">{form.id ? 'Editar contrato' : 'Novo contrato'}</h2>
+        <p className="text-sm text-slate-500">
+          As contratadas da pasta lida aparecem sozinhas; o cadastro completa o contrato, o objeto, o fiscal, o e-mail, o prazo e o início.
+        </p>
         {(
           [
-            ['razao', 'Razão social', 'text', true],
-            ['cnpj', 'CNPJ', 'text', false],
+            ['razao', 'Razão social da contratada', 'text', true],
+            ['cnpj', 'CNPJ da contratada', 'text', false],
             ['contrato', 'Número do contrato', 'text', false],
-            ['email', 'E-mail para cobrança', 'email', false],
-            ['pasta', 'Link da pasta dela no Google Drive', 'url', false],
             ['objeto', 'Objeto do contrato', 'text', false],
-            ['fiscal', 'Fiscal do contrato (assina a notificação)', 'text', false],
+            ['fiscal', 'Fiscal do contrato (assina o parecer e a notificação)', 'text', false],
+            ['email', 'E-mail da contratada para a notificação', 'email', false],
+            ['pasta', 'Link da pasta dela no Google Drive', 'url', false],
           ] as const
         ).map(([k, nome, tipo, obrig]) => (
           <label key={k} className="block">
@@ -1449,7 +1717,7 @@ function Cadastro({ prestadoras, config, nomesDrive }: { prestadoras: Prestadora
         </label>
         <div className="grid grid-cols-2 gap-3">
           <label className="block">
-            <span className="block text-sm text-slate-600 mb-1">Prazo: dia do mês seguinte</span>
+            <span className="block text-sm text-slate-600 mb-1">Prazo de envio: dia do mês seguinte</span>
             <input type="number" min={0} max={31} value={form.dia || ''} placeholder="último" onChange={(e) => set('dia', e.target.value)} className={campo} />
           </label>
           <label className="block">
@@ -1476,7 +1744,7 @@ function Cadastro({ prestadoras, config, nomesDrive }: { prestadoras: Prestadora
 
       <div className={`${card} lg:col-span-3`}>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-lg font-bold text-[#0F2053]">Prestadoras cadastradas</p>
+          <h2 className="text-lg font-bold text-[#0F2053]">Contratos cadastrados</h2>
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
@@ -1505,7 +1773,7 @@ function Cadastro({ prestadoras, config, nomesDrive }: { prestadoras: Prestadora
                 const f = e.target.files?.[0];
                 if (!f) return;
                 try {
-                  setMsg(`${importarDocPref(await f.text())} prestadoras importadas.`);
+                  setMsg(`${importarDocPref(await f.text())} contratos importados.`);
                 } catch {
                   setMsg('Esse arquivo não é uma cópia do DocPref.');
                 } finally {
@@ -1516,7 +1784,7 @@ function Cadastro({ prestadoras, config, nomesDrive }: { prestadoras: Prestadora
           </div>
         </div>
         {!prestadoras.length ? (
-          <p className="mt-3 text-[15px] text-slate-600">Nenhuma prestadora cadastrada à mão.</p>
+          <p className="mt-3 text-[15px] text-slate-600">Nenhum contrato cadastrado à mão.</p>
         ) : (
           <ul className="mt-3 divide-y divide-slate-100">
             {prestadoras.map((p) => (
@@ -1527,6 +1795,8 @@ function Cadastro({ prestadoras, config, nomesDrive }: { prestadoras: Prestadora
                     {[
                       p.cnpj && `CNPJ ${p.cnpj}`,
                       p.contrato && `contrato ${p.contrato}`,
+                      p.objeto,
+                      p.fiscal && `fiscal: ${p.fiscal}`,
                       p.dia ? `prazo dia ${p.dia}` : 'prazo: último dia',
                       p.inicio && `início ${compBR(p.inicio)}`,
                     ]
@@ -1572,23 +1842,23 @@ function Cartilha({ config }: { config: ConfigDocPref }) {
   return (
     <div className="space-y-6">
       <div className={card}>
-        <p className="text-lg font-bold text-[#0F2053]">Cartilha do fornecedor {COMPANY_PROFILE.name}</p>
+        <h2 className="text-lg font-bold text-[#0F2053]">Orientações à contratada</h2>
         <p className="mt-1 max-w-3xl text-[15px] text-slate-600">
-          O que cada prestadora envia todo mês, o prazo, como montar as pastas no Drive, as certidões, os documentos de admissão, demissão e férias e a base
-          legal. Logo abaixo, os modelos em Word e a planilha em Excel para baixar. Mande para a prestadora junto com o link da pasta.
+          A cartilha que o órgão entrega a cada contratada: o que enviar todo mês, o prazo, como montar as pastas no Drive, as certidões, os documentos de
+          admissão, demissão e férias e a base legal. Logo abaixo, os modelos em Word e a planilha em Excel para baixar. Envie junto com o link da pasta.
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           <button
             type="button"
             onClick={() =>
-              downloadPdf('cartilha-do-fornecedor-agil-cm.pdf', `Cartilha do fornecedor ${COMPANY_PROFILE.name}`, [
+              downloadPdf('cartilha-da-contratada.pdf', 'Cartilha da contratada', [
                 { type: 'date', text: dateText() },
                 ...(blocosCartilha(TOMADORA, { atualizada: mes, contratante: config.contratante }) as any),
               ])
             }
             className={`${botao} bg-[#0F2053] hover:bg-[#13306f] text-white`}
           >
-            <Icon name="doc" className="w-5 h-5" /> Cartilha do fornecedor (PDF)
+            <Icon name="doc" className="w-5 h-5" /> Cartilha da contratada (PDF)
           </button>
           <a href={`${MODELOS_URL}modelos-docpref.zip`} download className={botaoSec}>
             <Icon name="box" className="w-5 h-5" /> Todos os modelos (Word e Excel, .zip)
@@ -1596,9 +1866,9 @@ function Cartilha({ config }: { config: ConfigDocPref }) {
         </div>
       </div>
       <div className={card}>
-        <p className="text-lg font-bold text-[#0F2053]">Modelos para baixar</p>
+        <h2 className="text-lg font-bold text-[#0F2053]">Modelos para baixar</h2>
         <p className="mt-1 max-w-3xl text-[15px] text-slate-600">
-          As declarações mensais vão <strong>todo mês, tenha havido ou não</strong> o fato: quando não houve, a prestadora apaga “houve” e deixa “não houve”;
+          As declarações mensais vão <strong>todo mês, tenha havido ou não</strong> o fato: quando não houve, a contratada apaga “houve” e deixa “não houve”;
           quando houve, apaga “não houve”, preenche a relação e envia os documentos do caso. Imprima no papel timbrado da empresa, assine e salve em PDF na
           pasta indicada. Declaração com “houve / não houve” sem escolher volta como divergência.
         </p>
@@ -1632,7 +1902,7 @@ function Cartilha({ config }: { config: ConfigDocPref }) {
         </ul>
       </div>
       <div className={card}>
-        <p className="text-lg font-bold text-[#0F2053]">Pastas de cada mês (MM-AAAA)</p>
+        <h2 className="text-lg font-bold text-[#0F2053]">Pastas de cada mês (MM-AAAA)</h2>
         <ul className="mt-3 grid md:grid-cols-2 gap-2">
           {PASTAS_DO_MES.map(([p, d]) => (
             <li key={p} className="px-3 py-2 rounded-xl border border-slate-200 text-[15px]">
@@ -1656,23 +1926,23 @@ function ManualOperador({ config }: { config: ConfigDocPref }) {
       <div className={card}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="max-w-3xl">
-            <p className="text-lg font-bold text-[#0F2053]">Manual do operador</p>
+            <h2 className="text-lg font-bold text-[#0F2053]">Manual do fiscal</h2>
             <p className="mt-1 text-[15px] text-slate-600">
-              Para quem opera o DocPref: fiscal do contrato, equipe da prefeitura ou da Ágil CM. Como configurar, a rotina do mês, como ler cada tela, como
-              conferir e quais relatórios usar.
+              Para quem fiscaliza os contratos: o fiscal, a equipe do órgão ou a Ágil CM em apoio. Como configurar, a rotina do mês, como ler cada tela, como
+              conferir e quais documentos emitir.
             </p>
           </div>
           <button
             type="button"
             onClick={() =>
-              downloadPdf('manual-do-operador-docpref.pdf', 'Manual do operador - DocPref', [
+              downloadPdf('manual-do-fiscal-docpref.pdf', 'Manual do fiscal - DocPref', [
                 { type: 'date', text: dateText() },
                 ...(blocosManualOperador({ contratante: config.contratante }) as any),
               ])
             }
             className={`${botao} bg-[#0F2053] hover:bg-[#13306f] text-white`}
           >
-            <Icon name="doc" className="w-5 h-5" /> Manual do operador (PDF)
+            <Icon name="doc" className="w-5 h-5" /> Manual do fiscal (PDF)
           </button>
         </div>
         <nav aria-label="Sumário do manual" className="mt-4 grid sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-1">
@@ -1744,7 +2014,7 @@ function ComoFunciona() {
   const etapas: [string, string, boolean][] = [
     [
       'Leitura automática da pasta',
-      'A cada 3 horas o site lê a pasta compartilhada no Drive: uma pasta por prestadora, uma subpasta por mês (03-2026, 2026/03, "Março 2026"...) e os documentos guardados fora das pastas de mês.',
+      'A cada 3 horas o site lê a pasta compartilhada no Drive: uma pasta por contratada, uma subpasta por mês (03-2026, 2026/03, "Março 2026"...) e os documentos guardados fora das pastas de mês.',
       true,
     ],
     [
@@ -1758,7 +2028,7 @@ function ComoFunciona() {
       true,
     ],
     ['OCR', 'PDFs digitalizados e fotos são lidos por reconhecimento de texto (comprovantes, TRCT, aviso, férias, ASO, declaração do banco).', true],
-    ['Relatório rápido', 'O que falta em cada mês, em itens a), b), c), para copiar no WhatsApp ou baixar em PDF; por prestadora ou de todas.', true],
+    ['Relatório rápido', 'O que falta em cada mês, em itens a), b), c), para copiar no WhatsApp ou baixar em PDF; por contratada ou de todas.', true],
     ['Retenção de 11% do INSS', 'A retenção declarada na DCTFWeb (Lei 9.711/98) aparece para conferir com as retenções feitas nas notas fiscais pagas.', true],
     [
       'Contratante e fiscal',
@@ -1775,12 +2045,22 @@ function ComoFunciona() {
       'DCTFWeb, guias do FGTS Digital, DARF, folha e declarações: vale o período escrito no documento, não a data de pagamento.',
       true,
     ],
-    ['Relatório mês a mês', 'Para cada prestadora: recebidos, não localizados, divergências, certidões e achados, com PDF mensal e geral do ano.', true],
-    ['Semáforo do pagamento', 'Pode pagar; não pagar ainda (antes do prazo); travar (prazo encerrado com pendência).', true],
+    ['Painel do órgão', 'Resumo dos contratos, meses com pagamento liberado, condicionado e aguardando, e a lista do que o fiscal precisa fazer agora.', true],
+    [
+      'Parecer para o processo de pagamento',
+      'Uma página por mês com o órgão, a contratada, a conclusão, as pendências, o fundamento legal e a assinatura do fiscal.',
+      true,
+    ],
+    ['Relatório mês a mês', 'Para cada contratada: recebidos, não localizados, divergências, certidões e achados, com PDF mensal e geral do ano.', true],
+    ['Semáforo do pagamento', 'Pagamento liberado; aguardando documentos (prazo aberto); pagamento condicionado (prazo encerrado com pendência).', true],
     ['Conferência da equipe', 'Cada exigência pode ser marcada como conferida, recusada (com o motivo) ou não se aplica.', true],
-    ['Notificação e cobrança', 'PDF de pendências no padrão Ágil CM, mensagem pronta e e-mail para a prestadora.', true],
-    ['Cartilha do fornecedor', 'Manual com prazos, pastas, documentos, certidões, modelos de declaração e planilha de força de trabalho.', true],
-    ['Farol e performance', 'Todas as prestadoras × meses num quadro só, com a % de regularidade (recebidos ÷ exigidos) e o ranking das piores.', true],
+    ['Notificação e cobrança', 'PDF de pendências no padrão Ágil CM, mensagem pronta e e-mail para a contratada.', true],
+    ['Cartilha da contratada', 'Manual com prazos, pastas, documentos, certidões, modelos de declaração e planilha de força de trabalho.', true],
+    [
+      'Farol e regularidade',
+      'Todos os contratos × meses num quadro só, com a % de regularidade (recebidos ÷ exigidos) e as contratadas que mais precisam de atenção.',
+      true,
+    ],
     ['Vencimentos', 'Certidões, PGR, PCMSO, LTCAT e alvará: válido, a vencer (30 dias) ou vencido, pela última apresentada.', true],
     ['Indicadores da força de trabalho', 'Ativos, admissões, desligamentos, afastados e turnover do mês, conferidos com as declarações.', true],
     ['Excel', 'Planilha do ano, do mês e do farol, como os "Exportar para o Excel" das plataformas de terceiros.', true],
@@ -1792,33 +2072,75 @@ function ComoFunciona() {
     ['Empregado liberado ou bloqueado', 'ASO, treinamentos e NRs com validade por empregado, para a portaria liberar o acesso.', false],
     ['Alerta no Telegram perto do prazo', 'Quem ainda não mandou, alguns dias antes do fim do prazo.', false],
   ];
+  const LEI: [string, string][] = [
+    [
+      'Art. 117',
+      'A execução do contrato é acompanhada por um ou mais fiscais do contrato, que registram as ocorrências e determinam o que for necessário para regularizar as faltas.',
+    ],
+    [
+      'Art. 50',
+      'Nos serviços com dedicação exclusiva de mão de obra, a contratada comprova, quando o órgão pedir e sob pena de multa, o registro de ponto, o pagamento de salários, adicionais e 13º, o depósito do FGTS, as férias, as rescisões e o vale-transporte e o vale-alimentação.',
+    ],
+    [
+      'Art. 121, § 2º',
+      'Nesses contratos, o órgão responde solidariamente pelos encargos previdenciários e subsidiariamente pelos encargos trabalhistas se ficar comprovada falha na fiscalização.',
+    ],
+    [
+      'Art. 121, § 3º, II',
+      'Quando o edital ou o contrato prevê, o órgão pode condicionar o pagamento à comprovação de quitação das obrigações trabalhistas vencidas.',
+    ],
+    [
+      'Art. 92, XVI',
+      'A contratada mantém, durante toda a execução do contrato, as condições de habilitação exigidas na licitação: daí a conferência das certidões.',
+    ],
+  ];
   return (
     <div className="space-y-6">
       <div className={card}>
-        <p className="text-lg font-bold text-[#0F2053]">Como funciona</p>
+        <h2 className="text-lg font-bold text-[#0F2053]">O que a Lei nº 14.133/2021 pede do órgão</h2>
+        <p className="mt-1 max-w-3xl text-[15px] text-slate-600">
+          O DocPref organiza a fiscalização documental dos contratos: a contratada comprova todo mês que está em dia, e o fiscal registra o que conferiu.
+        </p>
+        <dl className="mt-3 grid md:grid-cols-2 gap-3">
+          {LEI.map(([artigo, texto]) => (
+            <div key={artigo} className="p-4 rounded-xl border border-slate-200 bg-[#F7FAFD]">
+              <dt className="font-bold text-[#0F2053]">{artigo}</dt>
+              <dd className="mt-1 text-[15px] text-slate-700 leading-relaxed">{texto}</dd>
+            </div>
+          ))}
+        </dl>
+        <p className="mt-3 text-sm text-slate-500">
+          Resumo para orientar o trabalho do fiscal. Vale sempre o texto da lei, o edital e o contrato de cada contratação.
+        </p>
+      </div>
+      <div className={card}>
+        <h2 className="text-lg font-bold text-[#0F2053]">Como funciona, do envio ao pagamento</h2>
         <p className="mt-1 text-[15px] text-slate-600">
-          Nada é enviado pelo site: a única fonte é a pasta compartilhada no Google Drive. Dentro dela, uma pasta para cada empresa; cada empresa sobe os
+          Nada é enviado pelo site: a única fonte é a pasta compartilhada no Google Drive. Dentro dela, uma pasta para cada contratada; cada contratada sobe os
           documentos na sua pasta e o DocPref lê tudo pelo link.
         </p>
         <ol className="mt-3 space-y-2 text-[15px] text-slate-700 list-decimal pl-5">
           <li>
-            Cada prestadora recebe a cartilha e acesso à pasta dela no Drive. Todo mês cria a pasta da competência (MM-AAAA) com as subpastas do book e sobe os
-            documentos até o último dia do mês seguinte (ou o dia combinado).
+            O órgão entrega a cada contratada a cartilha e o acesso à pasta dela no Drive. Todo mês ela cria a pasta da competência (MM-AAAA) com as subpastas e
+            sobe os documentos até o último dia do mês seguinte (ou o dia combinado).
           </li>
           <li>
             O DocPref lê a pasta inteira a cada 3 horas, identifica cada documento, a competência escrita nele, os valores e as datas, e confere prazos legais,
             certidões e pessoas.
           </li>
           <li>
-            Na aba Prestadoras e meses você escolhe a empresa e analisa mês a mês: o que foi entregue, o que falta, as divergências e os achados, com o
-            relatório em PDF ou Excel. O Farol mostra todas as empresas juntas.
+            O Painel do órgão mostra todos os contratos juntos e o que fazer agora. Em Contratos e meses, o fiscal escolhe a contratada e analisa mês a mês: o
+            que foi entregue, o que falta, as divergências e os achados.
           </li>
-          <li>A equipe confere o que precisa de olho humano (digitalizações, assinaturas) e marca recebido, recusado ou não se aplica.</li>
-          <li>Faltou algo? O site gera a notificação e a cobrança. Depois do prazo, o pagamento fica travado até regularizar.</li>
+          <li>O fiscal confere o que precisa de olho humano (digitalizações, assinaturas) e marca recebido, recusado ou não se aplica.</li>
+          <li>
+            Faltou algo? O site gera a notificação à contratada. Depois do prazo, o pagamento fica condicionado à regularização. Com tudo em ordem, o fiscal
+            baixa o parecer e junta ao processo de pagamento.
+          </li>
         </ol>
       </div>
       <div className={card}>
-        <p className="text-lg font-bold text-[#0F2053]">O que já funciona e o que vem a seguir</p>
+        <h2 className="text-lg font-bold text-[#0F2053]">O que já funciona e o que vem a seguir</h2>
         <ul className="mt-3 space-y-2">
           {etapas.map(([t, d, pronto]) => (
             <li key={t} className="flex gap-3 text-[15px]">
@@ -1835,10 +2157,10 @@ function ComoFunciona() {
         </ul>
       </div>
       <div className={card}>
-        <p className="text-lg font-bold text-[#0F2053]">Configuração da leitura</p>
+        <h2 className="text-lg font-bold text-[#0F2053]">Configuração da leitura</h2>
         <ul className="mt-3 space-y-2 text-[15px] text-slate-700 list-disc pl-5">
           <li>
-            A pasta principal precisa estar compartilhada como “qualquer pessoa com o link” (leitor). Dentro dela, uma pasta para cada prestadora; pastas como
+            A pasta principal precisa estar compartilhada como “qualquer pessoa com o link” (leitor). Dentro dela, uma pasta para cada contratada; pastas como
             “Modelos”, “Manuais” ou “Relatórios” na raiz são ignoradas.
           </li>
           <li>

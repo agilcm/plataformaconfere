@@ -1,4 +1,4 @@
-// Cartilha do fornecedor (DocPref): o que cada prestadora envia todo mês, como organizar as pastas, prazos,
+// Cartilha da contratada (DocPref): o que cada contratada envia todo mês, como organizar as pastas, prazos,
 // certidões, modelos de declaração e a planilha de força de trabalho. Mesmo roteiro das cartilhas de grandes
 // tomadoras, no padrão Ágil CM. Gera os blocos do PDF (lib/pdfReport.ts) e as abas do modelo em Excel (lib/xlsx.js).
 
@@ -22,7 +22,7 @@ export const PASTAS_DO_MES = [
 
 /** Colunas da planilha de força de trabalho: [título, orientação, largura] */
 export const COLUNAS_FORCA = [
-  ['Empresa', 'Razão social da sua empresa (prestadora).', 34],
+  ['Empresa', 'Razão social da sua empresa (contratada).', 34],
   ['Nº do contrato', 'Número do contrato com a tomadora, só números.', 16],
   ['Ano competência', 'Só o ano (ex.: 2026).', 11],
   ['Mês competência', 'Só o número do mês (ex.: março = 3).', 11],
@@ -108,7 +108,7 @@ export const DECLARACOES = [
 export function blocosCartilha(tomadora, { atualizada = '', contratante = '' } = {}) {
   const T = tomadora.nome;
   const b = [
-    { type: 'title', text: 'Cartilha do fornecedor' },
+    { type: 'title', text: 'Cartilha da contratada' },
     ...(contratante ? [{ type: 'para', text: `Contratante: ${contratante} · conferência dos documentos: ${T}`, bold: true }] : []),
     {
       type: 'para',
@@ -135,7 +135,7 @@ export function blocosCartilha(tomadora, { atualizada = '', contratante = '' } =
       type: 'bullets',
       items: [
         'Os documentos de cada competência devem estar na pasta compartilhada até o último dia do mês seguinte. Exemplo: os documentos de março vão até 30 de abril.',
-        'Sem os documentos no prazo, a prestadora recebe notificação administrativa e o pagamento fica bloqueado até a regularização.',
+        'Sem os documentos no prazo, a contratada recebe notificação e o pagamento fica condicionado à regularização, conforme o edital ou o contrato.',
         'Documentos incompletos ou incorretos geram notificação de pendências; depois de corrigidos, voltam para a fila de conferência, atrás de quem enviou no prazo.',
         `Forma de envio: pasta no Google Drive compartilhada pela ${T} (o link vai no e-mail de solicitação). Uma pasta por mês, no formato MM-AAAA (ex.: 03-2026).`,
         `Sempre que terminar de postar, mande um e-mail para ${tomadora.email} avisando que os documentos estão na pasta.`,
@@ -273,7 +273,7 @@ export function blocosCartilha(tomadora, { atualizada = '', contratante = '' } =
     { type: 'heading', text: 'Modelos em Word e Excel' },
     {
       type: 'para',
-      text: 'Os modelos editáveis estão no DocPref, em Cartilha do fornecedor (ou com a equipe de conferência). As declarações mensais vão todo mês, tenha havido ou não o fato.',
+      text: 'Os modelos editáveis estão no DocPref, em Orientações à contratada (ou com a equipe de conferência). As declarações mensais vão todo mês, tenha havido ou não o fato.',
       size: 9.5,
     },
     { type: 'table', widths: [3, 1.6, 2], header: ['Modelo', 'Quando', 'Pasta'], rows: MODELOS.map((m) => [m.nome, m.quando, m.pasta]), size: 8.5 },
