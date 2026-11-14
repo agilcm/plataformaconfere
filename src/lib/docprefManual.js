@@ -253,7 +253,7 @@ export const MANUAL_OPERADOR = [
           'A pasta dela precisa estar dentro da pasta principal. Espere a próxima leitura (até 3 horas) ou peça para rodar a leitura na hora.',
         ],
         ['Um mês não aparece', 'O nome da pasta do mês precisa ter mês e ano (03-2026, 2026/03, "Março 2026") e os arquivos precisam estar dentro dela.'],
-        ['Meses antigos travados sem arquivos', 'Preencha "Início do contrato" em "Órgão e contratos": os meses anteriores deixam de ser cobrados.'],
+        ['Meses antigos com pagamento condicionado e sem arquivos', 'Preencha "Início do contrato" em "Órgão e contratos": os meses anteriores deixam de ser cobrados.'],
         [
           '"Arquivo a classificar"',
           'Abra o arquivo no Drive. Se for o documento certo, marque "Conferido: recebido"; se for digitalização ruim, peça o PDF original.',

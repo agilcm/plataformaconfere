@@ -67,6 +67,9 @@ interface Geo {
   porNome: Map<string, string>;
 }
 const BASE_KEY = 'agilcm:editais:base';
+// Como a lista de editais aparece: em lista compacta (mais editais por tela) ou em cartões (mais detalhe em cada um)
+const VISAO_KEY = 'agilcm:editais:visao';
+type Visao = 'lista' | 'cartoes';
 
 const PAGE_SIZE = 20;
 // "Por aqui por perto": microrregiões e, com o prefixo "cidade:", cidades onde a Ágil atua
@@ -125,6 +128,25 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
   const [busca, setBusca] = useState('');
   const [q, setQ] = useState('');
   const [pagina, setPagina] = useState(1);
+  const [visao, setVisao] = useState<Visao>('cartoes');
+  // a escolha fica guardada; sem escolha, tela larga abre em lista (para varrer muitos editais) e celular em cartões
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem(VISAO_KEY);
+      if (v === 'lista' || v === 'cartoes') setVisao(v);
+      else if (window.matchMedia('(min-width: 1024px)').matches) setVisao('lista');
+    } catch {
+      /* sem armazenamento: fica em cartões */
+    }
+  }, []);
+  const mudarVisao = (v: Visao) => {
+    setVisao(v);
+    try {
+      localStorage.setItem(VISAO_KEY, v);
+    } catch {
+      /* sem armazenamento */
+    }
+  };
   const [items, setItems] = useState<Edital[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -201,6 +223,15 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
       /* sem armazenamento */
     }
   }, []);
+  // /licitacoes/?busca=texto abre com a busca feita em toda Minas Gerais (usado nos atalhos do Privado: "editais deste órgão")
+  useEffect(() => {
+    if (agil) return;
+    const texto = new URLSearchParams(window.location.search).get('busca')?.trim();
+    if (!texto) return;
+    setRegiao('mg');
+    setBusca(texto);
+    setQ(texto);
+  }, [agil]);
   // CNAEs escolhidos da última visita (só neste aparelho)
   useEffect(() => {
     if (agil) return;
@@ -887,6 +918,24 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
                     </>
                   )}
                 </p>
+                <div role="group" aria-label="Como ver os editais" className="flex rounded-xl bg-slate-200/70 p-1">
+                  {(
+                    [
+                      ['lista', 'Lista'],
+                      ['cartoes', 'Cartões'],
+                    ] as const
+                  ).map(([id, nome]) => (
+                    <button
+                      key={id}
+                      type="button"
+                      aria-pressed={visao === id}
+                      onClick={() => mudarVisao(id)}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-bold cursor-pointer ${visao === id ? 'bg-white text-[#0F2053] shadow-sm' : 'text-slate-600 hover:text-[#0F2053]'}`}
+                    >
+                      {nome}
+                    </button>
+                  ))}
+                </div>
                 <button
                   type="button"
                   onClick={exportar}
@@ -1031,11 +1080,86 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
             )}
 
             <div className="mt-6 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-              <ol className="lg:col-span-8 space-y-4">
+              <ol className={`lg:col-span-8 ${visao === 'lista' ? 'space-y-2' : 'space-y-4'}`}>
                 {items.map((e) => {
                   const ate = parseBR(e.propostasAte);
                   const dias = diasAte(e.propostasAte);
                   const urgente = dias !== null && dias <= 3;
+                  if (visao === 'lista') {
+                    const km = kmAte(e);
+                    return (
+                      <li key={e.id}>
+                        <article className="p-3 sm:p-4 rounded-xl bg-white border border-slate-200 hover:border-[#0478CA]/40 transition-colors">
+                          <div className="flex flex-wrap sm:flex-nowrap items-start gap-x-3 gap-y-2">
+                            <p
+                              className={`shrink-0 w-[4.75rem] py-1.5 rounded-lg text-center leading-tight ${urgente ? 'bg-red-50 text-red-800' : 'bg-[#F4F7FB] text-[#0F2053]'}`}
+                              title="Propostas até"
+                            >
+                              <span className="sr-only">Propostas até </span>
+                              <span className="block text-base font-bold tabular-nums">
+                                {/* prazo em outro ano leva o ano junto (27/11/27), para não parecer deste ano */}
+                                {ate ? (ate.date.getFullYear() === new Date().getFullYear() ? ate.d.slice(0, 5) : `${ate.d.slice(0, 6)}${ate.d.slice(8)}`) : 'sem data'}
+                              </span>
+                              {ate && <span className="block text-xs tabular-nums">{ate.h}</span>}
+                              {dias !== null && dias >= 0 && (
+                                <span className="block text-[11px] font-bold">{dias === 0 ? 'hoje' : dias === 1 ? 'amanhã' : `em ${dias} dias`}</span>
+                              )}
+                            </p>
+                            <div className="flex-1 min-w-0 basis-[12rem]">
+                              <h2 className="text-[15px] font-bold text-[#0F2053] leading-snug line-clamp-2" title={e.objeto || e.titulo}>
+                                {e.objeto || e.titulo}
+                              </h2>
+                              <p className="mt-0.5 text-sm text-slate-700 truncate" title={e.orgao}>
+                                {e.orgao} · {e.municipio}/{e.uf || 'MG'}
+                              </p>
+                              <p className="mt-1 flex flex-wrap gap-1.5 text-xs">
+                                <span className="px-2 py-0.5 rounded-full bg-[#0478CA]/10 text-[#0369B3] font-bold">{e.modalidade || 'Licitação'}</span>
+                                {e.srp && <span className="px-2 py-0.5 rounded-full bg-violet-50 text-violet-800 font-bold">Registro de preços</span>}
+                                {km !== null && km !== undefined && (
+                                  <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-semibold">
+                                    {km < 3 ? `em ${nomeBase}` : `~${Math.round(km)} km`}
+                                  </span>
+                                )}
+                                {(e.local || e.fonte) && <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-semibold">{e.local || e.fonte}</span>}
+                                {e.cnaes?.slice(0, 2).map((c) => (
+                                  <span key={c} title={CATALOGO_POR_ID.get(c)?.rotulo} className="px-2 py-0.5 rounded-full bg-[#F5A623]/15 text-[#8a5a00] font-bold">
+                                    {SEGMENTO_POR_ID.has(c) ? SEGMENTO_POR_ID.get(c)?.nome : `CNAE ${c}`}
+                                  </span>
+                                ))}
+                              </p>
+                            </div>
+                            <div className="basis-full sm:basis-auto shrink-0 flex sm:flex-col items-center sm:items-end justify-between gap-2">
+                              <p className="text-[15px] font-bold tabular-nums text-slate-800">{e.valor ? formatBRL(e.valor, 2) : 'Valor não informado'}</p>
+                              <p className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => alternarMeuEdital(e)}
+                                  aria-pressed={!!meus[e.id]}
+                                  aria-label={meus[e.id] ? 'Tirar de Meus editais' : 'Salvar em Meus editais'}
+                                  title={meus[e.id] ? 'Tirar de Meus editais' : 'Salvar em Meus editais (acompanhar prazo, etapa e anotações)'}
+                                  className={`inline-flex items-center justify-center w-9 h-9 rounded-lg border cursor-pointer transition-colors ${
+                                    meus[e.id] ? 'bg-[#F5A623]/15 border-[#F5A623] text-[#8a5a00]' : 'bg-white border-slate-300 text-slate-600 hover:border-[#F5A623]'
+                                  }`}
+                                >
+                                  <Icon name="star" className={`w-4 h-4 ${meus[e.id] ? 'fill-current' : ''}`} />
+                                </button>
+                                <a
+                                  href={e.link}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-[#0478CA] hover:bg-[#03609F] text-white text-sm font-bold"
+                                >
+                                  PNCP<span className="sr-only">: ver o edital de {e.orgao}</span>
+                                  <Icon name="arrow" className="w-4 h-4" />
+                                </a>
+                              </p>
+                            </div>
+                          </div>
+                          {e.compra && <DetalheCompra compra={e.compra} edital={e} />}
+                        </article>
+                      </li>
+                    );
+                  }
                   return (
                     <li key={e.id}>
                       <article className="p-5 sm:p-6 rounded-2xl bg-white border border-slate-200 hover:border-[#0478CA]/40 hover:shadow-md hover:shadow-[#0F2053]/5 transition-all">

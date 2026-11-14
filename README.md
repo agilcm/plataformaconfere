@@ -5,7 +5,7 @@ O site institucional ocupa a raiz. O botão **Licitações** no cabeçalho abre 
 | Caminho | Conteúdo |
 | --- | --- |
 | `/` | Site principal da Ágil CM |
-| `/licitacoes/` | Consulta de licitações: Editais abertos, Contratos e AGIL CNAE (`#agil-cnae`) |
+| `/licitacoes/` | Painel de licitações, com as abas na ordem do trabalho: Editais abertos, Ágil CNAE (`#agil-cnae`), Raio-X (`#raio-x`), Contratos (`#contratos`) e Meus editais (`#meus-editais`). `?busca=texto` abre com a busca feita em toda Minas Gerais |
 | `/terceirizacao/`, `/gilrat/`… | Uma página por serviço (9 páginas), geradas no build a partir de `src/data/paginasServico.ts` |
 | `/dados/` | Simuladores internos (sem link no site): RH e Simples, pró-labore e regime (Simples × Lucro Presumido) |
 | `/docpref/` | DocPref: fiscalização documental dos contratos de um órgão público (painel do órgão, análise mês a mês, parecer e notificação) |
@@ -51,13 +51,20 @@ Hospedagens exclusivamente estáticas não executam `/api/*`; nesse caso, as con
 
 `/dados/` não tem link no site nem aparece em buscadores. Abas: **Simulador de RH** (custo de um funcionário), **Simples, pró-labore e regime** (pró-labore sempre; marcando "Calcular sobre o faturamento", a projeção do Simples em 12 meses com RBT12 móvel, empresa nova e faturamento mês a mês, Fator R e a conta para conferir; marcando "Comparar regime", Simples × Lucro Presumido com alíquotas padrão editáveis; exporta Excel), **Hora** (escala por mês e cidade, conferida em 40, 42 ou 44 horas) e **Dona Euzébia**. Os parâmetros de cada ano ficam em `src/data/parametrosFiscais.js` e as atividades em `src/data/atividadesFiscais.js`.
 
+## Painel de licitações (`/licitacoes/`)
+
+- **Abas na ordem do trabalho:** 1 Encontrar (Editais abertos), 2 Filtrar pelo ramo (Ágil CNAE), 3 Analisar (Raio-X), 4 Pesquisar preços (Contratos) e 5 Acompanhar (Meus editais).
+- **Lista ou cartões:** os editais aparecem em lista compacta (padrão em tela larga) ou em cartões (padrão no celular); a escolha fica guardada no navegador (`agilcm:editais:visao`).
+- **Seu acompanhamento:** com editais salvos em disputa, uma faixa abaixo das abas mostra quantos são, quantos encerram em até 3 dias e o próximo prazo.
+- **Privado → editais do órgão:** em `/privado/`, "O que fazer agora" lista os registros que vencem em até 60 dias ou venceram há até 30 (`providenciasGanhas` em `src/lib/privado/relatorios.js`), com o atalho "Editais abertos do órgão", que abre `/licitacoes/?busca=<órgão>`.
+
 ## DocPref (fiscalização documental de contratos)
 
 `/docpref/` é a ferramenta do órgão público que contrata serviços com mão de obra: o órgão (contratante) confere todo mês os documentos trabalhistas, previdenciários e do FGTS de cada contratada (Lei nº 14.133/2021, arts. 50, 117 e 121).
 
 - **Painel do órgão** (abre primeiro): contratos acompanhados, meses com pagamento liberado, condicionado e aguardando documentos, certidões vencidas, a lista "O que fazer agora" (`providencias` em `src/lib/docpref.js`), o farol dos contratos e os vencimentos.
 - **Contratos e meses:** a análise de cada mês começa pelo quadro "Parecer do mês", com as ações: parecer para o processo de pagamento (`blocosParecer`), notificação à contratada, relatório completo e Excel. A conferência dos documentos tem filtro (tudo, falta, recebido).
-- **Órgão e contratos:** dados do órgão contratante (nome, CNPJ, secretaria, gestor, município) e de cada contrato (contratada, objeto, fiscal, prazo, início). Ficam no navegador; "Baixar cópia" leva a outro computador.
+- **Órgão e contratos:** dados do órgão contratante (nome, CNPJ, secretaria, gestor, município) e de cada contrato (contratada, objeto, fiscal, prazo, início). Ficam no navegador; "Baixar cópia" leva a outro computador. As contratadas lidas na pasta e ainda sem cadastro aparecem com o botão "Completar cadastro"; as conferências já feitas passam para o cadastro novo. O município do órgão vai na linha de data dos PDFs.
 - **Orientações à contratada, Manual do fiscal e Base legal e funcionamento:** a cartilha e os modelos para a contratada, o manual de quem fiscaliza e o resumo dos artigos da lei.
 - **Semáforo:** Pagamento liberado, Aguardando documentos (prazo aberto) e Pagamento condicionado (prazo encerrado com pendência; art. 121, § 3º, II, quando previsto no edital ou no contrato).
 - A leitura da pasta do Drive vem de `docpref/leitura.json`, gerado no GitHub Actions (`scripts/docpref-dados.mjs`); o ID da pasta fica só no segredo `DOCPREF_PASTA_ID`.

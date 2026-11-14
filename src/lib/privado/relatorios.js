@@ -54,7 +54,17 @@ export function consolidarProdutos(processos, hoje = new Date()) {
   for (const p of processos) {
     for (const it of p.itens) {
       const k = `${norm(it.descricao).slice(0, 140)}|${norm(it.medida)}`;
-      if (!m.has(k)) m.set(k, { descricao: it.descricao, medida: it.medida, quantidade: 0, valor: 0, precos: [], processos: new Map(), orgaos: new Set(), marcas: new Set() });
+      if (!m.has(k))
+        m.set(k, {
+          descricao: it.descricao,
+          medida: it.medida,
+          quantidade: 0,
+          valor: 0,
+          precos: [],
+          processos: new Map(),
+          orgaos: new Set(),
+          marcas: new Set(),
+        });
       const g = m.get(k);
       g.quantidade += it.quantidade || 0;
       g.valor += it.subtotal || 0;
@@ -80,6 +90,35 @@ export function consolidarProdutos(processos, hoje = new Date()) {
       marcas: [...g.marcas],
     }))
     .sort((a, b) => b.valor - a.valor);
+}
+
+/**
+ * O que fazer agora com as licitações ganhas: registros que vencem em até DIAS_ALERTA dias (o órgão deve licitar de novo)
+ * e os que venceram há pouco (até 30 dias), do mais perto da data de vencimento para o mais distante. Um aviso por processo.
+ * @returns {{ chave: string, nivel: 'urgente'|'atencao', titulo: string, texto: string, orgao: string, dias: number }[]}
+ */
+export function providenciasGanhas(processos, hoje = new Date()) {
+  const out = [];
+  for (const p of processos) {
+    const v = vigencia(p, hoje);
+    if (v.dias == null || v.dias > DIAS_ALERTA || v.dias < -30) continue;
+    const quando =
+      v.dias < 0
+        ? `venceu há ${-v.dias} ${v.dias === -1 ? 'dia' : 'dias'}`
+        : v.dias === 0
+          ? 'vence hoje'
+          : `vence em ${v.dias} ${v.dias === 1 ? 'dia' : 'dias'}`;
+    out.push({
+      chave: p.chave || `${p.orgao}|${rotulo(p)}`,
+      nivel: Math.abs(v.dias) <= 15 ? 'urgente' : 'atencao',
+      titulo: `${p.orgao}: o registro ${quando} (${dataBR(v.validoAte)})`,
+      texto: `Processo ${rotulo(p)}${p.valorAgil ? ` · ${moeda(p.valorAgil)} ganhos` : ''}${p.objeto ? ` · ${String(p.objeto).slice(0, 110)}${String(p.objeto).length > 110 ? '…' : ''}` : ''}`,
+      orgao: p.orgao,
+      dias: v.dias,
+    });
+  }
+  // primeiro o que está mais perto da data de vencimento, tenha acabado de vencer ou esteja para vencer
+  return out.sort((a, b) => Math.abs(a.dias) - Math.abs(b.dias));
 }
 
 export function resumo(processos) {
@@ -116,7 +155,27 @@ const csv = (cab, linhas) => `﻿${[cab, ...linhas].map((l) => l.map(celula).joi
 
 export function csvProcessos(processos) {
   return csv(
-    ['Órgão', 'CNPJ do órgão', 'Processo', 'Modalidade / nº', 'Objeto', 'Data do pregão', 'Data da homologação', 'Válido até (1 ano)', 'Situação', 'Data do termo', 'Data do documento', 'Termo usado', 'Valor ganho pela AGIL (R$)', 'Estimado (R$)', 'Soma dos itens (R$)', 'Conferência', 'Itens', 'Arquivos', 'Pasta no Drive'],
+    [
+      'Órgão',
+      'CNPJ do órgão',
+      'Processo',
+      'Modalidade / nº',
+      'Objeto',
+      'Data do pregão',
+      'Data da homologação',
+      'Válido até (1 ano)',
+      'Situação',
+      'Data do termo',
+      'Data do documento',
+      'Termo usado',
+      'Valor ganho pela AGIL (R$)',
+      'Estimado (R$)',
+      'Soma dos itens (R$)',
+      'Conferência',
+      'Itens',
+      'Arquivos',
+      'Pasta no Drive',
+    ],
     processos.map((p) => [
       p.orgao,
       p.cnpjOrgao,
@@ -143,7 +202,24 @@ export function csvProcessos(processos) {
 
 export function csvItens(processos) {
   return csv(
-    ['Órgão', 'Processo', 'Modalidade / nº', 'Data do termo', 'Válido até', 'Situação', 'Lote', 'Descrição do item', 'Quantidade', 'Unidade', 'Valor unitário (R$)', 'Valor total (R$)', 'Marca', 'Fabricante', 'Modelo', 'Conferir'],
+    [
+      'Órgão',
+      'Processo',
+      'Modalidade / nº',
+      'Data do termo',
+      'Válido até',
+      'Situação',
+      'Lote',
+      'Descrição do item',
+      'Quantidade',
+      'Unidade',
+      'Valor unitário (R$)',
+      'Valor total (R$)',
+      'Marca',
+      'Fabricante',
+      'Modelo',
+      'Conferir',
+    ],
     processos.flatMap((p) =>
       p.itens.map((it) => [
         p.orgao,
@@ -169,7 +245,19 @@ export function csvItens(processos) {
 
 export function csvProdutos(processos) {
   return csv(
-    ['Produto', 'Unidade', 'Quantidade total', 'Valor total (R$)', 'Menor preço (R$)', 'Maior preço (R$)', 'Nº de processos', 'Processos (órgão, número e situação)', 'Vencidos', 'Órgãos', 'Marcas'],
+    [
+      'Produto',
+      'Unidade',
+      'Quantidade total',
+      'Valor total (R$)',
+      'Menor preço (R$)',
+      'Maior preço (R$)',
+      'Nº de processos',
+      'Processos (órgão, número e situação)',
+      'Vencidos',
+      'Órgãos',
+      'Marcas',
+    ],
     consolidarProdutos(processos).map((g) => [
       g.descricao,
       g.medida,
@@ -216,7 +304,11 @@ export function blocosRelatorio(processos, pendencias, { dataText }) {
     headerAlign: ['left', 'center', 'right'],
     rows: [
       ...r.orgaos.map((o) => [o.orgao, { text: String(o.processos), align: 'center' }, { text: moeda(o.valor), align: 'right' }]),
-      [{ text: 'Total', bold: true }, { text: String(r.processos), align: 'center', bold: true }, { text: moeda(r.total), align: 'right', bold: true }],
+      [
+        { text: 'Total', bold: true },
+        { text: String(r.processos), align: 'center', bold: true },
+        { text: moeda(r.total), align: 'right', bold: true },
+      ],
     ],
     totalRows: 1,
   });
@@ -230,7 +322,10 @@ export function blocosRelatorio(processos, pendencias, { dataText }) {
       p.orgao,
       { text: rotulo(p), align: 'center' },
       edital(p),
-      { text: `${dataBR(vigencia(p).validoAte)}${vigencia(p).situacao === 'vencido' ? ' (vencido)' : vigencia(p).situacao === 'vencendo' ? ' (vencendo)' : ''}`, align: 'center' },
+      {
+        text: `${dataBR(vigencia(p).validoAte)}${vigencia(p).situacao === 'vencido' ? ' (vencido)' : vigencia(p).situacao === 'vencendo' ? ' (vencendo)' : ''}`,
+        align: 'center',
+      },
       { text: `${moeda(p.valorAgil)}${p.conferido === false ? ' (!)' : ''}`, align: 'right' },
     ]),
   });
@@ -242,7 +337,12 @@ export function blocosRelatorio(processos, pendencias, { dataText }) {
       widths: [0.5, 0.14, 0.14, 0.22],
       header: ['Produto', 'Qtde', 'Processos', 'Valor total'],
       headerAlign: ['left', 'right', 'center', 'right'],
-      rows: prods.map((g) => [corta(g.descricao, 160), { text: `${qtd(g.quantidade)} ${g.medida}`.trim(), align: 'right' }, { text: String(g.processos), align: 'center' }, { text: moeda(g.valor), align: 'right' }]),
+      rows: prods.map((g) => [
+        corta(g.descricao, 160),
+        { text: `${qtd(g.quantidade)} ${g.medida}`.trim(), align: 'right' },
+        { text: String(g.processos), align: 'center' },
+        { text: moeda(g.valor), align: 'right' },
+      ]),
     });
   }
   for (const p of processos) {
@@ -267,7 +367,13 @@ export function blocosRelatorio(processos, pendencias, { dataText }) {
           { text: moeda(it.unitario), align: 'right' },
           { text: moeda(it.subtotal), align: 'right' },
         ]),
-        [{ text: '' }, { text: 'Total do processo', bold: true }, { text: '' }, { text: '' }, { text: moeda(p.valorAgil ?? p.somaItens), align: 'right', bold: true }],
+        [
+          { text: '' },
+          { text: 'Total do processo', bold: true },
+          { text: '' },
+          { text: '' },
+          { text: moeda(p.valorAgil ?? p.somaItens), align: 'right', bold: true },
+        ],
       ],
       totalRows: 1,
     });

@@ -80,5 +80,6 @@ export const slug = (s: string) =>
     .replace(/^-|-$/g, '')
     .toLowerCase() || 'documento';
 
-export const dateText = (d = new Date()) =>
-  `${COMPANY_PROFILE.cityShort}, ${d.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' })}`;
+/** "Astolfo Dutra, 14 de novembro de 2026"; com `cidade`, usa a cidade informada (documentos emitidos por outro órgão) */
+export const dateText = (d = new Date(), cidade = '') =>
+  `${cidade || COMPANY_PROFILE.cityShort}, ${d.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' })}`;

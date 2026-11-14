@@ -3,6 +3,7 @@ import Header from '../components/Header.tsx';
 import { Container, Icon } from '../components/ui.tsx';
 import { dateText, downloadPdf } from '../lib/pdfReport.ts';
 import { conferirLogin, sair, sessaoAtiva } from '../lib/privado/auth.ts';
+import { ROUTES } from '../lib/routes.ts';
 
 /** Leitura da pasta "Licitacoes - Agil" feita pelo GitHub (scripts/privado-dados.mjs), publicada com o site */
 interface Leitura {
@@ -21,6 +22,7 @@ import {
   csvProdutos,
   dataBR,
   DIAS_ALERTA,
+  providenciasGanhas,
   resumo,
   rotulo,
   textoVigencia,
@@ -199,6 +201,13 @@ function Painel({ onSair }: { onSair: () => void }) {
     );
   }, [processos, busca, filtroVig]);
   const geral = useMemo(() => resumo(processos), [processos]);
+  const fazer = useMemo(() => providenciasGanhas(processos), [processos]);
+  const [todasProvidencias, setTodasProvidencias] = useState(false);
+  const porSituacao = useMemo(() => {
+    const n: Record<string, number> = { todos: processos.length, vigente: 0, vencendo: 0, vencido: 0 };
+    for (const p of processos) n[vigencia(p).situacao] = (n[vigencia(p).situacao] || 0) + 1;
+    return n;
+  }, [processos]);
   const r = useMemo(() => resumo(filtrados), [filtrados]);
   const porOrgao = useMemo(() => {
     const m = new Map<string, any[]>();
@@ -285,7 +294,7 @@ function Painel({ onSair }: { onSair: () => void }) {
           </div>
 
           {/* Números */}
-          <div className="mt-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
             {(
               [
                 ['Total ganho', moeda(r.total), ''],
@@ -295,14 +304,14 @@ function Painel({ onSair }: { onSair: () => void }) {
                 ['Vencidos', String(geral.vencidos), geral.vencidos ? 'red' : ''],
                 ['Pastas sem termo', String(res.pendencias.length), res.pendencias.length ? 'red' : ''],
               ] as const
-            ).map(([k, v, cor]) => (
+            ).map(([k, v, cor], i) => (
               <div
                 key={k}
-                className={`p-4 rounded-2xl border ${cor === 'red' ? 'bg-red-50 border-red-200' : cor === 'amber' ? 'bg-amber-50 border-amber-200' : 'bg-white border-slate-200'}`}
+                className={`p-4 rounded-2xl border ${i === 0 ? 'col-span-2' : ''} ${cor === 'red' ? 'bg-red-50 border-red-200' : cor === 'amber' ? 'bg-amber-50 border-amber-200' : 'bg-white border-slate-200'}`}
               >
                 <p className={`text-sm ${cor === 'red' ? 'text-red-700' : cor === 'amber' ? 'text-amber-800' : 'text-slate-500'}`}>{k}</p>
                 <p
-                  className={`mt-1 text-lg sm:text-xl xl:text-2xl font-bold tabular-nums break-words ${cor === 'red' ? 'text-red-700' : cor === 'amber' ? 'text-amber-900' : 'text-[#0F2053]'}`}
+                  className={`mt-1 text-xl xl:text-2xl font-bold tabular-nums ${i === 0 ? 'whitespace-nowrap' : 'break-words'} ${cor === 'red' ? 'text-red-700' : cor === 'amber' ? 'text-amber-900' : 'text-[#0F2053]'}`}
                 >
                   {v}
                 </p>
@@ -310,22 +319,65 @@ function Painel({ onSair }: { onSair: () => void }) {
             ))}
           </div>
 
-          {geral.vencendo > 0 && (
-            <div role="status" className="mt-4 p-4 rounded-2xl bg-amber-50 border-2 border-amber-300 flex flex-wrap items-center gap-3">
-              <p className="flex-1 min-w-0 text-[15px] text-amber-900">
-                <strong>
-                  {geral.vencendo} {geral.vencendo === 1 ? 'processo vence' : 'processos vencem'} nos próximos {DIAS_ALERTA} dias
-                </strong>{' '}
-                (a homologação vale 1 ano):{' '}
-                {processos
-                  .filter((p) => vigencia(p).situacao === 'vencendo')
-                  .map((p) => `${p.orgao} ${rotulo(p)}`)
-                  .join(' · ')}
+          {fazer.length > 0 && (
+            <section aria-labelledby="titulo-fazer" className="mt-4 p-4 sm:p-5 rounded-2xl bg-white border-2 border-amber-300">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <h2 id="titulo-fazer" className="text-lg font-bold text-[#0F2053]">
+                  O que fazer agora
+                </h2>
+                {geral.vencendo > 0 && (
+                  <button type="button" onClick={() => setFiltroVig('vencendo')} className="text-sm font-bold text-[#0369B3] underline cursor-pointer">
+                    Ver só os que estão vencendo
+                  </button>
+                )}
+              </div>
+              <p className="text-sm text-slate-600">
+                A homologação vale 1 ano. Quando o registro está perto do fim, o órgão costuma abrir nova licitação: vale procurar o edital novo.
               </p>
-              <button type="button" onClick={() => setFiltroVig('vencendo')} className="text-sm font-bold text-amber-900 underline cursor-pointer">
-                Ver só estes
-              </button>
-            </div>
+              <ul className="mt-3 divide-y divide-slate-100">
+                {(todasProvidencias ? fazer : fazer.slice(0, 5)).map((f) => (
+                  <li key={f.chave} className="py-3 flex flex-col sm:flex-row sm:items-start gap-x-4 gap-y-2">
+                    <span
+                      className={`shrink-0 self-start px-2.5 py-1 rounded-lg text-xs font-bold ${f.nivel === 'urgente' ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-900'}`}
+                    >
+                      {f.nivel === 'urgente' ? 'Urgente' : 'Atenção'}
+                    </span>
+                    <span className="flex-1 min-w-0">
+                      <strong className="block text-[15px] text-[#0F2053]">{f.titulo}</strong>
+                      <span className="block text-sm text-slate-600">{f.texto}</span>
+                    </span>
+                    <span className="shrink-0 flex flex-wrap gap-2">
+                      <a
+                        href={`${ROUTES.licitacoes}?busca=${encodeURIComponent(f.orgao)}`}
+                        className={`${botao} !py-2 bg-[#0478CA] hover:bg-[#03609F] text-white`}
+                      >
+                        Editais abertos do órgão
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFiltroVig('todos');
+                          setAba('processos');
+                          setBusca(f.orgao);
+                        }}
+                        className={`${botao} !py-2 border-2 border-slate-200 text-[#0F2053] hover:border-[#0478CA]`}
+                      >
+                        Ver o processo
+                      </button>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              {fazer.length > 5 && (
+                <button
+                  type="button"
+                  onClick={() => setTodasProvidencias((v) => !v)}
+                  className="mt-2 text-[15px] font-bold text-[#0369B3] underline cursor-pointer"
+                >
+                  {todasProvidencias ? 'Mostrar só as 5 primeiras' : `Ver as ${fazer.length} providências`}
+                </button>
+              )}
+            </section>
           )}
 
           {/* Pendências em vermelho */}
@@ -462,7 +514,7 @@ function Painel({ onSair }: { onSair: () => void }) {
                     filtroVig === v ? 'bg-[#0F2053] border-[#0F2053] text-white' : 'bg-white border-slate-300 text-slate-700 hover:border-[#0478CA]'
                   }`}
                 >
-                  {label}
+                  {label} <span className={filtroVig === v ? 'text-white/75' : 'text-slate-500'}>· {porSituacao[v] || 0}</span>
                 </button>
               ))}
             </div>

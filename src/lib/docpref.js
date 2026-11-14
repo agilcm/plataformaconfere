@@ -1407,7 +1407,7 @@ export function abasFarol(lista, comps, { dias = 30 } = {}) {
         { titulo: 'Exigidos', largura: 9, tipo: 'numero' },
         { titulo: 'Recebidos', largura: 10, tipo: 'numero' },
         { titulo: '% regularidade', largura: 13, tipo: 'numero' },
-        { titulo: 'Meses travados', largura: 13, tipo: 'numero' },
+        { titulo: 'Meses condicionados', largura: 14, tipo: 'numero' },
       ],
       linhas: lista.map(({ nome, avs }) => {
         const doPeriodo = avs.filter((a) => comps.includes(a.comp));
@@ -1667,6 +1667,7 @@ export function blocosParecer(contratada, av, cfg = {}) {
     ['Contrato', [contratada?.contrato && `nº ${contratada.contrato}`, cfg.objeto].filter(Boolean).join(' · ')],
     ['Competência', `${nomeCompetencia(av.comp)} · prazo de envio: ${dataBR(av.prazo)}`],
     ['Fiscal do contrato', cfg.fiscal],
+    ['Gestor dos contratos', cfg.gestor],
   ].filter(([, v]) => v);
   return [
     { type: 'title', text: 'Parecer de fiscalização documental' },

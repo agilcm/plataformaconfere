@@ -9,34 +9,40 @@ import ContratosTab from './ContratosTab.tsx';
 import MeusEditaisTab from './MeusEditaisTab.tsx';
 import RaioXTab from './RaioXTab.tsx';
 import { useMeusEditais } from '../lib/meusEditais.ts';
+import { diasPara } from '../lib/filtrosEditais.js';
 
 type Aba = 'editais' | 'contratos' | 'agil' | 'raiox' | 'meus';
 
-const ABAS: { id: Aba; label: string; desc: string; icon: string }[] = [
-  { id: 'editais', label: 'Editais abertos', desc: 'Licitações recebendo propostas agora', icon: 'doc' },
-  { id: 'contratos', label: 'CONTRATOS', desc: 'Quem comprou, o quê e por quanto', icon: 'receipt' },
-  { id: 'agil', label: 'AGIL CNAE', desc: 'Editais abertos ligados aos CNAEs da Ágil CM', icon: 'building' },
-  { id: 'raiox', label: 'RAIO-X', desc: 'Analise qualquer edital pelo link do PNCP', icon: 'doc' },
-  { id: 'meus', label: 'MEUS EDITAIS', desc: 'Salvos, etapas e prazos na agenda', icon: 'star' },
+// As abas seguem a ordem do trabalho numa licitação: encontrar o edital, filtrar pelo ramo, analisar,
+// pesquisar o preço que as prefeituras já pagaram e acompanhar os prazos do que foi salvo.
+const ABAS: { id: Aba; passo: string; label: string; desc: string; icon: string }[] = [
+  { id: 'editais', passo: 'Encontrar', label: 'Editais abertos', desc: 'Licitações recebendo propostas agora', icon: 'search' },
+  { id: 'agil', passo: 'Filtrar pelo ramo', label: 'Ágil CNAE', desc: 'Editais ligados aos CNAEs da Ágil CM', icon: 'building' },
+  { id: 'raiox', passo: 'Analisar', label: 'Raio-X', desc: 'Qualquer edital pelo link do PNCP', icon: 'doc' },
+  { id: 'contratos', passo: 'Pesquisar preços', label: 'Contratos', desc: 'Quem comprou, o quê e por quanto', icon: 'receipt' },
+  { id: 'meus', passo: 'Acompanhar', label: 'Meus editais', desc: 'Salvos, etapas e prazos na agenda', icon: 'star' },
 ];
+const ENCERRADAS = new Set(['ganhamos', 'perdemos', 'desistimos']);
 
 // Texto fixo abaixo do painel: explica cada aba e de onde vêm os dados (também é o que o Google lê da página)
 const COMO_USAR = [
   {
-    titulo: 'Editais abertos',
-    texto: 'Licitações de Minas Gerais que estão recebendo propostas agora. Filtre por palavra, cidade, valor e distância até a cidade do edital, e ordene do jeito que preferir.',
+    titulo: '1. Encontre o edital',
+    texto:
+      'Em Editais abertos estão as licitações de Minas Gerais que recebem propostas agora. Filtre por palavra, cidade, valor e distância, veja em cartões ou em lista e ordene do jeito que preferir.',
   },
   {
-    titulo: 'Contratos',
-    texto: 'O histórico de compras das prefeituras: o órgão que comprou, o produto ou serviço, a quantidade, o fornecedor vencedor e o valor do contrato.',
+    titulo: '2. Analise com o Raio-X',
+    texto: 'Abra o Raio-X no próprio edital ou cole o link do PNCP: o órgão, o prazo das propostas, o valor estimado, os itens e os documentos numa tela só.',
   },
   {
-    titulo: 'Raio-X',
-    texto: 'Cole o link ou o número de controle de um edital do PNCP para ver o órgão, o prazo das propostas, o valor estimado, os itens e os documentos.',
+    titulo: '3. Pesquise os preços',
+    texto:
+      'Em Contratos está o histórico de compras das prefeituras: o órgão que comprou, o produto ou serviço, a quantidade, o fornecedor vencedor e o valor pago.',
   },
   {
-    titulo: 'Meus editais',
-    texto: 'Salve os editais que interessam, anote documentos e dúvidas e acompanhe as etapas e os prazos de cada um.',
+    titulo: '4. Acompanhe os prazos',
+    texto: 'Salve os editais que interessam com a estrela. Em Meus editais ficam a etapa de cada um, as anotações e os prazos, que podem ir para a sua agenda.',
   },
 ];
 
@@ -45,7 +51,15 @@ const ABA_HASH: Record<Aba, string> = { editais: '', contratos: '#contratos', ag
 
 export default function LicitacoesPage() {
   const [aba, setAba] = useState<Aba>('editais');
-  const salvos = Object.keys(useMeusEditais()).length;
+  const meus = useMeusEditais();
+  const salvos = Object.keys(meus).length;
+  // acompanhamento: editais salvos ainda em disputa, do prazo mais próximo para o mais distante
+  const emDisputa = Object.values(meus)
+    .filter((m) => !ENCERRADAS.has(m.etapa) && (diasPara(m.edital.propostasAte) ?? -1) >= 0)
+    .sort((a, b) => String(a.edital.propostasAte).localeCompare(String(b.edital.propostasAte)));
+  const urgentes = emDisputa.filter((m) => (diasPara(m.edital.propostasAte) ?? 99) <= 3).length;
+  const proximo = emDisputa[0];
+  const diasProximo = proximo ? diasPara(proximo.edital.propostasAte) : null;
 
   // Permite abrir direto em /licitacoes/#contratos ou /licitacoes/#agil-cnae
   useEffect(() => {
@@ -94,8 +108,8 @@ export default function LicitacoesPage() {
               Licitações e contratos públicos em Minas Gerais
             </h1>
             <p className="mt-4 text-lg sm:text-xl text-white/85 max-w-2xl leading-relaxed">
-              Dados oficiais do Portal Nacional de Contratações Públicas (PNCP): editais abertos e o histórico de compras das
-              prefeituras, com foco na Zona da Mata.
+              Dados oficiais do Portal Nacional de Contratações Públicas (PNCP): editais abertos e o histórico de compras das prefeituras, com foco na Zona da
+              Mata.
             </p>
             <a
               href={rotaServico('assessoria-licitacoes')}
@@ -107,7 +121,7 @@ export default function LicitacoesPage() {
 
             {/* Abas */}
             <div role="tablist" aria-label="O que você quer ver" className="mt-10 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3">
-              {ABAS.map((t) => (
+              {ABAS.map((t, i) => (
                 <button
                   key={t.id}
                   type="button"
@@ -120,7 +134,10 @@ export default function LicitacoesPage() {
                     aba === t.id ? 'bg-[#F4F7FB] text-[#0F2053]' : 'bg-white/10 text-white hover:bg-white/15'
                   }`}
                 >
-                  <span className="flex items-center gap-2 text-sm sm:text-lg font-extrabold tracking-wide">
+                  <span className={`block text-[11px] sm:text-xs font-bold uppercase tracking-wide ${aba === t.id ? 'text-[#0369B3]' : 'text-[#9fd3ff]'}`}>
+                    {i + 1} · {t.passo}
+                  </span>
+                  <span className="mt-0.5 flex items-center gap-2 text-base sm:text-lg font-extrabold">
                     <Icon name={t.icon} className="hidden sm:block w-5 h-5 shrink-0" />
                     {t.label}
                     {t.id === 'meus' && salvos > 0 && (
@@ -133,6 +150,38 @@ export default function LicitacoesPage() {
             </div>
           </Container>
         </section>
+
+        {emDisputa.length > 0 && aba !== 'meus' && (
+          <aside aria-label="Seu acompanhamento" className={`border-b ${urgentes ? 'bg-red-50 border-red-200' : 'bg-white border-slate-200'}`}>
+            <Container className="py-3 flex flex-col sm:flex-row sm:items-center gap-x-6 gap-y-2">
+              <p className="flex-1 min-w-0 text-[15px] text-slate-800">
+                <strong className="text-[#0F2053]">Seu acompanhamento:</strong> {emDisputa.length}{' '}
+                {emDisputa.length === 1 ? 'edital salvo em disputa' : 'editais salvos em disputa'}
+                {urgentes > 0 && (
+                  <strong className="text-red-700">
+                    {' '}
+                    · {urgentes} {urgentes === 1 ? 'encerra' : 'encerram'} em até 3 dias
+                  </strong>
+                )}
+                {proximo && (
+                  <span className="block sm:inline">
+                    <span className="hidden sm:inline"> · </span>
+                    próximo prazo: {String(proximo.edital.propostasAte).slice(8, 10)}/{String(proximo.edital.propostasAte).slice(5, 7)}
+                    {diasProximo === 0 ? ' (hoje)' : diasProximo === 1 ? ' (amanhã)' : ` (em ${diasProximo} dias)`}, {proximo.edital.orgao}
+                  </span>
+                )}
+              </p>
+              <button
+                type="button"
+                onClick={() => trocar('meus')}
+                className="shrink-0 self-start sm:self-auto inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#0F2053] hover:bg-[#13306f] text-white text-[15px] font-bold cursor-pointer"
+              >
+                Abrir Meus editais
+                <Icon name="arrow" className="w-4 h-4" />
+              </button>
+            </Container>
+          </aside>
+        )}
 
         <div id="painel" role="tabpanel" aria-labelledby={`aba-${aba}`}>
           {aba === 'contratos' ? (
@@ -152,8 +201,8 @@ export default function LicitacoesPage() {
               Como usar o painel de licitações
             </h2>
             <p className="mt-3 max-w-3xl text-lg text-slate-700 leading-relaxed">
-              O painel é gratuito e reúne, numa tela só, os editais abertos e o histórico de contratos das prefeituras de Minas Gerais, com foco na Zona
-              da Mata. Os dados são oficiais: vêm do Portal Nacional de Contratações Públicas (PNCP) e são consultados na hora em que você abre a página.
+              O painel é gratuito e reúne, numa tela só, os editais abertos e o histórico de contratos das prefeituras de Minas Gerais, com foco na Zona da
+              Mata. Os dados são oficiais: vêm do Portal Nacional de Contratações Públicas (PNCP) e são consultados na hora em que você abre a página.
             </p>
             <ul className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {COMO_USAR.map((c) => (
@@ -166,8 +215,8 @@ export default function LicitacoesPage() {
             <div className="mt-8 p-6 sm:p-8 rounded-3xl bg-[#0F2053] text-white max-w-4xl">
               <h2 className="text-2xl font-bold font-display">Quer ajuda para disputar e vencer?</h2>
               <p className="mt-2 text-lg text-white/90 leading-relaxed">
-                A Ágil CM também vende para o poder público. Na assessoria em licitações, monitoramos os editais, preparamos a habilitação, montamos a
-                proposta e operamos o pregão eletrônico até o empenho.
+                A Ágil CM também vende para o poder público. Na assessoria em licitações, monitoramos os editais, preparamos a habilitação, montamos a proposta
+                e operamos o pregão eletrônico até o empenho.
               </p>
               <a
                 href={rotaServico('assessoria-licitacoes')}

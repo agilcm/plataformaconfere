@@ -90,12 +90,26 @@ export const useDocPref = () => useSyncExternalStore(assinar, ler, () => VAZIO);
 
 export const chaveConferencia = (prestadoraId: string, comp: string) => `${prestadoraId}|${comp}`;
 
-export function salvarPrestadora(p: Omit<Prestadora, 'id'> & { id?: string }) {
+/**
+ * Grava a contratada. `herdarDe` é a chave que ela tinha antes do cadastro (a da pasta lida no Drive, "drive:<pasta>"):
+ * as conferências e os ajustes já feitos nessa chave passam para o cadastro novo, para o fiscal não perder as marcações.
+ */
+export function salvarPrestadora(p: Omit<Prestadora, 'id'> & { id?: string }, herdarDe = '') {
   const d = ler();
   const id = p.id || `p${Date.now().toString(36)}`;
   const nova = { ...p, id, dia: Math.min(31, Math.max(0, Number(p.dia) || 0)) } as Prestadora;
   const existe = d.prestadoras.some((x) => x.id === id);
-  gravar({ ...d, prestadoras: existe ? d.prestadoras.map((x) => (x.id === id ? nova : x)) : [...d.prestadoras, nova] });
+  let { conferencias, ajustes } = d;
+  if (herdarDe && herdarDe !== id) {
+    conferencias = Object.fromEntries(
+      Object.entries(conferencias).map(([k, v]) => [k.startsWith(`${herdarDe}|`) ? `${id}|${k.slice(herdarDe.length + 1)}` : k, v]),
+    );
+    if (ajustes[herdarDe]) {
+      const { [herdarDe]: antigo, ...resto } = ajustes;
+      ajustes = { ...resto, [id]: antigo };
+    }
+  }
+  gravar({ ...d, conferencias, ajustes, prestadoras: existe ? d.prestadoras.map((x) => (x.id === id ? nova : x)) : [...d.prestadoras, nova] });
   return id;
 }
 

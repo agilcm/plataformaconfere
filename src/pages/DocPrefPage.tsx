@@ -107,6 +107,9 @@ const SINAL: Record<Sinal, { cor: string; ponto: string }> = {
 const MODELOS_URL = `${import.meta.env.BASE_URL}docpref/modelos/`;
 const TOMADORA = { nome: COMPANY_PROFILE.name, email: COMPANY_PROFILE.email, phoneDisplay: COMPANY_PROFILE.phoneDisplay, domain: COMPANY_PROFILE.domain };
 const digitos = (s?: string | null) => String(s || '').replace(/\D/g, '');
+// Linha de data dos PDFs: usa o município do órgão quando ele está preenchido ("Cataguases - MG" → "Cataguases")
+let cidadeDoOrgao = '';
+const dataDoc = () => dateText(new Date(), cidadeDoOrgao.replace(/\s*[-/,]\s*[A-Za-z]{2}\s*$/, '').trim());
 const hojeISO = () => new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 10);
 
 /** Junta as prestadoras lidas no Drive com as cadastradas aqui (pelo nome da pasta, CNPJ ou razão social) */
@@ -214,6 +217,9 @@ export default function DocPrefPage() {
 
   const cfg = dados.config;
   const orgao = cfg.contratante.trim();
+  cidadeDoOrgao = cfg.cidade || '';
+  // contratada a completar no cadastro (vem do Painel: "Indicar o fiscal do contrato de ...")
+  const [completar, setCompletar] = useState('');
 
   return (
     <>
@@ -255,7 +261,7 @@ export default function DocPrefPage() {
           </Container>
         </section>
         <Container className="pt-6">
-          <div role="tablist" aria-label="DocPref" className="flex flex-wrap gap-2">
+          <div role="tablist" aria-label="DocPref" className="-mx-4 px-4 sm:mx-0 sm:px-0 flex gap-2 overflow-x-auto sm:flex-wrap sm:overflow-visible pb-1">
             {(
               [
                 ['farol', 'Painel do órgão', 'chart'],
@@ -272,7 +278,7 @@ export default function DocPrefPage() {
                 role="tab"
                 aria-selected={aba === id}
                 onClick={() => setAba(id)}
-                className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-[15px] font-bold border-2 transition-colors cursor-pointer ${
+                className={`shrink-0 whitespace-nowrap inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-[15px] font-bold border-2 transition-colors cursor-pointer ${
                   aba === id ? 'bg-[#0F2053] border-[#0F2053] text-white' : 'bg-white border-slate-200 text-[#0F2053] hover:border-[#0478CA]'
                 }`}
               >
@@ -308,10 +314,21 @@ export default function DocPrefPage() {
                   setComp(c);
                   setAba('empresas');
                 }}
-                irParaOrgao={() => setAba('cadastro')}
+                irParaOrgao={(chave) => {
+                  setCompletar(chave || '');
+                  setAba('cadastro');
+                }}
               />
             )}
-            {aba === 'cadastro' && <Cadastro prestadoras={dados.prestadoras} config={dados.config} nomesDrive={(leitura?.empresas || []).map((e) => e.nome)} />}
+            {aba === 'cadastro' && (
+              <Cadastro
+                prestadoras={dados.prestadoras}
+                config={dados.config}
+                nomesDrive={(leitura?.empresas || []).map((e) => e.nome)}
+                semCadastro={empresas.filter((e) => e.drive && !e.prestadora)}
+                completar={completar}
+              />
+            )}
             {aba === 'cartilha' && <Cartilha config={dados.config} />}
             {aba === 'manual' && <ManualOperador config={dados.config} />}
             {aba === 'como' && <ComoFunciona />}
@@ -505,7 +522,7 @@ function Empresas({
                 type="button"
                 onClick={() =>
                   downloadPdf(`docpref-${slug(escolhida.nome)}-${anoSel}.pdf`, `${escolhida.nome} - Relatório geral ${anoSel}`, [
-                    { type: 'date', text: dateText() },
+                    { type: 'date', text: dataDoc() },
                     ...(blocosRelatorioGeral(escolhida.nome, anoSel, avs, {
                       dia: escolhida.prestadora?.dia || 0,
                       atualizadoEm: leitura?.atualizadoEm,
@@ -605,7 +622,7 @@ function Empresas({
                               onClick={(ev) => {
                                 ev.stopPropagation();
                                 downloadPdf(`docpref-${slug(escolhida.nome)}-${a.comp}.pdf`, `${escolhida.nome} - Relatório mensal ${compBR(a.comp)}`, [
-                                  { type: 'date', text: dateText() },
+                                  { type: 'date', text: dataDoc() },
                                   ...(blocosRelatorioMensal(escolhida.nome, a, {
                                     atualizadoEm: leitura?.atualizadoEm,
                                     dia: escolhida.prestadora?.dia || 0,
@@ -726,7 +743,7 @@ function MesDetalhe({
   const mostra = (i: { status: string }) => ver === 'tudo' || (ver === 'falta' ? falta(i) : recebido(i));
   const pdfRelatorio = () =>
     downloadPdf(`docpref-${slug(empresa.nome)}-${av.comp}.pdf`, `${empresa.nome} - Relatório mensal ${compBR(av.comp)}`, [
-      { type: 'date', text: dateText() },
+      { type: 'date', text: dataDoc() },
       ...(blocosRelatorioMensal(empresa.nome, av, {
         atualizadoEm,
         dia: empresa.prestadora?.dia || 0,
@@ -777,7 +794,7 @@ function MesDetalhe({
               type="button"
               onClick={() =>
                 downloadPdf(`parecer-${slug(empresa.nome)}-${av.comp}.pdf`, `Parecer de fiscalização documental - ${compBR(av.comp)}`, [
-                  { type: 'date', text: dateText() },
+                  { type: 'date', text: dataDoc() },
                   ...(blocosParecer(prest, av, cfg) as any),
                 ])
               }
@@ -792,7 +809,7 @@ function MesDetalhe({
                 type="button"
                 onClick={() =>
                   downloadPdf(`notificacao-${slug(empresa.nome)}-${av.comp}.pdf`, 'Notificação de pendências documentais', [
-                    { type: 'date', text: dateText() },
+                    { type: 'date', text: dataDoc() },
                     ...(blocosNotificacao(prest, av, cfg) as any),
                   ])
                 }
@@ -1259,7 +1276,7 @@ function PainelRapido({
           </button>
           <button
             type="button"
-            onClick={() => downloadPdf(`${arquivo}.pdf`, titulo, [{ type: 'date', text: dateText() }, ...(conteudo.blocos as any)])}
+            onClick={() => downloadPdf(`${arquivo}.pdf`, titulo, [{ type: 'date', text: dataDoc() }, ...(conteudo.blocos as any)])}
             className={`${botao} bg-[#0F2053] hover:bg-[#13306f] text-white`}
           >
             <Icon name="doc" className="w-5 h-5" /> PDF
@@ -1317,7 +1334,7 @@ function Farol({
   config: ConfigDocPref;
   atualizadoEm: string;
   abrir: (chave: string, comp: string) => void;
-  irParaOrgao: () => void;
+  irParaOrgao: (chave?: string) => void;
 }) {
   const [rapido, setRapido] = useState<{ texto: string; blocos: any[] } | null>(null);
   const [todasProvidencias, setTodasProvidencias] = useState(false);
@@ -1356,7 +1373,7 @@ function Farol({
         <p className="mt-1 text-[15px] text-slate-600">
           O painel aparece quando a pasta do Drive for lida ou quando houver contratadas cadastradas. Comece informando o órgão e os contratos.
         </p>
-        <button type="button" onClick={irParaOrgao} className={`${botao} mt-4 bg-[#0F2053] hover:bg-[#13306f] text-white`}>
+        <button type="button" onClick={() => irParaOrgao()} className={`${botao} mt-4 bg-[#0F2053] hover:bg-[#13306f] text-white`}>
           <Icon name="building" className="w-5 h-5" /> Informar o órgão e os contratos
         </button>
       </div>
@@ -1432,7 +1449,7 @@ function Farol({
                   </span>
                   <button
                     type="button"
-                    onClick={() => (f.acao === 'mes' && f.chave ? abrir(f.chave, f.comp || '') : irParaOrgao())}
+                    onClick={() => (f.acao === 'mes' && f.chave ? abrir(f.chave, f.comp || '') : irParaOrgao(f.acao === 'contrato' ? f.chave : undefined))}
                     className={`${botaoSec} shrink-0 self-start !py-2`}
                   >
                     {f.acao === 'mes' ? 'Abrir o contrato' : 'Preencher'}
@@ -1624,10 +1641,46 @@ function Farol({
 
 const NOVA = { razao: '', cnpj: '', contrato: '', email: '', pasta: '', dia: 0, drive: '', inicio: '', fiscal: '', objeto: '' };
 
-function Cadastro({ prestadoras, config, nomesDrive }: { prestadoras: Prestadora[]; config: ConfigDocPref; nomesDrive: string[] }) {
+function Cadastro({
+  prestadoras,
+  config,
+  nomesDrive,
+  semCadastro,
+  completar,
+}: {
+  prestadoras: Prestadora[];
+  config: ConfigDocPref;
+  nomesDrive: string[];
+  /** contratadas que a leitura do Drive achou e ainda não têm cadastro (falta fiscal, objeto, e-mail…) */
+  semCadastro: Unida[];
+  /** chave da contratada que o Painel pediu para completar */
+  completar: string;
+}) {
   const [form, setForm] = useState<typeof NOVA & { id?: string }>(NOVA);
   const [msg, setMsg] = useState('');
   const arquivo = useRef<HTMLInputElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  // chave da pasta lida que está sendo completada: as conferências já feitas nela passam para o cadastro novo
+  const [herdar, setHerdar] = useState('');
+  // leva para o formulário o que a leitura já sabe da contratada: sobra preencher fiscal, objeto e e-mail
+  const preencher = (e: Unida) => {
+    setHerdar(e.chave);
+    setForm({ ...NOVA, razao: e.razao || e.nome, cnpj: e.cnpj || '', contrato: e.contrato || '', drive: e.drive?.nome || '' });
+    setMsg('');
+    requestAnimationFrame(() => {
+      formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      formRef.current?.querySelector<HTMLInputElement>('input[data-campo="objeto"]')?.focus({ preventScroll: true });
+    });
+  };
+  useEffect(() => {
+    const e = completar && semCadastro.find((x) => x.chave === completar);
+    if (e) preencher(e);
+    else if (completar) {
+      const p = prestadoras.find((x) => x.id === completar);
+      if (p) setForm({ ...NOVA, ...p, drive: p.drive || '', inicio: p.inicio || '', fiscal: p.fiscal || '', objeto: p.objeto || '' });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [completar]);
   const set = (k: keyof typeof NOVA, v: string) => setForm((f) => ({ ...f, [k]: k === 'dia' ? Number(v) || 0 : v }));
   const hoje = new Date().toISOString().slice(0, 10);
 
@@ -1677,13 +1730,15 @@ function Cadastro({ prestadoras, config, nomesDrive }: { prestadoras: Prestadora
         <p className="mt-2 text-sm text-slate-500">Os dados são gravados ao sair de cada campo e ficam guardados neste navegador.</p>
       </div>
       <form
-        className={`${card} lg:col-span-2 space-y-3`}
+        ref={formRef}
+        className={`${card} lg:col-span-2 space-y-3 scroll-mt-24`}
         onSubmit={(e) => {
           e.preventDefault();
           if (!form.razao.trim()) return;
-          salvarPrestadora({ ...form, razao: form.razao.trim() });
+          salvarPrestadora({ ...form, razao: form.razao.trim() }, form.id ? '' : herdar);
           setMsg(form.id ? 'Contrato atualizado.' : 'Contratada cadastrada.');
           setForm(NOVA);
+          setHerdar('');
         }}
       >
         <h2 className="text-lg font-bold text-[#0F2053]">{form.id ? 'Editar contrato' : 'Novo contrato'}</h2>
@@ -1703,7 +1758,7 @@ function Cadastro({ prestadoras, config, nomesDrive }: { prestadoras: Prestadora
         ).map(([k, nome, tipo, obrig]) => (
           <label key={k} className="block">
             <span className="block text-sm text-slate-600 mb-1">{nome}</span>
-            <input type={tipo} required={obrig} value={String(form[k] ?? '')} onChange={(e) => set(k, e.target.value)} className={campo} />
+            <input type={tipo} required={obrig} data-campo={k} value={String(form[k] ?? '')} onChange={(e) => set(k, e.target.value)} className={campo} />
           </label>
         ))}
         <label className="block">
@@ -1730,7 +1785,14 @@ function Cadastro({ prestadoras, config, nomesDrive }: { prestadoras: Prestadora
             {form.id ? 'Salvar' : 'Cadastrar'}
           </button>
           {form.id && (
-            <button type="button" onClick={() => setForm(NOVA)} className="text-sm font-bold text-slate-600 underline cursor-pointer">
+            <button
+              type="button"
+              onClick={() => {
+                setForm(NOVA);
+                setHerdar('');
+              }}
+              className="text-sm font-bold text-slate-600 underline cursor-pointer"
+            >
               Cancelar
             </button>
           )}
@@ -1783,6 +1845,31 @@ function Cadastro({ prestadoras, config, nomesDrive }: { prestadoras: Prestadora
             />
           </div>
         </div>
+        {semCadastro.length > 0 && (
+          <div className="mt-3 p-4 rounded-xl bg-amber-50 border border-amber-200">
+            <p className="text-[15px] font-bold text-amber-900">
+              {semCadastro.length === 1
+                ? 'Uma contratada da pasta ainda não tem cadastro'
+                : `${semCadastro.length} contratadas da pasta ainda não têm cadastro`}
+            </p>
+            <p className="text-sm text-amber-900">Complete o objeto, o fiscal e o e-mail: eles saem no parecer e na notificação.</p>
+            <ul className="mt-2 divide-y divide-amber-200">
+              {semCadastro.map((e) => (
+                <li key={e.chave} className="py-2 flex flex-wrap items-center gap-x-4 gap-y-1">
+                  <span className="flex-1 min-w-0">
+                    <strong className="text-[#0F2053]">{e.razao || e.nome}</strong>
+                    <span className="block text-sm text-slate-600">
+                      {[e.cnpj && `CNPJ ${e.cnpj}`, e.contrato && `contrato ${e.contrato}`, `pasta “${e.drive?.nome}”`].filter(Boolean).join(' · ')}
+                    </span>
+                  </span>
+                  <button type="button" onClick={() => preencher(e)} className={`${botaoSec} !py-2`}>
+                    Completar cadastro<span className="sr-only"> de {e.razao || e.nome}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         {!prestadoras.length ? (
           <p className="mt-3 text-[15px] text-slate-600">Nenhum contrato cadastrado à mão.</p>
         ) : (
@@ -1852,7 +1939,7 @@ function Cartilha({ config }: { config: ConfigDocPref }) {
             type="button"
             onClick={() =>
               downloadPdf('cartilha-da-contratada.pdf', 'Cartilha da contratada', [
-                { type: 'date', text: dateText() },
+                { type: 'date', text: dataDoc() },
                 ...(blocosCartilha(TOMADORA, { atualizada: mes, contratante: config.contratante }) as any),
               ])
             }
@@ -1936,7 +2023,7 @@ function ManualOperador({ config }: { config: ConfigDocPref }) {
             type="button"
             onClick={() =>
               downloadPdf('manual-do-fiscal-docpref.pdf', 'Manual do fiscal - DocPref', [
-                { type: 'date', text: dateText() },
+                { type: 'date', text: dataDoc() },
                 ...(blocosManualOperador({ contratante: config.contratante }) as any),
               ])
             }

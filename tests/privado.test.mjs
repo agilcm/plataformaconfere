@@ -48,14 +48,19 @@ function termo({ tipo = 'HOMOLOGAÇÃO', verbo = 'HOMOLOGAR', orgao = 'Prefeitur
 }
 
 test('montarLinhas junta trechos da mesma altura e separa colunas distantes', () => {
-  const ls = montarLinhas([[
-    { str: 'Lote 2', x: 47, y: 100, w: 30, h: 8 },
-    { str: 'Data/Hora da Homologação', x: 364, y: 100.5, w: 100, h: 8 },
-    { str: 'OLEO', x: 47, y: 120, w: 22, h: 8 },
-    { str: 'DE SOJA', x: 71, y: 120, w: 35, h: 8 },
-  ]]);
+  const ls = montarLinhas([
+    [
+      { str: 'Lote 2', x: 47, y: 100, w: 30, h: 8 },
+      { str: 'Data/Hora da Homologação', x: 364, y: 100.5, w: 100, h: 8 },
+      { str: 'OLEO', x: 47, y: 120, w: 22, h: 8 },
+      { str: 'DE SOJA', x: 71, y: 120, w: 35, h: 8 },
+    ],
+  ]);
   assert.equal(ls.length, 2);
-  assert.deepEqual(ls[0].partes.map((p) => p.t), ['Lote 2', 'Data/Hora da Homologação']);
+  assert.deepEqual(
+    ls[0].partes.map((p) => p.t),
+    ['Lote 2', 'Data/Hora da Homologação'],
+  );
   assert.equal(ls[1].texto, 'OLEO DE SOJA');
 });
 
@@ -81,7 +86,11 @@ test('lerTermo extrai órgão, processo, datas, total e itens da AGIL', () => {
 test('classificar separa homologação, adjudicação, ata e outros documentos', () => {
   assert.equal(classificar(termo({ tipo: 'ADJUDICAÇÃO', verbo: 'ADJUDICAR' })), 'adjudicacao');
   yy = 0;
-  const ata = [L(0, ['ATA PREGÃO', 250]), L(0, ['PREGÃO Nº. 05/2024 PROCESSO LICITATÓRIO Nº. 31/2024', 60]), L(0, ['Às 09:00 do dia 29/07/2024, reuniu-se o(a) Pregoeiro(a)', 43])];
+  const ata = [
+    L(0, ['ATA PREGÃO', 250]),
+    L(0, ['PREGÃO Nº. 05/2024 PROCESSO LICITATÓRIO Nº. 31/2024', 60]),
+    L(0, ['Às 09:00 do dia 29/07/2024, reuniu-se o(a) Pregoeiro(a)', 43]),
+  ];
   assert.equal(classificar(ata), 'ata');
   assert.deepEqual(lerAta(ata), { processo: { numero: '31', ano: '2024' }, dataPregao: '2024-07-29T09:00' });
   assert.equal(classificar([L(0, ['EDITAL DE PREGÃO ELETRÔNICO', 200]), L(0, ['O termo de homologação será publicado', 43])]), 'outro');
@@ -143,12 +152,18 @@ test('planejar organiza por órgão e processo, marca pastas sem termo e não re
     ['txt', { tipo: 'nao-pdf' }],
   ]);
   const r1 = planejar(raiz, analises);
-  assert.deepEqual(r1.pendencias.map((p) => p.nome), ['xxx0018-2024 - CM Uba']);
+  assert.deepEqual(
+    r1.pendencias.map((p) => p.nome),
+    ['xxx0018-2024 - CM Uba'],
+  );
   assert.equal(r1.processos.length, 2);
   const uba = r1.processos.find((p) => p.orgao.includes('Ubá'));
   assert.equal(uba.termos.length, 2);
   assert.equal(uba.valorAgil, 2839.2);
-  assert.ok(r1.avisos.some((a) => a.nome === 'mpdf (7).pdf'), 'cópia repetida avisada');
+  assert.ok(
+    r1.avisos.some((a) => a.nome === 'mpdf (7).pdf'),
+    'cópia repetida avisada',
+  );
 
   aplicar(raiz, r1.ops);
   const nomes = (n) => (n.filhos || []).map((f) => f.name).sort();
@@ -175,7 +190,13 @@ test('planejar organiza por órgão e processo, marca pastas sem termo e não re
 test('relatórios somam produtos e geram CSV para Excel', () => {
   const t = lerTermo(termo());
   const p = { ...t, termos: [], termoUsado: 'homologacao', pasta: null };
-  const outro = { ...p, orgao: 'Câmara Municipal de Ubá', processo: { numero: '25', ano: '2024' }, itens: t.itens.map((i) => ({ ...i, quantidade: 10, subtotal: 72.8 })), valorAgil: 72.8 };
+  const outro = {
+    ...p,
+    orgao: 'Câmara Municipal de Ubá',
+    processo: { numero: '25', ano: '2024' },
+    itens: t.itens.map((i) => ({ ...i, quantidade: 10, subtotal: 72.8 })),
+    valorAgil: 72.8,
+  };
   const prods = consolidarProdutos([p, outro]);
   assert.equal(prods.length, 1);
   assert.deepEqual([prods[0].quantidade, prods[0].valor, prods[0].processos], [400, 2912, 2]);
@@ -203,7 +224,10 @@ test('validade: a homologação vale 1 ano, com alerta nos últimos 60 dias', as
     ],
     hoje,
   );
-  assert.deepEqual(g.lista.map((x) => `${x.orgao} ${x.processo} ${x.situacao}`), ['A 001/2025 vencido', 'B 002/2026 vigente']);
+  assert.deepEqual(
+    g.lista.map((x) => `${x.orgao} ${x.processo} ${x.situacao}`),
+    ['A 001/2025 vencido', 'B 002/2026 vigente'],
+  );
   assert.equal(g.vencidos, 1);
 });
 
@@ -215,8 +239,20 @@ test('Super Sugestão: mesmo produto e mesma categoria na cidade onde já ganham
   assert.equal(palavraDoItem('CAIXA PLÁSTICA ORGANIZADORA 20L'), 'organizadora');
   const historico = {
     processos: [
-      { orgao: 'Prefeitura Municipal de Astolfo Dutra', cidade: 'Astolfo Dutra', processo: '036/2025', situacao: 'vigente', itens: [{ descricao: 'TONER COMPATÍVEL HP 85A', unitario: 45 }] },
-      { orgao: 'Prefeitura Municipal de Rodeiro', cidade: 'Rodeiro', processo: '028/2025', situacao: 'vencido', itens: [{ descricao: 'CARRINHO DE BRINQUEDO EM PLÁSTICO' }] },
+      {
+        orgao: 'Prefeitura Municipal de Astolfo Dutra',
+        cidade: 'Astolfo Dutra',
+        processo: '036/2025',
+        situacao: 'vigente',
+        itens: [{ descricao: 'TONER COMPATÍVEL HP 85A', unitario: 45 }],
+      },
+      {
+        orgao: 'Prefeitura Municipal de Rodeiro',
+        cidade: 'Rodeiro',
+        processo: '028/2025',
+        situacao: 'vencido',
+        itens: [{ descricao: 'CARRINHO DE BRINQUEDO EM PLÁSTICO' }],
+      },
     ],
   };
   const editais = [
@@ -237,14 +273,62 @@ test('cache da Super Sugestão: exporta, importa e recusa arquivos estranhos', a
   const mem = new Map();
   globalThis.localStorage = { getItem: (k) => mem.get(k) ?? null, setItem: (k, v) => mem.set(k, String(v)), removeItem: (k) => mem.delete(k) };
   const { salvarHistorico, exportarHistorico, importarHistorico, lerHistorico } = await import('../src/lib/historicoVitorias.js');
-  salvarHistorico([{ orgao: 'Prefeitura Municipal de Ubá', processo: { numero: '10', ano: '2025' }, dataHomologacao: '2025-03-06', itens: [{ descricao: 'OLEO', quantidade: 2, medida: 'UN', unitario: 7.28 }] }], () => 'vencido');
+  salvarHistorico(
+    [
+      {
+        orgao: 'Prefeitura Municipal de Ubá',
+        processo: { numero: '10', ano: '2025' },
+        dataHomologacao: '2025-03-06',
+        itens: [{ descricao: 'OLEO', quantidade: 2, medida: 'UN', unitario: 7.28 }],
+      },
+    ],
+    () => 'vencido',
+  );
   const arquivo = exportarHistorico();
   mem.clear();
   assert.equal(lerHistorico(), null);
   const d = importarHistorico(arquivo);
-  assert.deepEqual([d.processos[0].cidade, d.processos[0].processo, d.processos[0].situacao, d.processos[0].itens[0].unitario], ['Ubá', '010/2025', 'vencido', 7.28]);
+  assert.deepEqual(
+    [d.processos[0].cidade, d.processos[0].processo, d.processos[0].situacao, d.processos[0].itens[0].unitario],
+    ['Ubá', '010/2025', 'vencido', 7.28],
+  );
   assert.equal(lerHistorico().processos.length, 1);
   assert.throws(() => importarHistorico('{"processos":[]}'), /não é um cache/);
   assert.throws(() => importarHistorico('não é json'), /JSON inválido/);
   delete globalThis.localStorage;
+});
+
+test('providências das licitações ganhas: registros vencendo e vencidos há pouco, do mais perto do vencimento para o mais distante', async () => {
+  const { providenciasGanhas } = await import('../src/lib/privado/relatorios.js');
+  const hoje = new Date(2026, 10, 14); // 14/11/2026
+  const proc = (orgao, numero, dataHomologacao, valorAgil = 1000) => ({
+    chave: `${orgao}|${numero}`,
+    orgao,
+    processo: { numero, ano: 2025 },
+    dataHomologacao,
+    valorAgil,
+    objeto: 'Aquisição de materiais de expediente',
+  });
+  const lista = [
+    proc('Câmara A', 52, '2025-12-04'), // vence em 20 dias
+    proc('Câmara B', 42, '2025-11-20'), // vence em 6 dias: urgente
+    proc('Prefeitura C', 10, '2026-06-01'), // vigente por muito tempo: fora
+    proc('Prefeitura D', 7, '2025-11-01'), // venceu há 13 dias: ainda aparece
+    proc('Prefeitura E', 3, '2025-08-01'), // venceu há mais de 30 dias: fora
+    { orgao: 'Sem data', processo: { numero: 1, ano: 2025 } }, // sem data: fora
+  ];
+  const p = providenciasGanhas(lista, hoje);
+  assert.deepEqual(
+    p.map((x) => [x.orgao, x.dias, x.nivel]),
+    [
+      ['Câmara B', 6, 'urgente'],
+      ['Prefeitura D', -13, 'urgente'],
+      ['Câmara A', 20, 'atencao'],
+    ],
+    'o que está mais perto da data de vencimento vem primeiro',
+  );
+  assert.equal(p[0].titulo, 'Câmara B: o registro vence em 6 dias (20/11/2026)');
+  assert.equal(p[1].titulo, 'Prefeitura D: o registro venceu há 13 dias (01/11/2026)');
+  assert.match(p[2].texto, /^Processo 052\/2025 · R\$ 1\.000,00 ganhos · Aquisição de materiais de expediente$/);
+  assert.deepEqual(providenciasGanhas([], hoje), []);
 });
