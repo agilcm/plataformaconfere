@@ -39,7 +39,12 @@ export type Block =
 
 type SaveResult = 'saved' | 'declined';
 
-export async function downloadPdf(fileName: string, docTitle: string, blocks: Block[], opts: { paisagem?: boolean } = {}): Promise<SaveResult> {
+export async function downloadPdf(
+  fileName: string,
+  docTitle: string,
+  blocks: Block[],
+  opts: { paisagem?: boolean; timbre?: { nome: string; linha2?: string; rodape?: string } } = {},
+): Promise<SaveResult> {
   const { buildPdf } = await import('./pdfBuild.ts');
   const bytes = await buildPdf(docTitle, blocks, opts);
   const blob = new Blob([bytes as BlobPart], { type: 'application/pdf' });

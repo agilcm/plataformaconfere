@@ -69,7 +69,8 @@ export const MANUAL_OPERADOR = [
     passos: [
       'Abra www.agilcm.com.br/docpref/ e vá na aba "Órgão e contratos". Preencha primeiro os dados do órgão contratante.',
       'No cartão "Contratante", escreva o nome da prefeitura (ou do órgão) e o prazo para regularizar depois da notificação, em dias úteis (padrão: 5).',
-      'Para cada empresa: as empresas da pasta do Drive aparecem sozinhas em "Contratos e meses". Cadastre a empresa (mesma razão social ou CNPJ) para completar: e-mail de cobrança, nº do contrato, objeto, fiscal do contrato, dia do prazo (vazio = último dia do mês seguinte) e início do contrato.',
+      'Para cada empresa: as empresas da pasta do Drive aparecem sozinhas em "Contratos e meses". Em "Órgão e contratos", as que ainda não têm cadastro aparecem com o botão "Completar cadastro": o formulário já vem com a razão social, o CNPJ e o contrato, e falta preencher o objeto, o fiscal do contrato, o e-mail de cobrança, o dia do prazo (vazio = último dia do mês seguinte) e o início do contrato. As conferências já feitas continuam valendo.',
+      'Papel do parecer e da notificação: com o nome do órgão preenchido, esses dois documentos saem no papel do órgão (nome do órgão no cabeçalho, sem o timbre da Ágil CM), porque são assinados pelo fiscal. Para usar o papel timbrado da Ágil CM, troque a opção em "Órgão e contratos". Os relatórios de análise continuam no papel da Ágil CM.',
       'Se a empresa não casar sozinha com a pasta do Drive, escreva em "Nome da pasta na leitura do Drive" o nome exato da pasta dela.',
       'Envie a cada empresa a cartilha da contratada e os modelos (aba "Orientações à contratada") e o acesso à pasta dela no Drive.',
     ],
@@ -253,7 +254,10 @@ export const MANUAL_OPERADOR = [
           'A pasta dela precisa estar dentro da pasta principal. Espere a próxima leitura (até 3 horas) ou peça para rodar a leitura na hora.',
         ],
         ['Um mês não aparece', 'O nome da pasta do mês precisa ter mês e ano (03-2026, 2026/03, "Março 2026") e os arquivos precisam estar dentro dela.'],
-        ['Meses antigos com pagamento condicionado e sem arquivos', 'Preencha "Início do contrato" em "Órgão e contratos": os meses anteriores deixam de ser cobrados.'],
+        [
+          'Meses antigos com pagamento condicionado e sem arquivos',
+          'Preencha "Início do contrato" em "Órgão e contratos": os meses anteriores deixam de ser cobrados.',
+        ],
         [
           '"Arquivo a classificar"',
           'Abra o arquivo no Drive. Se for o documento certo, marque "Conferido: recebido"; se for digitalização ruim, peça o PDF original.',

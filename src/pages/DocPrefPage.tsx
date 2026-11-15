@@ -112,6 +112,19 @@ let cidadeDoOrgao = '';
 const dataDoc = () => dateText(new Date(), cidadeDoOrgao.replace(/\s*[-/,]\s*[A-Za-z]{2}\s*$/, '').trim());
 const hojeISO = () => new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 10);
 
+/**
+ * Papel do parecer e da notificação, que o fiscal do órgão assina: com o nome do órgão preenchido, saem no papel do
+ * órgão (nome no cabeçalho, identificação no rodapé), a não ser que o cadastro peça o timbre da Ágil CM.
+ */
+const timbreDoOrgao = (c: ConfigDocPref) =>
+  c.contratante.trim() && c.papel !== 'agil'
+    ? {
+        nome: c.contratante.trim(),
+        linha2: [c.unidade, c.cidade].filter(Boolean).join(' · '),
+        rodape: [c.contratante.trim(), c.cnpj && `CNPJ ${c.cnpj}`, c.cidade].filter(Boolean).join(' · '),
+      }
+    : undefined;
+
 /** Junta as prestadoras lidas no Drive com as cadastradas aqui (pelo nome da pasta, CNPJ ou razão social) */
 function unir(leitura: Leitura | null, prestadoras: Prestadora[]): Unida[] {
   const usadas = new Set<string>();
@@ -277,7 +290,10 @@ export default function DocPrefPage() {
                 type="button"
                 role="tab"
                 aria-selected={aba === id}
-                onClick={() => setAba(id)}
+                onClick={() => {
+                  setAba(id);
+                  if (id !== 'cadastro') setCompletar('');
+                }}
                 className={`shrink-0 whitespace-nowrap inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-[15px] font-bold border-2 transition-colors cursor-pointer ${
                   aba === id ? 'bg-[#0F2053] border-[#0F2053] text-white' : 'bg-white border-slate-200 text-[#0F2053] hover:border-[#0478CA]'
                 }`}
@@ -373,7 +389,8 @@ function Empresas({
   const visiveis = empresas
     .filter((e) => !busca.trim() || norm(`${e.nome} ${e.razao} ${e.cnpj}`).includes(norm(busca)) || digitos(e.cnpj).includes(digitos(busca) || '-'))
     .sort((a, b) => (ordem === 'pior' ? travadosDe(b) - travadosDe(a) : 0) || a.nome.localeCompare(b.nome, 'pt-BR'));
-  const escolhida = empresas.find((e) => e.chave === sel) || visiveis[0] || empresas[0] || null;
+  const escolhida =
+    empresas.find((e) => e.chave === sel) || empresas.find((e) => e.drive && `drive:${e.drive.id}` === sel) || visiveis[0] || empresas[0] || null;
   const venc = useMemo(() => (escolhida?.drive ? vencimentos(escolhida.drive) : []), [escolhida]);
   // identificação da contratada + dados do contrato (contratante, fiscal, objeto) para relatórios e notificação
   const ident = escolhida
@@ -569,7 +586,7 @@ function Empresas({
             />
           )}
 
-          <div className="mt-4 overflow-x-auto">
+          <div className="mt-4 overflow-x-auto" tabIndex={0} role="region" aria-label="Meses do contrato (role para os lados)">
             <table className="w-full min-w-[720px] text-sm">
               <thead className="bg-[#F7FAFD] text-left text-sm text-slate-500">
                 <tr>
@@ -675,7 +692,7 @@ function Empresas({
           empresa={escolhida}
           av={av}
           atualizadoEm={leitura?.atualizadoEm || ''}
-          cfg={{ ...ident, prazoRegularizacao: config.prazoRegularizacao, atualizadoEm: leitura?.atualizadoEm }}
+          cfg={{ ...ident, prazoRegularizacao: config.prazoRegularizacao, atualizadoEm: leitura?.atualizadoEm, timbre: timbreDoOrgao(config) }}
           naoAplica={ajustes[escolhida.chave]?.naoAplica || []}
         />
       )}
@@ -702,6 +719,8 @@ function MesDetalhe({
     objeto?: string;
     prazoRegularizacao?: number;
     atualizadoEm?: string;
+    /** papel do órgão para o parecer e a notificação (sem ele, sai o timbre da Ágil CM) */
+    timbre?: { nome: string; linha2?: string; rodape?: string };
   };
   naoAplica: string[];
 }) {
@@ -793,10 +812,12 @@ function MesDetalhe({
             <button
               type="button"
               onClick={() =>
-                downloadPdf(`parecer-${slug(empresa.nome)}-${av.comp}.pdf`, `Parecer de fiscalização documental - ${compBR(av.comp)}`, [
-                  { type: 'date', text: dataDoc() },
-                  ...(blocosParecer(prest, av, cfg) as any),
-                ])
+                downloadPdf(
+                  `parecer-${slug(empresa.nome)}-${av.comp}.pdf`,
+                  `Parecer de fiscalização documental - ${compBR(av.comp)}`,
+                  [{ type: 'date', text: dataDoc() }, ...(blocosParecer(prest, av, cfg) as any)],
+                  { timbre: cfg.timbre },
+                )
               }
               className={`${botao} bg-[#0F2053] hover:bg-[#13306f] text-white`}
             >
@@ -808,10 +829,12 @@ function MesDetalhe({
               <button
                 type="button"
                 onClick={() =>
-                  downloadPdf(`notificacao-${slug(empresa.nome)}-${av.comp}.pdf`, 'Notificação de pendências documentais', [
-                    { type: 'date', text: dataDoc() },
-                    ...(blocosNotificacao(prest, av, cfg) as any),
-                  ])
+                  downloadPdf(
+                    `notificacao-${slug(empresa.nome)}-${av.comp}.pdf`,
+                    'Notificação de pendências documentais',
+                    [{ type: 'date', text: dataDoc() }, ...(blocosNotificacao(prest, av, cfg) as any)],
+                    { timbre: cfg.timbre },
+                  )
                 }
                 className={botaoSec}
               >
@@ -877,7 +900,7 @@ function MesDetalhe({
       {!neutro && av.resumo.arquivos > 0 && av.pagamentos.length > 0 && (
         <div className="mt-5">
           <h3 className="text-sm font-bold text-slate-600 mb-2">Guias e pagamentos</h3>
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Guias e pagamentos (role para os lados)">
             <table className="w-full min-w-[640px] text-sm">
               <thead className="text-left text-slate-500">
                 <tr>
@@ -1144,7 +1167,7 @@ function MesDetalhe({
       {av.arquivos.length > 0 && (
         <details className="mt-6">
           <summary className="cursor-pointer text-[15px] font-bold text-[#0369B3]">Arquivos localizados ({av.arquivos.length})</summary>
-          <div className="mt-2 overflow-x-auto">
+          <div className="mt-2 overflow-x-auto" tabIndex={0} role="region" aria-label="Arquivos localizados (role para os lados)">
             <table className="w-full min-w-[640px] text-sm">
               <thead className="text-left text-slate-500">
                 <tr>
@@ -1507,7 +1530,7 @@ function Farol({
         {rapido && (
           <PainelRapido conteudo={rapido} arquivo="docpref-rapido-todas" titulo="Relatório rápido - todos os contratos" fechar={() => setRapido(null)} />
         )}
-        <div className="mt-4 overflow-x-auto">
+        <div className="mt-4 overflow-x-auto" tabIndex={0} role="region" aria-label="Farol dos contratos (role para os lados)">
           <table className="w-full min-w-[900px] text-sm">
             <thead className="bg-[#F7FAFD] text-left text-slate-500">
               <tr>
@@ -1603,7 +1626,7 @@ function Farol({
         {!vencVer.length ? (
           <p className="mt-3 text-[15px] text-emerald-800">Nenhum vencimento pendente.</p>
         ) : (
-          <div className="mt-3 overflow-x-auto">
+          <div className="mt-3 overflow-x-auto" tabIndex={0} role="region" aria-label="Certidões e documentos com validade (role para os lados)">
             <table className="w-full min-w-[640px] text-sm">
               <thead className="text-left text-slate-500">
                 <tr>
@@ -1727,7 +1750,24 @@ function Cadastro({
             />
           </label>
         </div>
-        <p className="mt-2 text-sm text-slate-500">Os dados são gravados ao sair de cada campo e ficam guardados neste navegador.</p>
+        <label className="mt-3 block max-w-xl">
+          <span className="block text-sm text-slate-600 mb-1">Papel do parecer e da notificação (os documentos que o fiscal assina)</span>
+          <select
+            id="docpref-orgao-papel"
+            value={config.papel === 'agil' ? 'agil' : 'orgao'}
+            onChange={(e) => salvarConfig({ papel: e.target.value as 'orgao' | 'agil' })}
+            className={campo}
+          >
+            <option value="orgao">Papel do órgão: nome do órgão no cabeçalho, sem o timbre da Ágil CM</option>
+            <option value="agil">Papel timbrado da Ágil CM</option>
+          </select>
+        </label>
+        <p className="mt-2 text-sm text-slate-500">
+          {config.contratante.trim()
+            ? 'Os relatórios de análise, a cartilha e o manual continuam no papel da Ágil CM. '
+            : 'Preencha o nome do órgão para o parecer e a notificação saírem no papel do órgão. '}
+          Os dados são gravados ao sair de cada campo e ficam guardados neste navegador.
+        </p>
       </div>
       <form
         ref={formRef}
@@ -2063,7 +2103,7 @@ function ManualOperador({ config }: { config: ConfigDocPref }) {
             </ul>
           )}
           {sec.tabela && (
-            <div className="mt-3 overflow-x-auto">
+            <div className="mt-3 overflow-x-auto" tabIndex={0} role="region" aria-label="Tabela do manual (role para os lados)">
               <table className="w-full min-w-[560px] text-sm">
                 <thead className="bg-[#F7FAFD] text-left text-slate-500">
                   <tr>

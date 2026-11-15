@@ -106,7 +106,7 @@ export default function RaioXTab() {
               </div>
             </div>
           )}
-          <p className="mt-4 text-sm text-slate-500">Dica: em Editais abertos e em AGIL CNAE, cada edital também tem o botão “Raio-X”.</p>
+          <p className="mt-4 text-sm text-slate-500">Dica: em Editais abertos e em Ágil CNAE, cada edital também tem o Raio-X logo abaixo do objeto.</p>
         </div>
 
         {estado === 'loading' && <p className="mt-6 text-[15px] text-slate-700">Buscando o edital no PNCP…</p>}

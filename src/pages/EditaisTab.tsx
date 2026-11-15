@@ -1120,7 +1120,23 @@ export default function EditaisTab({ agil = false }: { agil?: boolean }) {
                                     {km < 3 ? `em ${nomeBase}` : `~${Math.round(km)} km`}
                                   </span>
                                 )}
-                                {(e.local || e.fonte) && <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-semibold">{e.local || e.fonte}</span>}
+                                {(e.local || e.fonte) &&
+                                  (() => {
+                                    const destino = e.linkLocal || (e.linkOrigem && /^https?:\/\//.test(e.linkOrigem) ? e.linkOrigem : '');
+                                    return destino ? (
+                                      <a
+                                        href={destino}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        title="Abrir a plataforma onde o pregão acontece"
+                                        className="px-2 py-0.5 rounded-full bg-slate-100 text-[#0369B3] font-bold underline"
+                                      >
+                                        {e.local || e.fonte}
+                                      </a>
+                                    ) : (
+                                      <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-semibold">{e.local || e.fonte}</span>
+                                    );
+                                  })()}
                                 {e.cnaes?.slice(0, 2).map((c) => (
                                   <span key={c} title={CATALOGO_POR_ID.get(c)?.rotulo} className="px-2 py-0.5 rounded-full bg-[#F5A623]/15 text-[#8a5a00] font-bold">
                                     {SEGMENTO_POR_ID.has(c) ? SEGMENTO_POR_ID.get(c)?.nome : `CNAE ${c}`}

@@ -41,7 +41,12 @@ const ALLOWED = /[\x20-\x7E -ÿ–—‘’“”•…€]/;
 // negativo sairia sem o sinal), e setas, ≥ e ≤ viram texto.
 const EQUIVALENTES: Record<string, string> = { '−': '-', '‐': '-', '‑': '-', '≥': '>=', '≤': '<=', '→': '->' };
 const clean = (s: string) =>
-  Array.from(s.replace(/[−‐‑≥≤→]/g, (c) => EQUIVALENTES[c]).replace(/ /g, ' ').replace(/\t/g, ' '))
+  Array.from(
+    s
+      .replace(/[−‐‑≥≤→]/g, (c) => EQUIVALENTES[c])
+      .replace(/ /g, ' ')
+      .replace(/\t/g, ' '),
+  )
     .map((c) => (c === '\n' || ALLOWED.test(c) ? c : ''))
     .join('');
 
@@ -77,6 +82,16 @@ async function loadBytes(url: string): Promise<Uint8Array> {
   return new Uint8Array(await res.arrayBuffer());
 }
 
+/**
+ * Papel do documento quando quem assina é outro órgão (ex.: o parecer e a notificação do fiscal do contrato):
+ * no lugar do timbre da Ágil CM, o cabeçalho traz o nome do órgão e o rodapé, a identificação dele.
+ */
+export interface Timbre {
+  nome: string;
+  linha2?: string;
+  rodape?: string;
+}
+
 interface Ctx {
   doc: PDFDocument;
   page: PDFPage;
@@ -86,10 +101,26 @@ interface Ctx {
   fi: PDFFont;
   logo: PDFImage | null;
   docTitle: string;
+  timbre?: Timbre;
+}
+
+/** Texto centralizado, encolhendo a letra até caber na largura útil da página */
+function centralizado(c: Ctx, texto: string, y: number, tamanho: number, font: PDFFont, color: ReturnType<typeof rgb>) {
+  const t = clean(texto);
+  let s = tamanho;
+  while (s > 7 && font.widthOfTextAtSize(t, s) > W - 2 * M) s -= 0.5;
+  c.page.drawText(t, { x: (W - font.widthOfTextAtSize(t, s)) / 2, y, size: s, font, color });
 }
 
 function drawHeader(c: Ctx) {
   const p = c.page;
+  if (c.timbre) {
+    // papel do órgão: nome centralizado, a unidade abaixo e um fio azul-marinho
+    centralizado(c, c.timbre.nome.toUpperCase(), H - 38, 14, c.fb, NAVY);
+    if (c.timbre.linha2) centralizado(c, c.timbre.linha2, H - 53, 9.5, c.f, MUTED);
+    p.drawLine({ start: { x: M, y: H - HEADER_H + 8 }, end: { x: W - M, y: H - HEADER_H + 8 }, thickness: 1.2, color: NAVY });
+    return;
+  }
   p.drawRectangle({ x: 0, y: H - HEADER_H, width: W, height: HEADER_H, color: NAVY });
   // faixa azul diagonal, como no papel timbrado
   p.drawSvgPath(`M ${W * 0.56} ${HEADER_H} L ${W} ${HEADER_H - 16} L ${W} ${HEADER_H + 4} L ${W * 0.56} ${HEADER_H + 1} Z`, {
@@ -109,6 +140,12 @@ function drawHeader(c: Ctx) {
 
 function drawFooter(c: Ctx, pageNo: number, total: number) {
   const p = c.page;
+  if (c.timbre) {
+    p.drawLine({ start: { x: M, y: 46 }, end: { x: W - M, y: 46 }, thickness: 0.6, color: LINE });
+    if (c.timbre.rodape) centralizado(c, c.timbre.rodape, 32, 8, c.f, MUTED);
+    centralizado(c, `${c.docTitle} · Página ${pageNo} de ${total}`, 20, 7.5, c.f, MUTED);
+    return;
+  }
   p.drawRectangle({ x: 0, y: 0, width: W, height: FOOTER_H, color: FOOT });
   const line1 = `CNPJ: ${COMPANY_PROFILE.cnpj}  ·  INSCRIÇÃO ESTADUAL: ${COMPANY_PROFILE.inscricaoEstadual}`;
   p.drawText(clean(line1), { x: M - 14, y: FOOTER_H - 17, size: 7.5, font: c.f, color: WHITE });
@@ -155,7 +192,11 @@ function text(c: Ctx, s: string, x: number, y: number, size: number, font: PDFFo
   c.page.drawText(s, { x, y, size, font, color });
 }
 
-function drawParagraph(c: Ctx, s: string, o: { size?: number; font?: PDFFont; color?: ReturnType<typeof rgb>; indent?: number; align?: Align; gapAfter?: number }) {
+function drawParagraph(
+  c: Ctx,
+  s: string,
+  o: { size?: number; font?: PDFFont; color?: ReturnType<typeof rgb>; indent?: number; align?: Align; gapAfter?: number },
+) {
   const size = o.size ?? 10.5;
   const font = o.font ?? c.f;
   const lh = size * 1.5;
@@ -210,7 +251,10 @@ function drawTable(c: Ctx, b: Extract<Block, { type: 'table' }>) {
     c.y -= h;
   };
 
-  const header = b.header?.map((t, i) => ({ text: t, align: (b.headerAlign?.[i] ?? (i === b.header!.length - 1 && b.header!.length > 1 ? 'right' : 'left')) as Align }));
+  const header = b.header?.map((t, i) => ({
+    text: t,
+    align: (b.headerAlign?.[i] ?? (i === b.header!.length - 1 && b.header!.length > 1 ? 'right' : 'left')) as Align,
+  }));
   const first = b.rows[0] ? b.rows[0].map(norm) : [];
   ensure(c, (header ? rowHeight(header, true) : 0) + (first.length ? rowHeight(first, false) : 0));
   if (header) drawRow(header, 'head');
@@ -265,7 +309,14 @@ function drawScatter(c: Ctx, b: Extract<Block, { type: 'scatter' }>) {
       const vy = b.trend.a + b.trend.b * vx;
       if (vy >= y0 && vy <= b.yMax) pts.push([X(vx), Y(vy)]);
     }
-    if (pts.length > 1) c.page.drawLine({ start: { x: pts[0][0], y: pts[0][1] }, end: { x: pts[pts.length - 1][0], y: pts[pts.length - 1][1] }, thickness: 1, color: NAVY, opacity: 0.6 });
+    if (pts.length > 1)
+      c.page.drawLine({
+        start: { x: pts[0][0], y: pts[0][1] },
+        end: { x: pts[pts.length - 1][0], y: pts[pts.length - 1][1] },
+        thickness: 1,
+        color: NAVY,
+        opacity: 0.6,
+      });
   }
   for (const p of b.points) c.page.drawCircle({ x: X(p.x), y: Y(p.y), size: 2.8, color: hex(p.color.replace('#', '')), borderColor: WHITE, borderWidth: 0.7 });
   text(c, b.xLabel, left + (right - left) / 2 - c.fb.widthOfTextAtSize(b.xLabel, 8) / 2, bottom - 22, 8, c.fb, TEXT);
@@ -288,11 +339,15 @@ function drawScatter(c: Ctx, b: Extract<Block, { type: 'scatter' }>) {
   c.y -= 8;
 }
 
-export async function buildPdf(docTitle: string, blocks: Block[], { paisagem = false } = {}): Promise<Uint8Array> {
+export async function buildPdf(
+  docTitle: string,
+  blocks: Block[],
+  { paisagem = false, timbre }: { paisagem?: boolean; timbre?: Timbre } = {},
+): Promise<Uint8Array> {
   pagina(paisagem);
   const doc = await PDFDocument.create();
-  doc.setTitle(`${docTitle} - Ágil CM Soluções Integradas`);
-  doc.setAuthor('Ágil CM Soluções Integradas');
+  doc.setTitle(`${docTitle} - ${timbre?.nome || 'Ágil CM Soluções Integradas'}`);
+  doc.setAuthor(timbre?.nome || 'Ágil CM Soluções Integradas');
   doc.setCreator(COMPANY_PROFILE.domain);
   const [f, fb, fi] = await Promise.all([
     doc.embedFont(StandardFonts.Helvetica),
@@ -300,12 +355,13 @@ export async function buildPdf(docTitle: string, blocks: Block[], { paisagem = f
     doc.embedFont(StandardFonts.HelveticaOblique),
   ]);
   let logo: PDFImage | null = null;
-  try {
-    logo = await doc.embedPng(await loadBytes(LOGO_URL));
-  } catch {
-    logo = null; // sem logo o documento ainda é gerado
-  }
-  const c: Ctx = { doc, page: null as unknown as PDFPage, y: TOP, f, fb, fi, logo, docTitle };
+  if (!timbre)
+    try {
+      logo = await doc.embedPng(await loadBytes(LOGO_URL));
+    } catch {
+      logo = null; // sem logo o documento ainda é gerado
+    }
+  const c: Ctx = { doc, page: null as unknown as PDFPage, y: TOP, f, fb, fi, logo, docTitle, timbre };
   newPage(c);
 
   for (const b of blocks) {

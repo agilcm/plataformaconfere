@@ -22,6 +22,8 @@ export interface ConfigDocPref {
   unidade?: string; // secretaria ou setor responsável pela fiscalização
   gestor?: string; // gestor dos contratos
   cidade?: string; // município e UF
+  /** Papel do parecer e da notificação: 'orgao' (padrão quando o nome do órgão está preenchido) ou 'agil' (timbre da Ágil CM) */
+  papel?: 'orgao' | 'agil';
   prazoRegularizacao: number; // dias úteis para regularizar depois da notificação (0 = o previsto no contrato)
 }
 /** Ajustes por prestadora (chave da prestadora): exigências que não se aplicam a ela em nenhum mês */

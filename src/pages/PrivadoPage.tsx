@@ -470,7 +470,7 @@ function Painel({ onSair }: { onSair: () => void }) {
               </button>
             </div>
             <p className="mt-2 text-sm text-slate-500">
-              O cache tem os processos e itens ganhos. Em outro computador, importe-o na Super Sugestão (aba AGIL CNAE) sem precisar fazer login. Guarde-o com
+              O cache tem os processos e itens ganhos. Em outro computador, importe-o na Super Sugestão (aba Ágil CNAE) sem precisar fazer login. Guarde-o com
               cuidado: é o histórico comercial da AGIL.
             </p>
           </div>
