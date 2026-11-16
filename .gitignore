@@ -11,3 +11,5 @@ public/privado/leitura.json
 privado-cache.json
 docpref-cache.json
 public/docpref/leitura.json
+clientes-cache.json
+public/privado/clientes.json

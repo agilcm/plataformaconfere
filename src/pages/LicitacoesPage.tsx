@@ -8,10 +8,12 @@ import EditaisTab from './EditaisTab.tsx';
 import ContratosTab from './ContratosTab.tsx';
 import MeusEditaisTab from './MeusEditaisTab.tsx';
 import RaioXTab from './RaioXTab.tsx';
+import PossiveisClientesTab, { CHAVE_EQUIPE } from './PossiveisClientesTab.tsx';
+import { sessaoAtiva } from '../lib/privado/auth.ts';
 import { useMeusEditais } from '../lib/meusEditais.ts';
 import { diasPara } from '../lib/filtrosEditais.js';
 
-type Aba = 'editais' | 'contratos' | 'agil' | 'raiox' | 'meus';
+type Aba = 'editais' | 'contratos' | 'agil' | 'raiox' | 'meus' | 'clientes';
 
 // As abas seguem a ordem do trabalho numa licitação: encontrar o edital, filtrar pelo ramo, analisar,
 // pesquisar o preço que as prefeituras já pagaram e acompanhar os prazos do que foi salvo.
@@ -22,6 +24,14 @@ const ABAS: { id: Aba; passo: string; label: string; desc: string; icon: string 
   { id: 'contratos', passo: 'Pesquisar preços', label: 'Contratos', desc: 'Quem comprou, o quê e por quanto', icon: 'receipt' },
   { id: 'meus', passo: 'Acompanhar', label: 'Meus editais', desc: 'Salvos, etapas e prazos na agenda', icon: 'star' },
 ];
+// Aba só da equipe (pede o login do Privado): aparece para quem já entrou neste navegador ou abriu pelo link direto
+const ABA_EQUIPE: (typeof ABAS)[number] = {
+  id: 'clientes',
+  passo: 'Prospectar',
+  label: 'Possíveis clientes',
+  desc: 'Empresas da região que disputam e perdem',
+  icon: 'users',
+};
 const ENCERRADAS = new Set(['ganhamos', 'perdemos', 'desistimos']);
 
 // Texto fixo abaixo do painel: explica cada aba e de onde vêm os dados (também é o que o Google lê da página)
@@ -46,11 +56,25 @@ const COMO_USAR = [
   },
 ];
 
-const HASH_ABA: Record<string, Aba> = { '#contratos': 'contratos', '#agil-cnae': 'agil', '#raio-x': 'raiox', '#meus-editais': 'meus' };
-const ABA_HASH: Record<Aba, string> = { editais: '', contratos: '#contratos', agil: '#agil-cnae', raiox: '#raio-x', meus: '#meus-editais' };
+const HASH_ABA: Record<string, Aba> = {
+  '#contratos': 'contratos',
+  '#agil-cnae': 'agil',
+  '#raio-x': 'raiox',
+  '#meus-editais': 'meus',
+  '#possiveis-clientes': 'clientes',
+};
+const ABA_HASH: Record<Aba, string> = {
+  editais: '',
+  contratos: '#contratos',
+  agil: '#agil-cnae',
+  raiox: '#raio-x',
+  meus: '#meus-editais',
+  clientes: '#possiveis-clientes',
+};
 
 export default function LicitacoesPage() {
   const [aba, setAba] = useState<Aba>('editais');
+  const [equipe, setEquipe] = useState(false);
   const meus = useMeusEditais();
   const salvos = Object.keys(meus).length;
   // acompanhamento: editais salvos ainda em disputa, do prazo mais próximo para o mais distante
@@ -65,9 +89,16 @@ export default function LicitacoesPage() {
   useEffect(() => {
     const fromHash = () => setAba(HASH_ABA[window.location.hash] ?? 'editais');
     fromHash();
+    try {
+      setEquipe(sessaoAtiva() || localStorage.getItem(CHAVE_EQUIPE) === '1');
+    } catch {
+      /* sem armazenamento: a aba da equipe abre só pelo link direto */
+    }
     window.addEventListener('hashchange', fromHash);
     return () => window.removeEventListener('hashchange', fromHash);
   }, []);
+
+  const abas = equipe || aba === 'clientes' ? [...ABAS, ABA_EQUIPE] : ABAS;
 
   const trocar = (a: Aba) => {
     setAba(a);
@@ -120,8 +151,12 @@ export default function LicitacoesPage() {
             </a>
 
             {/* Abas */}
-            <div role="tablist" aria-label="O que você quer ver" className="mt-10 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3">
-              {ABAS.map((t, i) => (
+            <div
+              role="tablist"
+              aria-label="O que você quer ver"
+              className={`mt-10 grid grid-cols-2 sm:grid-cols-3 ${abas.length > 5 ? 'lg:grid-cols-6' : 'lg:grid-cols-5'} gap-2 sm:gap-3`}
+            >
+              {abas.map((t, i) => (
                 <button
                   key={t.id}
                   type="button"
@@ -184,7 +219,9 @@ export default function LicitacoesPage() {
         )}
 
         <div id="painel" role="tabpanel" aria-labelledby={`aba-${aba}`}>
-          {aba === 'contratos' ? (
+          {aba === 'clientes' ? (
+            <PossiveisClientesTab />
+          ) : aba === 'contratos' ? (
             <ContratosTab />
           ) : aba === 'meus' ? (
             <MeusEditaisTab />

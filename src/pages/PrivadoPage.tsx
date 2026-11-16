@@ -293,6 +293,16 @@ function Painel({ onSair }: { onSair: () => void }) {
             </span>
           </div>
 
+          <p className="mt-4">
+            <a
+              href={`${ROUTES.licitacoes}#possiveis-clientes`}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 border-[#0F2053] text-[#0F2053] text-[15px] font-bold hover:bg-[#0F2053] hover:text-white"
+            >
+              <Icon name="users" className="w-5 h-5" />
+              Possíveis clientes: empresas da região que disputam licitações e perdem
+              <Icon name="arrow" className="w-4 h-4" />
+            </a>
+          </p>
           {/* Números */}
           <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
             {(

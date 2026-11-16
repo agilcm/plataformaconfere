@@ -60,6 +60,17 @@ Hospedagens exclusivamente estáticas não executam `/api/*`; nesse caso, as con
 - **Seu acompanhamento:** com editais salvos em disputa, uma faixa abaixo das abas mostra quantos são, quantos encerram em até 3 dias e o próximo prazo.
 - **Privado → editais do órgão:** em `/privado/`, "O que fazer agora" lista os registros que vencem em até 60 dias ou venceram há até 30 (`providenciasGanhas` em `src/lib/privado/relatorios.js`), com o atalho "Editais abertos do órgão", que abre `/licitacoes/?busca=<órgão>`.
 
+### Possíveis clientes (aba da equipe)
+
+A aba **Possíveis clientes** (`/licitacoes/#possiveis-clientes`) lista empresas das cidades vizinhas (`src/data/clientesConfig.js`: Cataguases, Miraí, Astolfo Dutra, Dona Euzébia, Leopoldina e Rodeiro) que disputaram licitações da Zona da Mata e **não venceram**, com a licitação, o CNPJ, a cidade da licitação, o item e a colocação (2º, 3º, 4º…). Serve para oferecer a assessoria em licitações a quem já participa e perde.
+
+- **Só para a equipe:** pede o e-mail e a senha da área Privado. A aba aparece no painel para quem já entrou uma vez naquele navegador, pelo atalho da área Privado ou pelo link direto. Como o resto do Privado, isso esconde a tela; o arquivo `privado/clientes.json` é publicado com o site.
+- **De onde vem:** o PNCP só registra a vencedora de cada item. A colocação das outras sai da **Ata Final** que o Portal de Compras Públicas anexa no PNCP depois da sessão, com todas as propostas e lances (`src/lib/ataPcp.js`). `scripts/possiveis-clientes.mjs` procura as licitações eletrônicas desse portal na Zona da Mata nos últimos 12 meses, lê a ata de cada uma, calcula a colocação por item e consulta a cidade de cada CNPJ no cadastro público da Receita (minhareceita.org).
+- **O que fica de fora:** licitações feitas no Compras.gov.br, na Licitar Digital e em outros portais, que não anexam a ata com os lances no PNCP. Pessoas físicas (CPF) não entram e nomes de MEI saem sem os números do CPF.
+- **Colocação:** 1º é a vencedora (não aparece na lista); 2º, 3º, 4º… vêm depois dela pelo melhor lance válido. "Melhor preço, não levou" é quem ofertou menos que a vencedora e perdeu o item (desclassificação, inabilitação ou desistência).
+- **Atualização:** roda em cada publicação do site (a cada 3 horas), alguns minutos por vez; o que já foi lido fica no cache do Actions (`clientes-cache.json`). Na primeira vez a lista cresce ao longo de algumas publicações, começando pelos municípios mais próximos das cidades escolhidas.
+- Testes: `tests/possiveisClientes.test.mjs`.
+
 ## DocPref (fiscalização documental de contratos)
 
 `/docpref/` é a ferramenta do órgão público que contrata serviços com mão de obra: o órgão (contratante) confere todo mês os documentos trabalhistas, previdenciários e do FGTS de cada contratada (Lei nº 14.133/2021, arts. 50, 117 e 121).
