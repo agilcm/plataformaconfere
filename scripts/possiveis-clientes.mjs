@@ -273,15 +273,25 @@ async function lerCompra(c, hoje) {
  */
 // a BrasilAPI recusa (403) pedidos com o cabeçalho padrão do Node: vai um nome genérico de cliente (User-Agent)
 const FONTES_CNPJ = ['https://brasilapi.com.br/api/cnpj/v1/', 'https://minhareceita.org/'];
+/** O que cada fonte respondeu nesta execução (vai para o log, para ver de longe se alguma fonte parou) */
+export const respostasCnpj = {};
+const anotar = (fonte, o) => {
+  respostasCnpj[fonte] ??= {};
+  respostasCnpj[fonte][o] = (respostasCnpj[fonte][o] || 0) + 1;
+};
+const nomeFonte = (base) => new URL(base).hostname.replace(/^www\./, '');
+
 export async function cadastro(cnpj, hoje) {
   let naoAchou = 0;
   for (const base of FONTES_CNPJ) {
+    let resposta = 'erro';
     for (let t = 0; t < 2; t++) {
       try {
         const r = await fetch(`${base}${cnpj}`, {
           headers: { Accept: 'application/json', 'User-Agent': 'consulta-cnpj/1.0' },
           signal: AbortSignal.timeout(20e3),
         });
+        resposta = String(r.status);
         if (r.status === 404) {
           naoAchou++;
           break;
@@ -292,6 +302,7 @@ export async function cadastro(cnpj, hoje) {
             naoAchou++;
             break;
           }
+          anotar(nomeFonte(base), 'achou');
           return {
             r: nomeSemCpf(d.razao_social),
             f: nomeSemCpf(d.nome_fantasia),
@@ -304,15 +315,21 @@ export async function cadastro(cnpj, hoje) {
         }
         if (r.status !== 429 && r.status < 500) break;
       } catch {
-        /* tenta de novo */
+        resposta = 'erro';
       }
       await sleep(1500 * (t + 1));
     }
+    anotar(nomeFonte(base), resposta === '404' ? 'não achou' : resposta);
   }
-  if (naoAchou < FONTES_CNPJ.length) return null; // fora do ar: tenta na próxima execução
+  // nenhuma das duas achou (ou estão fora / bloqueadas): a terceira fonte, devagar
   const ws = await cadastroCnpjWs(cnpj);
-  if (ws) return ws;
-  return ws === false ? { x: 1, em: hoje } : null;
+  if (ws) {
+    anotar('publica.cnpj.ws', 'achou');
+    return ws;
+  }
+  if (ws === false) anotar('publica.cnpj.ws', 'não achou');
+  // "não existe" só quando alguma fonte respondeu isso de fato; fora do ar, tenta na próxima execução
+  return ws === false || (ws === undefined && naoAchou === FONTES_CNPJ.length) ? { x: 1, em: hoje } : null;
 }
 
 // Terceira fonte, só para o que as duas primeiras não acharam: publica.cnpj.ws aceita 3 consultas por minuto, então
@@ -320,10 +337,10 @@ export async function cadastro(cnpj, hoje) {
 const CNPJ_WS_POR_EXECUCAO = Number(process.env.CLIENTES_CNPJ_WS || 15);
 let cnpjWsUsados = 0;
 let filaCnpjWs = Promise.resolve();
-/** @returns {Promise<object | false | null>} cadastro, false (não existe) ou null (não deu para consultar agora) */
+/** @returns {Promise<object | false | null | undefined>} cadastro, false (não existe), null (erro) ou undefined (sem consulta nesta execução) */
 function cadastroCnpjWs(cnpj) {
   const vez = filaCnpjWs.then(async () => {
-    if (cnpjWsUsados >= CNPJ_WS_POR_EXECUCAO || restam() < 45e3) return null;
+    if (cnpjWsUsados >= CNPJ_WS_POR_EXECUCAO || restam() < 45e3) return undefined; // não consultou
     cnpjWsUsados++;
     try {
       const r = await fetch(`https://publica.cnpj.ws/cnpj/${cnpj}`, {
@@ -331,7 +348,10 @@ function cadastroCnpjWs(cnpj) {
         signal: AbortSignal.timeout(25e3),
       });
       if (r.status === 404) return false;
-      if (!r.ok) return null;
+      if (!r.ok) {
+        anotar('publica.cnpj.ws', String(r.status));
+        return null;
+      }
       const d = await r.json();
       const e = d.estabelecimento || {};
       if (!d.razao_social) return null;
@@ -479,6 +499,7 @@ async function main() {
       `Possíveis clientes (${alvo.size} cidades): ${saida.empresas.length} empresas, ${saida.resumo.disputas} itens. ` +
       `Campeões: ${campeoes.resumo.empresas} empresas, ${campeoes.resumo.itens} itens. ${Math.round((Date.now() - t0) / 1000)} s.`,
   );
+  if (Object.keys(respostasCnpj).length) console.log(`Respostas das fontes de CNPJ: ${JSON.stringify(respostasCnpj)}`);
 }
 
 if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/').split('/').pop())) await main();
