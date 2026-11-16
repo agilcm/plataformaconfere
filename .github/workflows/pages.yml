@@ -3,7 +3,7 @@ name: Publicar site no GitHub Pages
 on:
   push:
     branches: [main]
-  # relê a pasta "Licitacoes - Agil" (área Privado), a pasta do DocPref e as atas dos possíveis clientes a cada 3 horas
+  # relê a pasta "Licitacoes - Agil" (área Privado), a pasta do DocPref e as atas (Possíveis clientes e Campeões) a cada 3 horas
   schedule:
     - cron: '23 */3 * * *'
   workflow_dispatch:
@@ -84,7 +84,8 @@ jobs:
             docpref-cache.json
             public/docpref/leitura.json
           key: docpref-${{ github.run_id }}
-      - name: Recuperar a lista de possíveis clientes (atas já lidas)
+      - name: Recuperar o que já foi lido das atas (Possíveis clientes e Campeões)
+        # os dois caminhos ficam como estão para o cache continuar valendo; as listas saem em public/prospeccao/
         uses: actions/cache/restore@v4
         with:
           path: |
@@ -92,14 +93,14 @@ jobs:
             public/privado/clientes.json
           key: clientes-${{ github.run_id }}
           restore-keys: clientes-
-      - name: Ler as atas do PNCP para a aba Possíveis clientes (Licitações)
+      - name: Ler as atas do PNCP para as abas Possíveis clientes e Campeões (Licitações)
         # trabalha alguns minutos por vez e continua na próxima publicação; se falhar, vale a última lista
         continue-on-error: true
         timeout-minutes: 16
         run: node scripts/possiveis-clientes.mjs
         env:
           CLIENTES_TEMPO_MIN: ${{ github.event_name == 'push' && '3' || '10' }}
-      - name: Guardar a lista de possíveis clientes
+      - name: Guardar o que foi lido das atas
         if: always() && hashFiles('clientes-cache.json') != ''
         uses: actions/cache/save@v4
         with:

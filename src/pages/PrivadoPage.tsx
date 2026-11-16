@@ -299,7 +299,7 @@ function Painel({ onSair }: { onSair: () => void }) {
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 border-[#0F2053] text-[#0F2053] text-[15px] font-bold hover:bg-[#0F2053] hover:text-white"
             >
               <Icon name="users" className="w-5 h-5" />
-              Possíveis clientes: empresas da região que disputam licitações e perdem
+              Possíveis clientes: empresas da região do 2º ao 5º lugar nas licitações
               <Icon name="arrow" className="w-4 h-4" />
             </a>
           </p>

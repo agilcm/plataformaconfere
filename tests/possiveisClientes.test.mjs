@@ -2,7 +2,17 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import zlib from 'node:zlib';
 import { classificarItem, descricaoCurta, ehAtaPcp, lancesSobem, lerAtaPcp } from '../src/lib/ataPcp.js';
-import { diferenca, filtrarClientes, linhasPlanilha, montarClientes, nomeSemCpf, textoColocacao } from '../src/lib/possiveisClientes.js';
+import {
+  diferenca,
+  filtrarCampeoes,
+  filtrarClientes,
+  linhasPlanilha,
+  linhasPlanilhaCampeoes,
+  montarCampeoes,
+  montarClientes,
+  nomeSemCpf,
+  textoColocacao,
+} from '../src/lib/possiveisClientes.js';
 import { pdfDoZip } from '../scripts/possiveis-clientes.mjs';
 
 // Ata de mentira, no formato das linhas que saem do PDF do Portal de Compras Públicas (colunas separadas por 3 espaços)
@@ -66,6 +76,11 @@ test('ata do Portal de Compras Públicas: itens, lances com CNPJ e vencedora de 
       ['0001', 8, 'ALFA', 14],
       ['0002', 3, 'GAMA PAPEIS', 1.1],
     ],
+  );
+  assert.deepEqual(
+    a.itens.map((i) => i.vencedorTotal),
+    [1400, 55],
+    'o valor total ganho vem da última coluna da tabela Vencedores',
   );
   assert.match(
     a.itens[0].descricao,
@@ -158,6 +173,10 @@ Chat`.split('\n');
       ['0002', true, '37278673000118', 2912.64],
     ],
   );
+  assert.deepEqual(
+    a.itens.map((i) => i.vencedorTotal),
+    [2990, 2912.64],
+  );
   // no lote 1 a MINAS ofertou 2.900 (menos que a vencedora, 2.990) e não levou
   assert.deepEqual(
     classificarItem(a.itens[0]).map((c) => [c.cnpj, c.colocacao, c.venceu]),
@@ -207,17 +226,21 @@ const CACHE = {
           n: '0001',
           d: 'AÇÚCAR CRISTAL',
           v: 14,
+          t: 1400,
           c: [
             ['22222222000122', 1, 14, 2, 'ALFA'],
             ['44444444000144', 2, 14.5, 2, 'FULANA DE TAL 05604031607'],
             ['11111111000111', 3, 15.9, 2, 'BETA'],
             ['33333333000133', 4, 10000, 1, 'DELTA'],
+            ['66666666000166', 5, 16, 1, 'EPSILON'],
+            ['77777777000177', 6, 17, 1, 'ZETA'],
           ],
         },
         {
           n: '0002',
           d: 'CANETA AZUL',
           v: 1.1,
+          t: 55,
           c: [
             ['11111111000111', 0, 1, 1, 'BETA'],
             ['55555555000155', 1, 1.1, 1, 'GAMA'],
@@ -233,6 +256,7 @@ const CACHE = {
             ['22222222000122', 2, 6, 1, 'ALFA'],
           ],
         },
+        { n: '0004', d: 'GRAMPEADOR', v: 9, t: 90, c: [['55555555000155', 1, 9, 1, 'GAMA']] },
       ],
     },
     '18000000000100/2026/9': {
@@ -252,6 +276,8 @@ const CACHE = {
     33333333000133: { r: 'DELTA MEDICOS LTDA', f: '', m: 'BELO HORIZONTE', u: 'MG', p: '', a: '', s: 'ATIVA' },
     44444444000144: { r: 'FULANA DE TAL 05604031607', f: '', m: 'DONA EUZEBIA', u: 'MG', p: 'MICRO EMPRESA', a: '', s: 'ATIVA' },
     55555555000155: { r: 'GAMA PAPEIS LTDA', f: '', m: 'CATAGUASES', u: 'RJ', p: '', a: '', s: 'ATIVA' },
+    66666666000166: { r: 'EPSILON COMERCIO LTDA', f: '', m: 'CATAGUASES', u: 'MG', p: 'MICRO EMPRESA', a: '', s: 'ATIVA' },
+    77777777000177: { r: 'ZETA COMERCIO LTDA', f: '', m: 'CATAGUASES', u: 'MG', p: 'MICRO EMPRESA', a: '', s: 'ATIVA' },
   },
 };
 const CIDADES = [
@@ -260,22 +286,23 @@ const CIDADES = [
   { nome: 'Dona Euzébia', uf: 'MG' },
 ];
 
-test('lista: só empresas das cidades escolhidas que não venceram, com licitação, item e colocação', () => {
+test('lista: só empresas das cidades escolhidas que ficaram do 2º ao 5º lugar, com licitação, item e colocação', () => {
   const d = montarClientes(CACHE, CIDADES, { atualizadoEm: '2026-11-16T00:00:00Z' });
-  assert.deepEqual(d.resumo, { empresas: 3, disputas: 5, licitacoes: 1 });
+  assert.deepEqual(d.resumo, { empresas: 4, disputas: 6, licitacoes: 1 });
   assert.deepEqual(
     d.empresas.map((e) => [e.razao, e.cidade, e.vitorias, e.disputas.map((x) => `${x.item}:${x.col}`).join(' ')]),
     [
       ['ALFA DISTRIBUIDORA DE ALIMENTOS LTDA', 'Miraí', 1, '0002:2 0003:2'],
       ['BETA GENEROS ALIMENTICIOS LTDA', 'Cataguases', 0, '0001:3 0002:0'],
+      ['EPSILON COMERCIO LTDA', 'Cataguases', 0, '0001:5'],
       ['FULANA DE TAL', 'Dona Euzébia', 0, '0001:2'],
     ],
-    'BH e Cataguases-RJ ficam de fora; o menor lance sem vencedora identificada não entra',
+    'BH e Cataguases-RJ ficam de fora; o 6º lugar e o menor lance sem vencedora identificada não entram',
   );
   assert.equal(d.licitacoes[0].id, '18000000000100/2026/7');
   assert.ok(!JSON.stringify(d).includes('05604031607'), 'o CPF do MEI não sai');
   const disputa = d.empresas[1].disputas[0];
-  assert.deepEqual(disputa, { lic: 0, item: '0001', desc: 'AÇÚCAR CRISTAL', col: 3, melhor: 15.9, venc: 14, lances: 2, participantes: 4 });
+  assert.deepEqual(disputa, { lic: 0, item: '0001', desc: 'AÇÚCAR CRISTAL', col: 3, melhor: 15.9, venc: 14, lances: 2, participantes: 6 });
   assert.equal(Math.round(diferenca(disputa) * 10) / 10, 13.6);
   assert.equal(diferenca({ melhor: 5, venc: null }), null);
 });
@@ -295,11 +322,12 @@ test('filtros e planilha', () => {
     ['BETA'],
   );
   assert.equal(filtrarClientes(d, { cidade: 'Miraí' }).length, 1);
-  assert.equal(filtrarClientes(d, { q: 'acucar' }).length, 2);
+  assert.equal(filtrarClientes(d, { q: 'acucar' }).length, 3, 'BETA (3º), EPSILON (5º) e FULANA (2º) no açúcar');
   assert.equal(filtrarClientes(d, { q: '11111111000111' }).length, 1);
   assert.equal(filtrarClientes(d, { municipio: 'Juiz de Fora' }).length, 0);
   const linhas = linhasPlanilha(d, filtrarClientes(d, { cidade: 'Cataguases' }));
-  assert.equal(linhas.length, 2);
+  assert.equal(linhas.length, 3);
+  assert.equal(linhas[2].Colocação, '5º lugar');
   assert.equal(linhas[0].CNPJ, '11.111.111/0001-11');
   assert.equal(linhas[0]['Cidade da licitação'], 'Ubá - MG');
   assert.equal(linhas[0].Colocação, '3º lugar');
@@ -309,9 +337,40 @@ test('filtros e planilha', () => {
   const comLote = JSON.parse(JSON.stringify(CACHE));
   comLote.compras['18000000000100/2026/7'].itens[0].l = 1;
   const dl = montarClientes(comLote, CIDADES);
-  assert.equal(dl.empresas.flatMap((e) => e.disputas).filter((x) => x.lote).length, 2);
+  assert.equal(dl.empresas.flatMap((e) => e.disputas).filter((x) => x.lote).length, 3, 'FULANA (2º), BETA (3º) e EPSILON (5º) no lote 1');
   assert.equal(linhasPlanilha(dl, filtrarClientes(dl, { cidade: 'Dona Euzébia' }))[0].Item, 'Lote 1');
   assert.equal(textoColocacao(2), '2º lugar');
+});
+
+test('campeões: quem ganhou e levou cada item, de qualquer cidade, com o total ganho', () => {
+  const nomeCidade = (m) => m.charAt(0) + m.slice(1).toLowerCase();
+  const d = montarCampeoes(CACHE, CIDADES, { atualizadoEm: 'x' }, { nomeCidade });
+  assert.deepEqual(d.resumo, { empresas: 2, itens: 3, licitacoes: 1 }, 'o item sem vencedora identificada fica de fora');
+  assert.deepEqual(
+    d.empresas.map((e) => [e.razao, e.cidade, e.uf, e.alvo, e.vitorias.map((v) => v.item).join(' '), e.total]),
+    [
+      ['GAMA PAPEIS LTDA', 'Cataguases', 'RJ', false, '0002 0004', 145],
+      ['ALFA DISTRIBUIDORA DE ALIMENTOS LTDA', 'Miraí', 'MG', true, '0001', 1400],
+    ],
+    'quem ganhou mais itens vem primeiro; o item com um só participante também conta',
+  );
+  assert.deepEqual(d.empresas[1].vitorias[0], { lic: 0, item: '0001', desc: 'AÇÚCAR CRISTAL', valor: 14, total: 1400, participantes: 6 });
+  assert.deepEqual(
+    filtrarCampeoes(d, { cidade: '*' }).map((e) => e.razao.split(' ')[0]),
+    ['ALFA'],
+    '"*" = só as cidades escolhidas',
+  );
+  assert.equal(filtrarCampeoes(d, {}).length, 2);
+  const caneta = filtrarCampeoes(d, { q: 'caneta' });
+  assert.deepEqual(
+    caneta.map((e) => [e.razao.split(' ')[0], e.vitorias.length, e.total]),
+    [['GAMA', 1, 55]],
+    'a busca filtra os itens e refaz o total',
+  );
+  const linhas = linhasPlanilhaCampeoes(d, caneta);
+  assert.equal(linhas[0]['Valor total ganho'], 55);
+  assert.equal(linhas[0]['Cidade da empresa'], 'Cataguases - RJ');
+  assert.equal(linhas[0]['Link no PNCP'], 'https://pncp.gov.br/app/editais/18000000000100/2026/7');
 });
 
 test('utilidades: nome sem CPF, descrição curta e PDF dentro do zip', () => {

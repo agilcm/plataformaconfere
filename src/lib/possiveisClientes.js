@@ -1,5 +1,11 @@
-// Aba "Possíveis clientes": monta a lista de empresas das cidades escolhidas que disputaram licitações e não venceram,
-// a partir do que scripts/possiveis-clientes.mjs leu das atas. Puro: sem rede, para testar.
+// Abas "Possíveis clientes" e "Campeões": montam as listas a partir do que scripts/possiveis-clientes.mjs leu das atas.
+//   Possíveis clientes  empresas das cidades escolhidas que disputaram e ficaram do 2º ao 5º lugar (ou ofertaram o
+//                       melhor preço e não levaram);
+//   Campeões            quem ganhou e levou cada item, de qualquer cidade.
+// Puro: sem rede, para testar.
+
+/** Até que colocação a empresa entra em Possíveis clientes */
+export const MAX_COLOCACAO = 5;
 
 export const normCidade = (s) =>
   String(s || '')
@@ -60,7 +66,7 @@ export function montarClientes(cache, cidades, meta = {}) {
           continue;
         }
         // sem vencedora identificada, o menor lance não é "2º lugar": fica de fora
-        if (col === 1) continue;
+        if (col === 1 || col > MAX_COLOCACAO) continue;
         if (iLic < 0) {
           iLic = licitacoes.length;
           licitacoes.push({ id, orgao: c.orgao, municipio: c.municipio, uf: c.uf, titulo: c.titulo, objeto: c.objeto, modalidade: c.modalidade, data: c.data });
@@ -70,7 +76,7 @@ export function montarClientes(cache, cidades, meta = {}) {
       }
     }
   }
-  const perto = (e) => e.disputas.filter((d) => d.col >= 2 && d.col <= 4).length;
+  const perto = (e) => e.disputas.filter((d) => d.col >= 2 && d.col <= MAX_COLOCACAO).length;
   const lista = [...empresas.values()]
     .filter((e) => e.disputas.length)
     .sort((a, b) => perto(b) - perto(a) || b.disputas.length - a.disputas.length || a.razao.localeCompare(b.razao, 'pt-BR'));
@@ -135,6 +141,129 @@ export function linhasPlanilha(dados, empresas) {
         'Valor da vencedora': d.venc ?? '',
         'Diferença (%)': dif == null ? '' : Math.round(dif * 10) / 10,
         'Empresas no item': d.participantes,
+        Órgão: lic.orgao,
+        'Cidade da licitação': `${lic.municipio} - ${lic.uf}`,
+        Licitação: lic.titulo,
+        Objeto: lic.objeto,
+        Data: lic.data.split('-').reverse().join('/'),
+        'Link no PNCP': `https://pncp.gov.br/app/editais/${lic.id}`,
+      });
+    }
+  return linhas;
+}
+
+const tituloCidade = (m) =>
+  String(m || '')
+    .toLowerCase()
+    .replace(/(^|\s)(\S)/g, (x) => x.toUpperCase())
+    .replace(/ (De|Da|Do|Das|Dos|E) /g, (x) => x.toLowerCase());
+
+/**
+ * Campeões: quem ganhou e levou cada item (a vencedora da ata), de qualquer cidade.
+ * @param {{ compras: Record<string, any>, cnpj: Record<string, any> }} cache
+ * @param {{ nome: string, uf: string }[]} cidades  as cidades escolhidas (marcadas em cada empresa)
+ * @param {Record<string, any>} [meta]
+ * @param {{ nomeCidade?: (municipio: string, uf: string) => string }} [o]  nome da cidade com acento
+ */
+export function montarCampeoes(cache, cidades, meta = {}, o = {}) {
+  const alvo = new Map(cidades.map((c) => [`${normCidade(c.nome)}|${c.uf}`, c.nome]));
+  const nomeCidade = o.nomeCidade || tituloCidade;
+  const licitacoes = [];
+  const iLic = new Map();
+  const empresas = new Map();
+  let itens = 0;
+  for (const [id, c] of Object.entries(cache.compras || {}).sort((a, b) => String(b[1].data).localeCompare(String(a[1].data)))) {
+    for (const it of c.itens || []) {
+      if (it.v == null) continue; // sem vencedora identificada na ata
+      const venc = it.c.find((x) => x[1] === 1);
+      if (!venc) continue;
+      const [cnpj, , melhor, , nomeAta] = venc;
+      const cad = cache.cnpj?.[cnpj] || {};
+      if (!empresas.has(cnpj)) {
+        const daLista = cad.m ? alvo.get(`${normCidade(cad.m)}|${cad.u}`) : undefined;
+        empresas.set(cnpj, {
+          cnpj,
+          razao: nomeSemCpf(cad.r || nomeAta),
+          fantasia: nomeSemCpf(cad.f),
+          cidade: daLista || (cad.m ? nomeCidade(cad.m, cad.u) : ''),
+          uf: cad.u || '',
+          alvo: !!daLista,
+          porte: cad.p || '',
+          atividade: cad.a || '',
+          situacao: cad.s || '',
+          total: 0,
+          vitorias: [],
+        });
+      }
+      if (!iLic.has(id)) {
+        iLic.set(id, licitacoes.length);
+        licitacoes.push({ id, orgao: c.orgao, municipio: c.municipio, uf: c.uf, titulo: c.titulo, objeto: c.objeto, modalidade: c.modalidade, data: c.data });
+      }
+      const e = empresas.get(cnpj);
+      e.vitorias.push({
+        lic: iLic.get(id),
+        item: it.n,
+        desc: it.d,
+        valor: melhor,
+        total: it.t ?? null,
+        participantes: it.c.length,
+        ...(it.l ? { lote: true } : {}),
+      });
+      if (it.t != null) e.total += it.t;
+      itens++;
+    }
+  }
+  const lista = [...empresas.values()]
+    .map((e) => ({ ...e, total: Math.round(e.total * 100) / 100 }))
+    .sort((a, b) => b.vitorias.length - a.vitorias.length || b.total - a.total || a.razao.localeCompare(b.razao, 'pt-BR'));
+  return {
+    ...meta,
+    cidades: cidades.map((c) => c.nome),
+    resumo: { empresas: lista.length, itens, licitacoes: licitacoes.length },
+    licitacoes,
+    empresas: lista,
+  };
+}
+
+/**
+ * @param {any} dados  saída de montarCampeoes
+ * @param {{ cidade?: string, q?: string }} f  cidade: '' = todas; '*' = só as cidades escolhidas; ou o nome de uma delas
+ */
+export function filtrarCampeoes(dados, f = {}) {
+  const termos = normCidade(f.q || '')
+    .split(' ')
+    .filter(Boolean);
+  const out = [];
+  for (const e of dados.empresas || []) {
+    if (f.cidade === '*' ? !e.alvo : f.cidade && e.cidade !== f.cidade) continue;
+    const vitorias = e.vitorias.filter((v) => {
+      if (!termos.length) return true;
+      const lic = dados.licitacoes[v.lic];
+      const texto = normCidade(`${e.razao} ${e.fantasia} ${e.cnpj} ${e.cidade} ${e.atividade} ${v.desc} ${lic.orgao} ${lic.municipio} ${lic.objeto}`);
+      return termos.every((t) => texto.includes(t));
+    });
+    if (vitorias.length) out.push({ ...e, vitorias, total: Math.round(vitorias.reduce((s, v) => s + (v.total || 0), 0) * 100) / 100 });
+  }
+  return out;
+}
+
+/** Linhas da planilha dos campeões (uma por item ganho) */
+export function linhasPlanilhaCampeoes(dados, empresas) {
+  const linhas = [];
+  for (const e of empresas)
+    for (const v of e.vitorias) {
+      const lic = dados.licitacoes[v.lic];
+      linhas.push({
+        Empresa: e.razao,
+        CNPJ: cnpjFormatado(e.cnpj),
+        'Cidade da empresa': e.cidade ? `${e.cidade} - ${e.uf}` : '',
+        Porte: e.porte,
+        'Atividade principal': e.atividade,
+        Item: v.lote ? `Lote ${Number(v.item) || v.item}` : v.item,
+        'Descrição do item': v.desc,
+        'Valor vencedor': v.valor,
+        'Valor total ganho': v.total ?? '',
+        'Empresas no item': v.participantes,
         Órgão: lic.orgao,
         'Cidade da licitação': `${lic.municipio} - ${lic.uf}`,
         Licitação: lic.titulo,

@@ -8,12 +8,12 @@ import EditaisTab from './EditaisTab.tsx';
 import ContratosTab from './ContratosTab.tsx';
 import MeusEditaisTab from './MeusEditaisTab.tsx';
 import RaioXTab from './RaioXTab.tsx';
-import PossiveisClientesTab, { CHAVE_EQUIPE } from './PossiveisClientesTab.tsx';
-import { sessaoAtiva } from '../lib/privado/auth.ts';
+import PossiveisClientesTab from './PossiveisClientesTab.tsx';
+import CampeoesTab from './CampeoesTab.tsx';
 import { useMeusEditais } from '../lib/meusEditais.ts';
 import { diasPara } from '../lib/filtrosEditais.js';
 
-type Aba = 'editais' | 'contratos' | 'agil' | 'raiox' | 'meus' | 'clientes';
+type Aba = 'editais' | 'contratos' | 'agil' | 'raiox' | 'meus' | 'clientes' | 'campeoes';
 
 // As abas seguem a ordem do trabalho numa licitação: encontrar o edital, filtrar pelo ramo, analisar,
 // pesquisar o preço que as prefeituras já pagaram e acompanhar os prazos do que foi salvo.
@@ -23,15 +23,9 @@ const ABAS: { id: Aba; passo: string; label: string; desc: string; icon: string 
   { id: 'raiox', passo: 'Analisar', label: 'Raio-X', desc: 'Qualquer edital pelo link do PNCP', icon: 'doc' },
   { id: 'contratos', passo: 'Pesquisar preços', label: 'Contratos', desc: 'Quem comprou, o quê e por quanto', icon: 'receipt' },
   { id: 'meus', passo: 'Acompanhar', label: 'Meus editais', desc: 'Salvos, etapas e prazos na agenda', icon: 'star' },
+  { id: 'clientes', passo: 'Prospectar', label: 'Possíveis clientes', desc: 'Empresas da região do 2º ao 5º lugar', icon: 'users' },
+  { id: 'campeoes', passo: 'Quem vence', label: 'Campeões', desc: 'Quem ganhou e levou cada item', icon: 'star' },
 ];
-// Aba só da equipe (pede o login do Privado): aparece para quem já entrou neste navegador ou abriu pelo link direto
-const ABA_EQUIPE: (typeof ABAS)[number] = {
-  id: 'clientes',
-  passo: 'Prospectar',
-  label: 'Possíveis clientes',
-  desc: 'Empresas da região que disputam e perdem',
-  icon: 'users',
-};
 const ENCERRADAS = new Set(['ganhamos', 'perdemos', 'desistimos']);
 
 // Texto fixo abaixo do painel: explica cada aba e de onde vêm os dados (também é o que o Google lê da página)
@@ -62,6 +56,7 @@ const HASH_ABA: Record<string, Aba> = {
   '#raio-x': 'raiox',
   '#meus-editais': 'meus',
   '#possiveis-clientes': 'clientes',
+  '#campeoes': 'campeoes',
 };
 const ABA_HASH: Record<Aba, string> = {
   editais: '',
@@ -70,11 +65,11 @@ const ABA_HASH: Record<Aba, string> = {
   raiox: '#raio-x',
   meus: '#meus-editais',
   clientes: '#possiveis-clientes',
+  campeoes: '#campeoes',
 };
 
 export default function LicitacoesPage() {
   const [aba, setAba] = useState<Aba>('editais');
-  const [equipe, setEquipe] = useState(false);
   const meus = useMeusEditais();
   const salvos = Object.keys(meus).length;
   // acompanhamento: editais salvos ainda em disputa, do prazo mais próximo para o mais distante
@@ -89,16 +84,10 @@ export default function LicitacoesPage() {
   useEffect(() => {
     const fromHash = () => setAba(HASH_ABA[window.location.hash] ?? 'editais');
     fromHash();
-    try {
-      setEquipe(sessaoAtiva() || localStorage.getItem(CHAVE_EQUIPE) === '1');
-    } catch {
-      /* sem armazenamento: a aba da equipe abre só pelo link direto */
-    }
+
     window.addEventListener('hashchange', fromHash);
     return () => window.removeEventListener('hashchange', fromHash);
   }, []);
-
-  const abas = equipe || aba === 'clientes' ? [...ABAS, ABA_EQUIPE] : ABAS;
 
   const trocar = (a: Aba) => {
     setAba(a);
@@ -151,12 +140,8 @@ export default function LicitacoesPage() {
             </a>
 
             {/* Abas */}
-            <div
-              role="tablist"
-              aria-label="O que você quer ver"
-              className={`mt-10 grid grid-cols-2 sm:grid-cols-3 ${abas.length > 5 ? 'lg:grid-cols-6' : 'lg:grid-cols-5'} gap-2 sm:gap-3`}
-            >
-              {abas.map((t, i) => (
+            <div role="tablist" aria-label="O que você quer ver" className="mt-10 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 sm:gap-3">
+              {ABAS.map((t, i) => (
                 <button
                   key={t.id}
                   type="button"
@@ -164,6 +149,7 @@ export default function LicitacoesPage() {
                   id={`aba-${t.id}`}
                   aria-selected={aba === t.id}
                   aria-controls="painel"
+                  title={t.desc}
                   onClick={() => trocar(t.id)}
                   className={`text-left px-3 sm:px-5 py-3.5 rounded-t-2xl transition-colors cursor-pointer ${
                     aba === t.id ? 'bg-[#F4F7FB] text-[#0F2053]' : 'bg-white/10 text-white hover:bg-white/15'
@@ -179,7 +165,7 @@ export default function LicitacoesPage() {
                       <span className="px-2 py-0.5 rounded-full bg-[#F5A623] text-[#0F2053] text-xs font-extrabold tabular-nums">{salvos}</span>
                     )}
                   </span>
-                  <span className={`hidden sm:block mt-0.5 text-sm ${aba === t.id ? 'text-slate-600' : 'text-white/75'}`}>{t.desc}</span>
+                  <span className={`hidden sm:block lg:hidden mt-0.5 text-sm ${aba === t.id ? 'text-slate-600' : 'text-white/75'}`}>{t.desc}</span>
                 </button>
               ))}
             </div>
@@ -221,6 +207,8 @@ export default function LicitacoesPage() {
         <div id="painel" role="tabpanel" aria-labelledby={`aba-${aba}`}>
           {aba === 'clientes' ? (
             <PossiveisClientesTab />
+          ) : aba === 'campeoes' ? (
+            <CampeoesTab />
           ) : aba === 'contratos' ? (
             <ContratosTab />
           ) : aba === 'meus' ? (

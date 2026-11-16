@@ -87,7 +87,16 @@ export function lerAtaPcp(linhas) {
     if (mItem) {
       // um cabeçalho novo só vale se o item anterior já teve a tabela de lances (ou se é o primeiro)
       if (!item || !naDescricao) {
-        item = { codigo: mItem[1], descricao: mItem[2].trim(), lances: [], vencedorNome: '', vencedorValor: null, vencedorCnpj: '', lote: false };
+        item = {
+          codigo: mItem[1],
+          descricao: mItem[2].trim(),
+          lances: [],
+          vencedorNome: '',
+          vencedorValor: null,
+          vencedorTotal: null,
+          vencedorCnpj: '',
+          lote: false,
+        };
         itens.push(item);
         naDescricao = true;
         ultimo = null;
@@ -119,7 +128,10 @@ export function lerAtaPcp(linhas) {
     }
     const mTotal = /^TOTAL DO LOTE\s+R\$\s*([\d.]+,\d{2})/.exec(l);
     if (mTotal) {
-      if (lote) lote.vencedorValor = numero(mTotal[1]);
+      if (lote) {
+        lote.vencedorValor = numero(mTotal[1]);
+        lote.vencedorTotal = lote.vencedorValor;
+      }
       esperaLote = true; // a mesma vencedora pode ter outro lote em seguida
       continue;
     }
@@ -141,6 +153,7 @@ export function lerAtaPcp(linhas) {
     const valores = partes.filter((p) => /^[\d.]+,\d{2,4}$/.test(p));
     if (valores.length < 2) continue;
     it.vencedorValor = numero(valores[0]);
+    it.vencedorTotal = numero(valores.at(-1)); // "valor   quantidade   valor total": o último é o total do item
     it.vencedorNome = partes[2] || '';
   }
   return { orgao, itens };

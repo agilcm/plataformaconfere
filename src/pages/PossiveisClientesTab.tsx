@@ -1,11 +1,22 @@
-// Aba "Possíveis clientes" das Licitações (só para a equipe, com o login do Privado): empresas das cidades vizinhas
-// que disputaram licitações da Zona da Mata e não venceram, com a licitação, o item e a colocação.
-// Os dados vêm de privado/clientes.json, gerado por scripts/possiveis-clientes.mjs a partir das atas publicadas no PNCP.
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+// Aba "Possíveis clientes" das Licitações (aberta a todos): empresas das cidades vizinhas que disputaram licitações da
+// Zona da Mata e ficaram do 2º ao 5º lugar (ou ofertaram o melhor preço e não levaram), com a licitação, o item e a
+// colocação. Os dados vêm de prospeccao/clientes.json, gerado por scripts/possiveis-clientes.mjs a partir das atas do PNCP.
+import { useMemo, useState } from 'react';
 import { Container, Icon } from '../components/ui.tsx';
-import { conferirLogin, sessaoAtiva } from '../lib/privado/auth.ts';
 import { cnpjFormatado, diferenca, filtrarClientes, linhasPlanilha, textoColocacao } from '../lib/possiveisClientes.js';
 import { baixarXlsx } from '../lib/xlsx.js';
+import {
+  AvisoCarregando,
+  brl,
+  campo,
+  chip,
+  LinhaLicitacao,
+  listaCidades,
+  NotaFonte,
+  useProspeccao,
+  type Licitacao,
+  type MetaProspeccao,
+} from './prospeccaoUi.tsx';
 
 interface Disputa {
   lic: number;
@@ -31,41 +42,17 @@ interface Empresa {
   vitorias: number;
   disputas: Disputa[];
 }
-interface Licitacao {
-  id: string;
-  orgao: string;
-  municipio: string;
-  uf: string;
-  titulo: string;
-  objeto: string;
-  modalidade: string;
-  data: string;
-}
-interface Dados {
-  atualizadoEm?: string;
-  desde?: string;
-  portal?: string;
-  licitacoesNoPeriodo?: number;
-  licitacoesLidas?: number;
-  aindaNaFila?: number;
-  cnpjsSemCidade?: number;
-  cidades: string[];
+interface Dados extends MetaProspeccao {
   resumo: { empresas: number; disputas: number; licitacoes: number };
-  licitacoes: Licitacao[];
   empresas: Empresa[];
 }
 
-/** Marca neste navegador que a equipe já entrou uma vez: a aba passa a aparecer nas Licitações */
-export const CHAVE_EQUIPE = 'agilcm:equipe';
-
-const campo = 'w-full px-4 py-3 rounded-xl border border-slate-300 text-base focus:outline-none focus:border-[#0478CA] focus:ring-2 focus:ring-[#0478CA]/20';
-const brl = (v: number | null) => (v == null ? '—' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: v < 10 ? 4 : 2 }));
-const dataBR = (iso?: string) => (iso ? iso.slice(0, 10).split('-').reverse().join('/') : '');
 const COR: Record<string, string> = {
   0: 'bg-violet-100 text-violet-900',
   2: 'bg-amber-100 text-amber-900',
   3: 'bg-sky-100 text-sky-900',
   4: 'bg-slate-200 text-slate-800',
+  5: 'bg-rose-100 text-rose-900',
 };
 const corDe = (col: number) => COR[col] || 'bg-slate-100 text-slate-700';
 // faixas do filtro de colocação
@@ -73,54 +60,9 @@ const FAIXAS: { id: string; rotulo: string; cols: number[] }[] = [
   { id: '2', rotulo: '2º lugar', cols: [2] },
   { id: '3', rotulo: '3º lugar', cols: [3] },
   { id: '4', rotulo: '4º lugar', cols: [4] },
+  { id: '5', rotulo: '5º lugar', cols: [5] },
   { id: '0', rotulo: 'Melhor preço, não levou', cols: [0] },
-  { id: '5', rotulo: '5º em diante', cols: Array.from({ length: 96 }, (_, i) => i + 5) },
 ];
-
-function Entrar({ onEntrar }: { onEntrar: () => void }) {
-  const [email, setEmail] = useState('');
-  const [senha, setSenha] = useState('');
-  const [erro, setErro] = useState('');
-  const [conferindo, setConferindo] = useState(false);
-  const enviar = async (e: FormEvent) => {
-    e.preventDefault();
-    setConferindo(true);
-    setErro('');
-    const ok = await conferirLogin(email, senha).catch(() => false);
-    setConferindo(false);
-    if (ok) onEntrar();
-    else setErro('E-mail ou senha incorretos.');
-  };
-  return (
-    <form onSubmit={enviar} className="max-w-md mx-auto p-6 sm:p-8 rounded-2xl bg-white border border-slate-200">
-      <p className="inline-flex items-center gap-2 text-sm font-bold text-[#0369B3]">
-        <Icon name="shield" className="w-5 h-5" /> Área da equipe Ágil CM
-      </p>
-      <h2 className="mt-2 text-2xl font-bold font-display text-[#0F2053]">Possíveis clientes</h2>
-      <p className="mt-2 text-[15px] text-slate-600">Entre com o mesmo e-mail e senha da área Privado.</p>
-      <label className="block mt-5">
-        <span className="text-sm font-semibold text-slate-700">E-mail</span>
-        <input type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} className={`mt-1 ${campo}`} />
-      </label>
-      <label className="block mt-4">
-        <span className="text-sm font-semibold text-slate-700">Senha</span>
-        <input type="password" autoComplete="current-password" required value={senha} onChange={(e) => setSenha(e.target.value)} className={`mt-1 ${campo}`} />
-      </label>
-      {erro && (
-        <p role="alert" className="mt-3 text-[15px] text-red-700">
-          {erro}
-        </p>
-      )}
-      <button
-        type="submit"
-        disabled={conferindo}
-        className="mt-5 w-full px-5 py-3 rounded-xl bg-[#0F2053] hover:bg-[#13306f] text-white text-base font-bold cursor-pointer disabled:opacity-60"
-      >
-        {conferindo ? 'Conferindo…' : 'Entrar'}
-      </button>
-    </form>
-  );
-}
 
 function CartaoEmpresa({ e, licitacoes }: { e: Empresa; licitacoes: Licitacao[] }) {
   const [copiado, setCopiado] = useState(false);
@@ -130,6 +72,7 @@ function CartaoEmpresa({ e, licitacoes }: { e: Empresa; licitacoes: Licitacao[] 
     [2, '2º'],
     [3, '3º'],
     [4, '4º'],
+    [5, '5º'],
     [0, 'melhor preço sem levar'],
   ] as const;
   const copiar = async () => {
@@ -202,17 +145,7 @@ function CartaoEmpresa({ e, licitacoes }: { e: Empresa; licitacoes: Licitacao[] 
                     )}{' '}
                     · {d.participantes} empresas {d.lote ? 'no lote' : 'no item'}
                   </p>
-                  <p className="mt-1 text-slate-700">
-                    <strong className="text-[#0F2053]">{lic.orgao}</strong> · {lic.municipio} - {lic.uf} · {lic.titulo} · {dataBR(lic.data)} ·{' '}
-                    <a
-                      href={`https://pncp.gov.br/app/editais/${lic.id}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="font-bold text-[#0369B3] underline underline-offset-4"
-                    >
-                      abrir no PNCP<span className="sr-only"> (abre em nova aba)</span>
-                    </a>
-                  </p>
+                  <LinhaLicitacao lic={lic} />
                 </li>
               );
             })}
@@ -224,37 +157,11 @@ function CartaoEmpresa({ e, licitacoes }: { e: Empresa; licitacoes: Licitacao[] 
 }
 
 export default function PossiveisClientesTab() {
-  const [dentro, setDentro] = useState(false);
-  const [dados, setDados] = useState<Dados | null>(null);
-  const [estado, setEstado] = useState<'carregando' | 'ok' | 'sem'>('carregando');
+  const { dados, estado } = useProspeccao<Dados>('clientes');
   const [cidade, setCidade] = useState('');
-  const [faixas, setFaixas] = useState<string[]>(['2', '3', '4']);
+  const [faixas, setFaixas] = useState<string[]>(FAIXAS.map((f) => f.id));
   const [q, setQ] = useState('');
   const [mostrar, setMostrar] = useState(30);
-
-  useEffect(() => setDentro(sessaoAtiva()), []);
-  useEffect(() => {
-    if (!dentro) return;
-    try {
-      localStorage.setItem(CHAVE_EQUIPE, '1');
-    } catch {
-      /* sem armazenamento */
-    }
-    let vivo = true;
-    fetch(`${import.meta.env.BASE_URL}privado/clientes.json?t=${Date.now()}`, { cache: 'no-store' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => {
-        if (!vivo) return;
-        if (j && Array.isArray(j.empresas)) {
-          setDados(j);
-          setEstado('ok');
-        } else setEstado('sem');
-      })
-      .catch(() => vivo && setEstado('sem'));
-    return () => {
-      vivo = false;
-    };
-  }, [dentro]);
 
   const colocacoes = useMemo(() => FAIXAS.filter((f) => faixas.includes(f.id)).flatMap((f) => f.cols), [faixas]);
   const lista = useMemo(() => (dados ? (filtrarClientes(dados, { cidade, colocacoes, q }) as Empresa[]) : []), [dados, cidade, colocacoes, q]);
@@ -282,20 +189,6 @@ export default function PossiveisClientesTab() {
     ]);
   };
 
-  const chip = (ativo: boolean) =>
-    `px-3.5 py-2 rounded-full border text-[15px] font-semibold cursor-pointer ${
-      ativo ? 'bg-[#0F2053] border-[#0F2053] text-white' : 'bg-white border-slate-300 text-[#0F2053] hover:border-[#0478CA]'
-    }`;
-
-  if (!dentro)
-    return (
-      <section className="bg-[#F4F7FB] py-10 sm:py-14">
-        <Container>
-          <Entrar onEntrar={() => setDentro(true)} />
-        </Container>
-      </section>
-    );
-
   return (
     <section aria-labelledby="titulo-clientes" className="bg-[#F4F7FB] py-8 sm:py-10">
       <Container>
@@ -303,20 +196,11 @@ export default function PossiveisClientesTab() {
           Possíveis clientes
         </h2>
         <p className="mt-2 max-w-4xl text-base sm:text-lg text-slate-700 leading-relaxed">
-          Empresas de {dados?.cidades.join(', ').replace(/, ([^,]*)$/, ' e $1') || 'cidades vizinhas'} que disputaram licitações da Zona da Mata e não venceram.
-          Quem fica em 2º, 3º ou 4º lugar já participa, mas perde: é para essas empresas que a assessoria em licitações faz diferença.
+          Empresas de {dados ? listaCidades(dados.cidades) : 'cidades vizinhas'} que disputaram licitações da Zona da Mata e ficaram do 2º ao 5º lugar. Quem
+          chega perto já participa, mas perde: é para essas empresas que a assessoria em licitações faz diferença.
         </p>
 
-        {estado === 'carregando' && (
-          <p role="status" className="mt-6 text-slate-700">
-            Carregando a lista…
-          </p>
-        )}
-        {estado === 'sem' && (
-          <p role="status" className="mt-6 p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900">
-            A lista ainda não foi gerada. Ela é montada pelo GitHub a cada publicação do site; tente de novo em algumas horas.
-          </p>
-        )}
+        <AvisoCarregando estado={estado} />
 
         {estado === 'ok' && dados && (
           <>
@@ -405,7 +289,7 @@ export default function PossiveisClientesTab() {
               <strong className="text-[#0F2053]">
                 {lista.length} {lista.length === 1 ? 'empresa' : 'empresas'}
               </strong>{' '}
-              e {itens} {itens === 1 ? 'item' : 'itens'} com esses filtros. Primeiro vêm as que mais ficaram entre o 2º e o 4º lugar.
+              e {itens} {itens === 1 ? 'item' : 'itens'} com esses filtros. Primeiro vêm as que mais ficaram entre o 2º e o 5º lugar.
             </p>
             {lista.length === 0 && (
               <p className="mt-3 p-4 rounded-xl bg-white border border-slate-200 text-slate-700">
@@ -427,20 +311,7 @@ export default function PossiveisClientesTab() {
               </button>
             )}
 
-            <div className="mt-8 p-4 sm:p-5 rounded-2xl bg-white border border-slate-200 text-[15px] text-slate-700 leading-relaxed space-y-2">
-              <h3 className="text-base font-bold text-[#0F2053]">De onde vem a lista e o que fica de fora</h3>
-              <p>
-                O PNCP só registra a vencedora de cada item. A colocação das outras sai da ata da sessão que o {dados.portal || 'Portal de Compras Públicas'}{' '}
-                anexa no PNCP, com todos os lances: {dados.licitacoesLidas ?? 0} atas lidas de {dados.licitacoesNoPeriodo ?? 0} licitações desse portal na Zona
-                da Mata desde {dataBR(dados.desde)}
-                {dados.aindaNaFila ? ` (${dados.aindaNaFila} ainda na fila; a lista cresce a cada atualização)` : ''}.
-              </p>
-              <p>
-                Licitações feitas no Compras.gov.br, na Licitar Digital e em outros portais não entram, porque eles não publicam a ata com os lances no PNCP. A
-                cidade de cada empresa vem do cadastro do CNPJ na Receita Federal. Pessoas físicas (CPF) ficam de fora.
-              </p>
-              {dados.atualizadoEm && <p>Atualizada em {new Date(dados.atualizadoEm).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}.</p>}
-            </div>
+            <NotaFonte dados={dados} />
           </>
         )}
       </Container>

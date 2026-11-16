@@ -1,12 +1,14 @@
-// Aba "Possíveis clientes" das Licitações: empresas das cidades vizinhas (src/data/clientesConfig.js) que disputaram
-// licitações da Zona da Mata e não venceram, com a colocação em cada item.
+// Abas "Possíveis clientes" e "Campeões" das Licitações (públicas):
+//   Possíveis clientes  empresas das cidades vizinhas (src/data/clientesConfig.js) que disputaram licitações da Zona da
+//                       Mata e ficaram do 2º ao 5º lugar (ou ofertaram o melhor preço e não levaram), item a item;
+//   Campeões            quem ganhou e levou cada item, de qualquer cidade, com o valor ganho segundo a ata.
 //
 // De onde vem: o PNCP só registra o vencedor de cada item. A classificação completa está na "Ata Final" que o Portal
 // de Compras Públicas anexa no PNCP depois da sessão (todas as propostas e lances, com CNPJ). Este script:
 //   1) procura no PNCP as licitações eletrônicas da Zona da Mata dos últimos meses publicadas por esse portal;
 //   2) baixa a ata de cada uma (documento público do PNCP), lê os lances e calcula a colocação por item;
 //   3) consulta a cidade de cada CNPJ no cadastro público da Receita (minhareceita.org);
-//   4) grava public/privado/clientes.json só com as empresas das cidades escolhidas.
+//   4) grava public/prospeccao/clientes.json e public/prospeccao/campeoes.json.
 // Compras.gov.br, Licitar Digital e outros portais não anexam a ata no PNCP: essas licitações ficam de fora.
 // CPF não entra (pessoa física fica de fora) e nomes de MEI saem sem os números do CPF.
 //
@@ -19,13 +21,15 @@ import { CIDADES_MG } from '../src/data/coordenadasMunicipios.js';
 import { PNCP_MUNICIPIOS_ZM } from '../src/data/pncpMunicipiosZM.js';
 import { MICRORREGIOES, microrregiaoDe } from '../src/data/zonaDaMata.js';
 import { classificarItem, descricaoCurta, ehAtaPcp, lerAtaPcp } from '../src/lib/ataPcp.js';
-import { montarClientes, nomeSemCpf, normCidade } from '../src/lib/possiveisClientes.js';
+import { montarCampeoes, montarClientes, nomeSemCpf, normCidade } from '../src/lib/possiveisClientes.js';
 import { fetchJson, fixText, fonteDe } from '../src/lib/pncp.js';
 import { linhasDoPdf } from '../src/lib/privado/pdfTexto.js';
 
-const VERSAO = 2; // 2: atas com julgamento por lote
+const VERSAO = 3; // 2: atas com julgamento por lote; 3: itens com um só participante e valor total ganho
 const CACHE = process.env.CLIENTES_CACHE || 'clientes-cache.json';
-const SAIDA = process.env.CLIENTES_SAIDA || 'public/privado/clientes.json';
+const SAIDA = process.env.CLIENTES_SAIDA || 'public/prospeccao';
+// arquivo antigo, de quando a aba era só da equipe: sai do site
+const SAIDA_ANTIGA = 'public/privado/clientes.json';
 const TEMPO_MS = Number(process.env.CLIENTES_TEMPO_MIN || 8) * 60e3;
 const PORTAL = 'Portal de Compras Públicas';
 const MODALIDADES = /preg[aã]o - eletr|dispensa|concorr[eê]ncia - eletr/i;
@@ -247,12 +251,14 @@ async function lerCompra(c, hoje) {
   const itens = [];
   for (const it of lerAtaPcp(texto).itens) {
     const cls = classificarItem(it);
-    if (cls.length < 2) continue; // sem disputa: ninguém ficou em 2º
+    if (!cls.length) continue;
     const venc = cls.find((x) => x.venceu);
+    if (cls.length < 2 && !venc) continue; // um só lance e sem vencedora na ata: nada a mostrar
     itens.push({
       n: it.codigo,
       d: descricaoCurta(it.descricao),
       v: venc ? venc.melhor : null,
+      ...(venc && it.vencedorTotal != null ? { t: it.vencedorTotal } : {}),
       ...(it.lote ? { l: 1 } : {}),
       c: cls.map((x) => [x.cnpj, x.colocacao, x.melhor, x.lances, nomeSemCpf(x.nome)]),
     });
@@ -366,9 +372,9 @@ async function main() {
   );
   fs.writeFileSync(CACHE, JSON.stringify(cache));
 
-  // 3) saída
+  // 3) saída: as duas listas, com o nome de cada cidade de Minas com acento (a Receita escreve sem)
   const comAta = Object.values(cache.compras).filter((c) => c.itens);
-  const saida = montarClientes(cache, CIDADES_CLIENTES, {
+  const meta = {
     atualizadoEm: new Date().toISOString(),
     desde,
     portal: PORTAL,
@@ -376,13 +382,25 @@ async function main() {
     licitacoesLidas: comAta.length,
     aindaNaFila: Math.max(0, fila.length - lidas),
     cnpjsSemCidade: pendentes.length,
-  });
-  fs.mkdirSync(SAIDA.replace(/\/[^/]+$/, ''), { recursive: true });
-  fs.writeFileSync(SAIDA, JSON.stringify(saida));
+  };
+  const cidadesMG = new Map(CIDADES_MG.map(([nome]) => [normCidade(nome), nome]));
+  const nomeCidade = (m, u) =>
+    (u === 'MG' && cidadesMG.get(normCidade(m))) ||
+    String(m || '')
+      .toLowerCase()
+      .replace(/(^|\s)(\S)/g, (x) => x.toUpperCase())
+      .replace(/ (De|Da|Do|Das|Dos|E) /g, (x) => x.toLowerCase());
+  const saida = montarClientes(cache, CIDADES_CLIENTES, meta);
+  const campeoes = montarCampeoes(cache, CIDADES_CLIENTES, meta, { nomeCidade });
+  fs.mkdirSync(SAIDA, { recursive: true });
+  fs.writeFileSync(`${SAIDA}/clientes.json`, JSON.stringify(saida));
+  fs.writeFileSync(`${SAIDA}/campeoes.json`, JSON.stringify(campeoes));
+  fs.rmSync(SAIDA_ANTIGA, { force: true });
   const alvo = new Set(CIDADES_CLIENTES.map((c) => `${normCidade(c.nome)}|${c.uf}`));
   console.log(
     `Lidas agora: ${lidas} atas (${falhas} falhas); no total ${comAta.length} com ata, ${fila.length - lidas} na fila. CNPJs consultados agora: ${consultados}; sem cidade ainda: ${pendentes.length}. ` +
-      `Empresas das ${alvo.size} cidades: ${saida.empresas.length}, em ${saida.resumo.disputas} disputas de item. ${Math.round((Date.now() - t0) / 1000)} s.`,
+      `Possíveis clientes (${alvo.size} cidades): ${saida.empresas.length} empresas, ${saida.resumo.disputas} itens. ` +
+      `Campeões: ${campeoes.resumo.empresas} empresas, ${campeoes.resumo.itens} itens. ${Math.round((Date.now() - t0) / 1000)} s.`,
   );
 }
 
