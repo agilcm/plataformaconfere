@@ -65,7 +65,7 @@ export function montarClientes(cache, cidades, meta = {}) {
           iLic = licitacoes.length;
           licitacoes.push({ id, orgao: c.orgao, municipio: c.municipio, uf: c.uf, titulo: c.titulo, objeto: c.objeto, modalidade: c.modalidade, data: c.data });
         }
-        e.disputas.push({ lic: iLic, item: it.n, desc: it.d, col, melhor, venc: it.v, lances, participantes: it.c.length });
+        e.disputas.push({ lic: iLic, item: it.n, desc: it.d, col, melhor, venc: it.v, lances, participantes: it.c.length, ...(it.l ? { lote: true } : {}) });
         disputas++;
       }
     }
@@ -129,7 +129,7 @@ export function linhasPlanilha(dados, empresas) {
         Porte: e.porte,
         'Atividade principal': e.atividade,
         Colocação: textoColocacao(d.col),
-        Item: d.item,
+        Item: d.lote ? `Lote ${Number(d.item) || d.item}` : d.item,
         'Descrição do item': d.desc,
         'Melhor lance': d.melhor,
         'Valor da vencedora': d.venc ?? '',

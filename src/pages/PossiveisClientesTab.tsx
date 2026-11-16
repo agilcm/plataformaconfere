@@ -16,6 +16,8 @@ interface Disputa {
   venc: number | null;
   lances: number;
   participantes: number;
+  /** julgamento por lote: a disputa foi pelo lote inteiro */
+  lote?: boolean;
 }
 interface Empresa {
   cnpj: string;
@@ -183,7 +185,9 @@ function CartaoEmpresa({ e, licitacoes }: { e: Empresa; licitacoes: Licitacao[] 
                 <li key={i} className="p-3 sm:p-4 rounded-xl bg-[#F7FAFD] border border-slate-200 text-[15px] leading-relaxed">
                   <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
                     <span className={`px-2.5 py-0.5 rounded-full text-sm font-bold ${corDe(d.col)}`}>{textoColocacao(d.col)}</span>
-                    <strong className="text-[#0F2053]">Item {Number(d.item) || d.item}:</strong>
+                    <strong className="text-[#0F2053]">
+                      {d.lote ? 'Lote' : 'Item'} {Number(d.item) || d.item}:
+                    </strong>
                     <span className="text-slate-800">{d.desc}</span>
                   </p>
                   <p className="mt-1 text-slate-700">
@@ -196,7 +200,7 @@ function CartaoEmpresa({ e, licitacoes }: { e: Empresa; licitacoes: Licitacao[] 
                         {dif.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%)
                       </>
                     )}{' '}
-                    · {d.participantes} empresas no item
+                    · {d.participantes} empresas {d.lote ? 'no lote' : 'no item'}
                   </p>
                   <p className="mt-1 text-slate-700">
                     <strong className="text-[#0F2053]">{lic.orgao}</strong> · {lic.municipio} - {lic.uf} · {lic.titulo} · {dataBR(lic.data)} ·{' '}

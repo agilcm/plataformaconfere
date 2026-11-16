@@ -2222,7 +2222,7 @@ function ManualOperador({ config }: { config: ConfigDocPref }) {
             </ul>
           )}
           {sec.tabela && (
-            <div className="mt-3 overflow-x-auto" tabIndex={0} role="region" aria-label="Tabela do manual (role para os lados)">
+            <div className="mt-3 overflow-x-auto" tabIndex={0} role="region" aria-label={`Tabela: ${sec.titulo} (role para os lados)`}>
               <table className="w-full min-w-[560px] text-sm">
                 <thead className="bg-[#F7FAFD] text-left text-slate-500">
                   <tr>

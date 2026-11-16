@@ -113,6 +113,68 @@ test('classificação: vencedora em 1º, quem veio depois em 2º, 3º, 4º; lanc
   assert.deepEqual(classificarItem({ lances: [], vencedorNome: '', vencedorValor: null }), []);
 });
 
+test('julgamento por lote: a vencedora vem pelo CNPJ do cabeçalho e o valor pelo total do lote', () => {
+  const ata = `ATA FINAL
+Prefeitura Municipal de Exemplo
+Vencedores
+EXTINTORES SUL LTDA - Tipo: DEMAIS - LC123:
+Sim - Documento 37.278.673/0001-18 - Endereço: Rua Um - CEP: 99709369 - UF: RS -
+Município: - Telefone: (54) 0000-0000
+Lote   Item   Produto   Modelo   Marca/ Fabricante   Quantidade   Melhor Lance   Valor Total
+0002   Aquisição de extintores de
+incêndio
+0001   EXTINTOR ABC 1KG   X   X   3 UND   R$ 78,44   R$ 235,32
+0002   EXTINTOR ABC 2KG   X   X   3 UN   R$ 115,44   R$ 346,32
+TOTAL DO LOTE   R$ 2.912,64
+TOTAL DO VENCEDOR   R$ 2.912,64
+FULANA RECARGAS - Tipo: ME - LC123: Sim - Documento 26.770.038/0001-37 - Endereço: R Dois -
+CEP: 36893000 - UF: MG - Município: - Telefone: (32) 00000-0000
+Lote   Item   Produto   Modelo   Marca/ Fabricante   Quantidade   Melhor Lance   Valor Total
+0001   Prestação de serviços de recarga
+de extintores
+0001   RECARGA DE EXTINTOR BC   BC 6KG   CAEX   12 SVÇ   R$ 60,00   R$ 720,00
+TOTAL DO LOTE   R$ 2.990,00
+TOTAL DO VENCEDOR   R$ 2.990,00
+Declarações Obrigatórias
+Lances Enviados
+0001 - Prestação de serviços de recarga de extintores
+Data   Valor   CNPJ   Situação
+11/08/2026 - 08:27:55   3.740,00 (proposta)   12.151.305/0001-83 - MINAS MATERIAIS LTDA   Válido
+11/08/2026 - 13:10:06   4.491,00 (proposta)   26.770.038/0001-37 - FULANA   Válido
+RECARGAS
+12/08/2026 - 09:00:00   2.990,00   26.770.038/0001-37 - FULANA   Válido
+RECARGAS
+12/08/2026 - 09:01:00   2.900,00   12.151.305/0001-83 - MINAS MATERIAIS LTDA   Válido
+0002 - Aquisição de extintores de incêndio
+Data   Valor   CNPJ   Situação
+11/08/2026 - 08:00:00   3.200,00 (proposta)   12.151.305/0001-83 - MINAS MATERIAIS LTDA   Válido
+11/08/2026 - 08:30:00   2.912,64 (proposta)   37.278.673/0001-18 - EXTINTORES SUL LTDA   Válido
+Chat`.split('\n');
+  const a = lerAtaPcp(ata);
+  assert.deepEqual(
+    a.itens.map((i) => [i.codigo, i.lote, i.vencedorCnpj, i.vencedorValor]),
+    [
+      ['0001', true, '26770038000137', 2990],
+      ['0002', true, '37278673000118', 2912.64],
+    ],
+  );
+  // no lote 1 a MINAS ofertou 2.900 (menos que a vencedora, 2.990) e não levou
+  assert.deepEqual(
+    classificarItem(a.itens[0]).map((c) => [c.cnpj, c.colocacao, c.venceu]),
+    [
+      ['12151305000183', 0, false],
+      ['26770038000137', 1, true],
+    ],
+  );
+  assert.deepEqual(
+    classificarItem(a.itens[1]).map((c) => [c.cnpj, c.colocacao]),
+    [
+      ['37278673000118', 1],
+      ['12151305000183', 2],
+    ],
+  );
+});
+
 test('maior desconto: quando os lances sobem, o maior valor é o melhor', () => {
   const lances = [
     { quando: '2026-01-01T10:00:00', valor: 5, proposta: true, cnpj: 'a', nome: 'A', situacao: 'Válido' },
@@ -243,6 +305,12 @@ test('filtros e planilha', () => {
   assert.equal(linhas[0].Colocação, '3º lugar');
   assert.equal(linhas[1].Colocação, 'Melhor preço, não levou');
   assert.equal(linhas[0]['Link no PNCP'], 'https://pncp.gov.br/app/editais/18000000000100/2026/7');
+  // julgamento por lote: a disputa aparece como "Lote"
+  const comLote = JSON.parse(JSON.stringify(CACHE));
+  comLote.compras['18000000000100/2026/7'].itens[0].l = 1;
+  const dl = montarClientes(comLote, CIDADES);
+  assert.equal(dl.empresas.flatMap((e) => e.disputas).filter((x) => x.lote).length, 2);
+  assert.equal(linhasPlanilha(dl, filtrarClientes(dl, { cidade: 'Dona Euzébia' }))[0].Item, 'Lote 1');
   assert.equal(textoColocacao(2), '2º lugar');
 });
 

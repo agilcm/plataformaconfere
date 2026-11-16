@@ -23,7 +23,7 @@ import { montarClientes, nomeSemCpf, normCidade } from '../src/lib/possiveisClie
 import { fetchJson, fixText, fonteDe } from '../src/lib/pncp.js';
 import { linhasDoPdf } from '../src/lib/privado/pdfTexto.js';
 
-const VERSAO = 1;
+const VERSAO = 2; // 2: atas com julgamento por lote
 const CACHE = process.env.CLIENTES_CACHE || 'clientes-cache.json';
 const SAIDA = process.env.CLIENTES_SAIDA || 'public/privado/clientes.json';
 const TEMPO_MS = Number(process.env.CLIENTES_TEMPO_MIN || 8) * 60e3;
@@ -253,6 +253,7 @@ async function lerCompra(c, hoje) {
       n: it.codigo,
       d: descricaoCurta(it.descricao),
       v: venc ? venc.melhor : null,
+      ...(it.lote ? { l: 1 } : {}),
       c: cls.map((x) => [x.cnpj, x.colocacao, x.melhor, x.lances, nomeSemCpf(x.nome)]),
     });
   }
@@ -290,6 +291,17 @@ async function main() {
   try {
     const lido = JSON.parse(fs.readFileSync(CACHE, 'utf8'));
     if (lido.v === VERSAO) cache = lido;
+    // leitor de atas novo: as atas são lidas de novo, mas o que não depende dele (cadastro dos CNPJs e licitações já
+    // descobertas) continua valendo
+    else if (lido.v)
+      cache = {
+        v: VERSAO,
+        compras: {},
+        cnpj: lido.cnpj || {},
+        achadas: lido.achadas || {},
+        varridoEm: lido.varridoEm || {},
+        buscaGrupo: lido.buscaGrupo || {},
+      };
   } catch {
     /* primeira vez */
   }

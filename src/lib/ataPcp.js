@@ -27,6 +27,7 @@ export function ehAtaPcp(linhas) {
 /**
  * Lê a seção "Lances Enviados" e a tabela "Vencedores".
  * @param {string[]} linhas  linhas de texto do PDF, na ordem de leitura (colunas separadas por 3 espaços ou mais)
+ * No julgamento por lote, cada "item" devolvido é um lote (lote: true) e a vencedora vem pelo CNPJ.
  * @returns {{ orgao: string, itens: { codigo: string, descricao: string, lances: { quando: string, valor: number, proposta: boolean, cnpj: string, nome: string, situacao: string }[], vencedorNome: string, vencedorValor: number | null }[] }}
  */
 export function lerAtaPcp(linhas) {
@@ -86,7 +87,7 @@ export function lerAtaPcp(linhas) {
     if (mItem) {
       // um cabeçalho novo só vale se o item anterior já teve a tabela de lances (ou se é o primeiro)
       if (!item || !naDescricao) {
-        item = { codigo: mItem[1], descricao: mItem[2].trim(), lances: [], vencedorNome: '', vencedorValor: null };
+        item = { codigo: mItem[1], descricao: mItem[2].trim(), lances: [], vencedorNome: '', vencedorValor: null, vencedorCnpj: '', lote: false };
         itens.push(item);
         naDescricao = true;
         ultimo = null;
@@ -97,10 +98,44 @@ export function lerAtaPcp(linhas) {
     else if (ultimo && partes.length === 1) ultimo.nome = `${ultimo.nome} ${l}`.trim(); // continuação do nome
   }
 
-  // Vencedores: a linha de cada item começa com o código e termina em "valor   quantidade   total"
+  // Vencedores, julgamento por item: a linha de cada item começa com o código e termina em "valor   quantidade   total"
+  // Vencedores, julgamento por lote: cada vencedora vem num cabeçalho com "Documento <CNPJ>", seguido da tabela
+  // "Lote Item Produto…", da linha do lote (código + descrição) e de "TOTAL DO LOTE R$ …"
   const porCodigo = new Map(itens.map((i) => [i.codigo, i]));
+  let cnpjVenc = '';
+  let esperaLote = false;
+  let lote = null;
   for (const l of secoes['Vencedores'] || []) {
     const partes = l.split(/\s{3,}/);
+    const mDoc = /Documento\s+(\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2})/.exec(l);
+    if (mDoc) {
+      cnpjVenc = soDigitos(mDoc[1]);
+      lote = null;
+      continue;
+    }
+    if (/^Lote\s+Item\s+Produto/.test(l)) {
+      esperaLote = true;
+      continue;
+    }
+    const mTotal = /^TOTAL DO LOTE\s+R\$\s*([\d.]+,\d{2})/.exec(l);
+    if (mTotal) {
+      if (lote) lote.vencedorValor = numero(mTotal[1]);
+      esperaLote = true; // a mesma vencedora pode ter outro lote em seguida
+      continue;
+    }
+    if (/^TOTAL DO VENCEDOR/.test(l)) {
+      esperaLote = false;
+      continue;
+    }
+    if (esperaLote && /^\d{3,5}$/.test(partes[0]) && !/R\$/.test(l)) {
+      lote = porCodigo.get(partes[0]) || null;
+      if (lote && cnpjVenc) {
+        lote.vencedorCnpj = cnpjVenc;
+        lote.lote = true;
+      }
+      esperaLote = false;
+      continue;
+    }
     const it = /^\d{3,5}$/.test(partes[0]) ? porCodigo.get(partes[0]) : null;
     if (!it || partes.length < 6) continue;
     const valores = partes.filter((p) => /^[\d.]+,\d{2,4}$/.test(p));
@@ -154,9 +189,9 @@ export function classificarItem(item) {
   const ordem = [...melhor.values()].sort((a, b) => (sobe ? b.melhor - a.melhor : a.melhor - b.melhor) || a.quando.localeCompare(b.quando));
 
   // vencedora: o nome da tabela "Vencedores" é o começo da razão social; no empate de nomes, a de valor mais próximo
-  let iVenc = -1;
+  let iVenc = item.vencedorCnpj ? ordem.findIndex((e) => e.cnpj === item.vencedorCnpj) : -1;
   const alvo = semAcento(item.vencedorNome).replace(/\s+/g, ' ').trim();
-  if (alvo) {
+  if (iVenc < 0 && alvo) {
     const candidatos = ordem.map((e, i) => ({ i, e })).filter(({ e }) => semAcento(e.nome).replace(/\s+/g, ' ').startsWith(alvo));
     if (candidatos.length === 1) iVenc = candidatos[0].i;
     else if (candidatos.length > 1 && item.vencedorValor != null)
