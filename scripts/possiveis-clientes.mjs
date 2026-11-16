@@ -30,6 +30,9 @@ const CACHE = process.env.CLIENTES_CACHE || 'clientes-cache.json';
 const SAIDA = process.env.CLIENTES_SAIDA || 'public/prospeccao';
 // arquivo antigo, de quando a aba era só da equipe: sai do site
 const SAIDA_ANTIGA = 'public/privado/clientes.json';
+// CLIENTES_SO_MONTAR=1: só remonta as listas a partir do cache (a publicação do site usa assim; a leitura das atas
+// roda no workflow Prospecção, com mais tempo)
+const SO_MONTAR = process.env.CLIENTES_SO_MONTAR === '1';
 const TEMPO_MS = Number(process.env.CLIENTES_TEMPO_MIN || 8) * 60e3;
 const PORTAL = 'Portal de Compras Públicas';
 const MODALIDADES = /preg[aã]o - eletr|dispensa|concorr[eê]ncia - eletr/i;
@@ -374,6 +377,49 @@ function cadastroCnpjWs(cnpj) {
   return vez;
 }
 
+/** O município já passou pela busca do PNCP (feita em grupos de 24 códigos de município)? */
+const indiceNaBusca = new Map(Object.keys(PNCP_MUNICIPIOS_ZM).map((nome, i) => [chaveMun(nome), i]));
+function grupoDaBuscaFeito(cache, mun) {
+  const i = indiceNaBusca.get(chaveMun(mun));
+  return i != null && !!cache.buscaGrupo?.[Math.floor(i / 24) * 24];
+}
+
+/** Grava as duas listas (com o nome de cada cidade de Minas com acento: a Receita escreve sem) */
+function gravarListas(cache, m) {
+  const municipiosZM = Object.values(MICRORREGIOES).flat();
+  const meta = {
+    atualizadoEm: new Date().toISOString(),
+    desde: m.desde,
+    ate: m.ate,
+    portal: PORTAL,
+    licitacoesNoPeriodo: m.licitacoesNoPeriodo,
+    licitacoesLidas: Object.values(cache.compras).filter((c) => c.itens).length,
+    aindaNaFila: m.aindaNaFila,
+    cnpjsSemCidade: m.cnpjsSemCidade,
+    // municípios da Zona da Mata já consultados no PNCP (a primeira volta leva algumas leituras)
+    municipiosConsultados: municipiosZM.filter((mun) => cache.varridoEm?.[mun] || grupoDaBuscaFeito(cache, mun)).length,
+    municipiosTotal: municipiosZM.length,
+  };
+  const cidadesMG = new Map(CIDADES_MG.map(([nome]) => [normCidade(nome), nome]));
+  const nomeCidade = (mun, u) =>
+    (u === 'MG' && cidadesMG.get(normCidade(mun))) ||
+    String(mun || '')
+      .toLowerCase()
+      .replace(/(^|\s)(\S)/g, (x) => x.toUpperCase())
+      .replace(/ (De|Da|Do|Das|Dos|E) /g, (x) => x.toLowerCase());
+  const saida = montarClientes(cache, CIDADES_CLIENTES, meta);
+  const campeoes = montarCampeoes(cache, CIDADES_CLIENTES, meta, { nomeCidade });
+  fs.mkdirSync(SAIDA, { recursive: true });
+  fs.writeFileSync(`${SAIDA}/clientes.json`, JSON.stringify(saida));
+  fs.writeFileSync(`${SAIDA}/campeoes.json`, JSON.stringify(campeoes));
+  fs.rmSync(SAIDA_ANTIGA, { force: true });
+  console.log(
+    `Listas: ${meta.licitacoesLidas} atas lidas de ${meta.licitacoesNoPeriodo} licitações desde ${m.desde} (${meta.municipiosConsultados} de ${meta.municipiosTotal} municípios consultados). ` +
+      `Possíveis clientes: ${saida.empresas.length} empresas; Campeões: ${campeoes.resumo.empresas} empresas.`,
+  );
+  return { saida, campeoes };
+}
+
 async function main() {
   let cache = { v: VERSAO, compras: {}, cnpj: {} };
   try {
@@ -397,6 +443,19 @@ async function main() {
   const d = new Date();
   d.setMonth(d.getMonth() - MESES_CLIENTES);
   const desde = d.toISOString().slice(0, 10);
+  if (SO_MONTAR) {
+    // publicação do site: só remonta as listas com o que a leitura (workflow Prospecção) já guardou
+    for (const k of Object.keys(cache.compras)) if (cache.compras[k].data < desde) delete cache.compras[k];
+    const achadas = Object.fromEntries(Object.entries(cache.achadas || {}).filter(([, c]) => c.data >= desde));
+    gravarListas(cache, {
+      desde,
+      ate: hoje,
+      licitacoesNoPeriodo: Object.keys(achadas).length,
+      aindaNaFila: Object.keys(achadas).filter((k) => !cache.compras[k]).length,
+      cnpjsSemCidade: null,
+    });
+    return;
+  }
 
   // licitações do portal: o que já se conhecia + o que a busca (ou a consulta por município) trouxe agora
   cache.achadas ??= {};
@@ -404,7 +463,7 @@ async function main() {
   let novas = busca.achadas;
   if (busca.falhou) {
     console.log(`A busca do PNCP falhou (${novas.size} achadas antes da falha): usando a consulta por município.`);
-    novas = new Map([...novas, ...(await descobrirPelaConsulta(desde, hoje, cache))]);
+    novas = new Map([...novas, ...(await descobrirPelaConsulta(desde, hoje, cache, Math.max(45, Math.floor(TEMPO_MS / 20e3))))]);
   }
   for (const [k, c] of novas) cache.achadas[k] = c;
   for (const k of Object.keys(cache.achadas)) if (cache.achadas[k].data < desde) delete cache.achadas[k];
@@ -469,30 +528,15 @@ async function main() {
   );
   fs.writeFileSync(CACHE, JSON.stringify(cache));
 
-  // 3) saída: as duas listas, com o nome de cada cidade de Minas com acento (a Receita escreve sem)
-  const comAta = Object.values(cache.compras).filter((c) => c.itens);
-  const meta = {
-    atualizadoEm: new Date().toISOString(),
+  // 3) saída
+  const { saida, campeoes } = gravarListas(cache, {
     desde,
-    portal: PORTAL,
+    ate: hoje,
     licitacoesNoPeriodo: achadas.size || Object.keys(cache.compras).length,
-    licitacoesLidas: comAta.length,
     aindaNaFila: Math.max(0, fila.length - lidas),
     cnpjsSemCidade: pendentes.length,
-  };
-  const cidadesMG = new Map(CIDADES_MG.map(([nome]) => [normCidade(nome), nome]));
-  const nomeCidade = (m, u) =>
-    (u === 'MG' && cidadesMG.get(normCidade(m))) ||
-    String(m || '')
-      .toLowerCase()
-      .replace(/(^|\s)(\S)/g, (x) => x.toUpperCase())
-      .replace(/ (De|Da|Do|Das|Dos|E) /g, (x) => x.toLowerCase());
-  const saida = montarClientes(cache, CIDADES_CLIENTES, meta);
-  const campeoes = montarCampeoes(cache, CIDADES_CLIENTES, meta, { nomeCidade });
-  fs.mkdirSync(SAIDA, { recursive: true });
-  fs.writeFileSync(`${SAIDA}/clientes.json`, JSON.stringify(saida));
-  fs.writeFileSync(`${SAIDA}/campeoes.json`, JSON.stringify(campeoes));
-  fs.rmSync(SAIDA_ANTIGA, { force: true });
+  });
+  const comAta = Object.values(cache.compras).filter((c) => c.itens);
   const alvo = new Set(CIDADES_CLIENTES.map((c) => `${normCidade(c.nome)}|${c.uf}`));
   console.log(
     `Lidas agora: ${lidas} atas (${falhas} falhas); no total ${comAta.length} com ata, ${fila.length - lidas} na fila. CNPJs consultados agora: ${consultados}; sem cidade ainda: ${pendentes.length}. ` +

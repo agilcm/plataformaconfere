@@ -1,0 +1,57 @@
+name: Prospecção (atas do PNCP)
+
+# Lê as atas das licitações da Zona da Mata dos últimos 12 meses (scripts/possiveis-clientes.mjs) para as abas
+# Possíveis clientes e Campeões do painel de licitações e, ao terminar, publica o site com as listas novas.
+# Cada leitura trabalha até 50 minutos e continua de onde a anterior parou (o que já foi lido fica no cache do Actions).
+# A publicação do site (pages.yml) só remonta as listas a partir desse cache.
+on:
+  schedule:
+    - cron: '41 2,8,14,20 * * *' # 4 vezes por dia
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write # para disparar a publicação do site no fim
+
+concurrency:
+  group: prospeccao
+  cancel-in-progress: false
+
+jobs:
+  ler:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Recuperar o que já foi lido
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            clientes-cache.json
+            public/privado/clientes.json
+          key: clientes-${{ github.run_id }}
+          restore-keys: clientes-
+      - name: Ler as atas e consultar os CNPJs
+        continue-on-error: true
+        timeout-minutes: 60
+        run: node scripts/possiveis-clientes.mjs
+        env:
+          CLIENTES_TEMPO_MIN: '50'
+      - name: Guardar o que foi lido
+        if: always() && hashFiles('clientes-cache.json') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            clientes-cache.json
+            public/privado/clientes.json
+          key: clientes-${{ github.run_id }}
+      - name: Publicar o site com as listas novas
+        if: always()
+        run: gh workflow run pages.yml --ref main
+        env:
+          GH_TOKEN: ${{ github.token }}

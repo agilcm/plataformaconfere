@@ -4,7 +4,19 @@ import { useMemo, useState } from 'react';
 import { Container, Icon } from '../components/ui.tsx';
 import { cnpjFormatado, filtrarCampeoes, linhasPlanilhaCampeoes } from '../lib/possiveisClientes.js';
 import { baixarXlsx } from '../lib/xlsx.js';
-import { AvisoCarregando, brl, campo, chip, LinhaLicitacao, listaCidades, valorLance, NotaFonte, useProspeccao, type MetaProspeccao } from './prospeccaoUi.tsx';
+import {
+  AvisoCarregando,
+  brl,
+  campo,
+  chip,
+  LinhaLicitacao,
+  listaCidades,
+  valorLance,
+  NotaFonte,
+  Periodo,
+  useProspeccao,
+  type MetaProspeccao,
+} from './prospeccaoUi.tsx';
 
 interface Vitoria {
   lic: number;
@@ -158,6 +170,7 @@ export default function CampeoesTab() {
 
         {estado === 'ok' && dados && (
           <>
+            <Periodo dados={dados} />
             <ul className="mt-5 grid grid-cols-2 lg:grid-cols-4 gap-3">
               {[
                 [String(dados.resumo.empresas), dados.resumo.empresas === 1 ? 'empresa vencedora' : 'empresas vencedoras'],

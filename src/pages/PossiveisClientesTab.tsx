@@ -12,6 +12,7 @@ import {
   LinhaLicitacao,
   listaCidades,
   NotaFonte,
+  Periodo,
   useProspeccao,
   valorLance,
   type Licitacao,
@@ -206,6 +207,7 @@ export default function PossiveisClientesTab() {
 
         {estado === 'ok' && dados && (
           <>
+            <Periodo dados={dados} />
             <ul className="mt-5 grid grid-cols-2 lg:grid-cols-4 gap-3">
               {[
                 [dados.resumo.empresas, dados.resumo.empresas === 1 ? 'empresa' : 'empresas'],

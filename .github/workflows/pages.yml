@@ -3,7 +3,8 @@ name: Publicar site no GitHub Pages
 on:
   push:
     branches: [main]
-  # relê a pasta "Licitacoes - Agil" (área Privado), a pasta do DocPref e as atas (Possíveis clientes e Campeões) a cada 3 horas
+  # relê a pasta "Licitacoes - Agil" (área Privado) e a pasta do DocPref a cada 3 horas (as atas das abas Possíveis
+  # clientes e Campeões são lidas pelo workflow Prospecção, que publica o site ao terminar)
   schedule:
     - cron: '23 */3 * * *'
   workflow_dispatch:
@@ -85,7 +86,8 @@ jobs:
             public/docpref/leitura.json
           key: docpref-${{ github.run_id }}
       - name: Recuperar o que já foi lido das atas (Possíveis clientes e Campeões)
-        # os dois caminhos ficam como estão para o cache continuar valendo; as listas saem em public/prospeccao/
+        # a leitura das atas roda no workflow Prospecção (prospeccao.yml), que guarda o cache; aqui só se usa o último
+        # (os dois caminhos ficam como estão para o cache continuar valendo)
         uses: actions/cache/restore@v4
         with:
           path: |
@@ -93,21 +95,11 @@ jobs:
             public/privado/clientes.json
           key: clientes-${{ github.run_id }}
           restore-keys: clientes-
-      - name: Ler as atas do PNCP para as abas Possíveis clientes e Campeões (Licitações)
-        # trabalha alguns minutos por vez e continua na próxima publicação; se falhar, vale a última lista
+      - name: Montar as listas Possíveis clientes e Campeões (Licitações)
         continue-on-error: true
-        timeout-minutes: 16
         run: node scripts/possiveis-clientes.mjs
         env:
-          CLIENTES_TEMPO_MIN: ${{ github.event_name == 'push' && '3' || '10' }}
-      - name: Guardar o que foi lido das atas
-        if: always() && hashFiles('clientes-cache.json') != ''
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            clientes-cache.json
-            public/privado/clientes.json
-          key: clientes-${{ github.run_id }}
+          CLIENTES_SO_MONTAR: '1'
       - run: npm test
       - run: npm run lint
       - name: Compilar para o endereço do Pages

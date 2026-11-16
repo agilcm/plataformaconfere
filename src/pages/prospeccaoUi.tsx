@@ -28,6 +28,9 @@ export interface Licitacao {
 export interface MetaProspeccao {
   atualizadoEm?: string;
   desde?: string;
+  ate?: string;
+  municipiosConsultados?: number;
+  municipiosTotal?: number;
   portal?: string;
   licitacoesNoPeriodo?: number;
   licitacoesLidas?: number;
@@ -77,6 +80,38 @@ export function AvisoCarregando({ estado }: { estado: 'carregando' | 'ok' | 'sem
 
 /** "Cataguases, Miraí e Rodeiro" */
 export const listaCidades = (cidades: string[]) => cidades.join(', ').replace(/, ([^,]*)$/, ' e $1');
+
+/** Período das licitações (últimos 12 meses) e quanto da leitura já foi feito */
+export function Periodo({ dados }: { dados: MetaProspeccao }) {
+  const lidas = dados.licitacoesLidas ?? 0;
+  const total = dados.licitacoesNoPeriodo ?? 0;
+  const faltaMun = dados.municipiosTotal ? dados.municipiosTotal - (dados.municipiosConsultados ?? 0) : 0;
+  const emAndamento = (dados.aindaNaFila ?? 0) > 0 || faltaMun > 0;
+  return (
+    <div className="mt-4 p-3 sm:p-4 rounded-2xl bg-white border border-slate-200 text-[15px] text-slate-700 leading-relaxed">
+      <p>
+        <strong className="text-[#0F2053]">Licitações dos últimos 12 meses</strong>
+        {dados.desde && (
+          <>
+            : de {dataBR(dados.desde)} a {dataBR(dados.ate || dados.atualizadoEm)}
+          </>
+        )}
+        , na Zona da Mata.
+      </p>
+      {emAndamento ? (
+        <p className="mt-1">
+          <span className="font-semibold text-amber-800">Leitura em andamento:</span> {lidas} de {total} licitações lidas
+          {dados.municipiosTotal ? `, ${dados.municipiosConsultados ?? 0} de ${dados.municipiosTotal} municípios consultados` : ''}. A lista cresce a cada
+          leitura (4 por dia) até cobrir o período inteiro.
+        </p>
+      ) : (
+        <p className="mt-1">
+          Todas as {total} licitações do período já foram lidas, nos {dados.municipiosTotal ?? ''} municípios da Zona da Mata.
+        </p>
+      )}
+    </div>
+  );
+}
 
 export function NotaFonte({ dados, campeoes = false }: { dados: MetaProspeccao; campeoes?: boolean }) {
   return (
