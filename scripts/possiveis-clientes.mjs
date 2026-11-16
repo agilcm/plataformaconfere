@@ -207,7 +207,9 @@ async function descobrirPelaConsulta(desde, hoje, cache, maxMunicipios = 45) {
               orgao: fixText(c.orgaoEntidade?.razaoSocial),
               municipio: fixText(c.unidadeOrgao?.municipioNome || mun),
               uf: c.unidadeOrgao?.ufSigla || 'MG',
-              titulo: `Edital nº ${c.numeroCompra}/${c.anoCompra}`,
+              titulo: /^\d+$/.test(String(c.numeroCompra || ''))
+                ? `Edital nº ${c.numeroCompra}/${c.anoCompra}`
+                : fixText(c.numeroCompra) || `Compra ${c.sequencialCompra}/${c.anoCompra}`,
               objeto: fixText(c.objetoCompra),
               modalidade: c.modalidadeNome,
               data: String(c.dataPublicacaoPncp || '').slice(0, 10),
