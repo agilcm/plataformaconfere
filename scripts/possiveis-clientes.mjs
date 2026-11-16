@@ -7,7 +7,7 @@
 // de Compras Públicas anexa no PNCP depois da sessão (todas as propostas e lances, com CNPJ). Este script:
 //   1) procura no PNCP as licitações eletrônicas da Zona da Mata dos últimos meses publicadas por esse portal;
 //   2) baixa a ata de cada uma (documento público do PNCP), lê os lances e calcula a colocação por item;
-//   3) consulta a cidade de cada CNPJ no cadastro público da Receita (minhareceita.org);
+//   3) consulta a cidade de cada CNPJ no cadastro público da Receita (BrasilAPI, minhareceita.org e publica.cnpj.ws);
 //   4) grava public/prospeccao/clientes.json e public/prospeccao/campeoes.json.
 // Compras.gov.br, Licitar Digital e outros portais não anexam a ata no PNCP: essas licitações ficam de fora.
 // CPF não entra (pessoa física fica de fora) e nomes de MEI saem sem os números do CPF.
@@ -266,30 +266,92 @@ async function lerCompra(c, hoje) {
   return { itens, parcial: !/final/i.test(nome(ata)) };
 }
 
-async function cadastro(cnpj) {
-  for (let t = 0; t < 3; t++) {
-    try {
-      const r = await fetch(`https://minhareceita.org/${cnpj}`, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(20e3) });
-      if (r.status === 404) return { x: 1 }; // não encontrado
-      if (r.ok) {
-        const d = await r.json();
-        return {
-          r: nomeSemCpf(d.razao_social),
-          f: nomeSemCpf(d.nome_fantasia),
-          m: d.municipio || '',
-          u: d.uf || '',
-          p: d.porte || '',
-          a: d.cnae_fiscal_descricao || '',
-          s: d.descricao_situacao_cadastral || '',
-        };
+/**
+ * Cidade, porte e atividade de um CNPJ no cadastro público da Receita. Pergunta à BrasilAPI e, se ela não achar ou
+ * estiver fora, ao minhareceita.org (os dois devolvem o mesmo formato). Os dois às vezes respondem "não encontrado"
+ * para CNPJs que existem: um CNPJ que nenhum dos dois achou fica marcado com a data e é consultado de novo em 7 dias.
+ */
+// a BrasilAPI recusa (403) pedidos com o cabeçalho padrão do Node: vai um nome genérico de cliente (User-Agent)
+const FONTES_CNPJ = ['https://brasilapi.com.br/api/cnpj/v1/', 'https://minhareceita.org/'];
+export async function cadastro(cnpj, hoje) {
+  let naoAchou = 0;
+  for (const base of FONTES_CNPJ) {
+    for (let t = 0; t < 2; t++) {
+      try {
+        const r = await fetch(`${base}${cnpj}`, {
+          headers: { Accept: 'application/json', 'User-Agent': 'consulta-cnpj/1.0' },
+          signal: AbortSignal.timeout(20e3),
+        });
+        if (r.status === 404) {
+          naoAchou++;
+          break;
+        }
+        if (r.ok) {
+          const d = await r.json();
+          if (!d?.razao_social && !d?.municipio) {
+            naoAchou++;
+            break;
+          }
+          return {
+            r: nomeSemCpf(d.razao_social),
+            f: nomeSemCpf(d.nome_fantasia),
+            m: d.municipio || '',
+            u: d.uf || '',
+            p: d.porte || '',
+            a: d.cnae_fiscal_descricao || '',
+            s: d.descricao_situacao_cadastral || '',
+          };
+        }
+        if (r.status !== 429 && r.status < 500) break;
+      } catch {
+        /* tenta de novo */
       }
-      if (r.status !== 429 && r.status < 500) return null;
-    } catch {
-      /* tenta de novo */
+      await sleep(1500 * (t + 1));
     }
-    await sleep(2000 * (t + 1));
   }
-  return null;
+  if (naoAchou < FONTES_CNPJ.length) return null; // fora do ar: tenta na próxima execução
+  const ws = await cadastroCnpjWs(cnpj);
+  if (ws) return ws;
+  return ws === false ? { x: 1, em: hoje } : null;
+}
+
+// Terceira fonte, só para o que as duas primeiras não acharam: publica.cnpj.ws aceita 3 consultas por minuto, então
+// os pedidos saem um de cada vez, com 21 s entre eles, e no máximo CNPJ_WS_POR_EXECUCAO por execução.
+const CNPJ_WS_POR_EXECUCAO = Number(process.env.CLIENTES_CNPJ_WS || 15);
+let cnpjWsUsados = 0;
+let filaCnpjWs = Promise.resolve();
+/** @returns {Promise<object | false | null>} cadastro, false (não existe) ou null (não deu para consultar agora) */
+function cadastroCnpjWs(cnpj) {
+  const vez = filaCnpjWs.then(async () => {
+    if (cnpjWsUsados >= CNPJ_WS_POR_EXECUCAO || restam() < 45e3) return null;
+    cnpjWsUsados++;
+    try {
+      const r = await fetch(`https://publica.cnpj.ws/cnpj/${cnpj}`, {
+        headers: { Accept: 'application/json', 'User-Agent': 'consulta-cnpj/1.0' },
+        signal: AbortSignal.timeout(25e3),
+      });
+      if (r.status === 404) return false;
+      if (!r.ok) return null;
+      const d = await r.json();
+      const e = d.estabelecimento || {};
+      if (!d.razao_social) return null;
+      return {
+        r: nomeSemCpf(d.razao_social),
+        f: nomeSemCpf(e.nome_fantasia),
+        m: String(e.cidade?.nome || '').toUpperCase(),
+        u: e.estado?.sigla || '',
+        p: String(d.porte?.descricao || '').toUpperCase(),
+        a: e.atividade_principal?.descricao || '',
+        s: String(e.situacao_cadastral || '').toUpperCase(),
+      };
+    } catch {
+      return null;
+    } finally {
+      await sleep(21e3);
+    }
+  });
+  filaCnpjWs = vez.catch(() => null);
+  return vez;
 }
 
 async function main() {
@@ -334,10 +396,20 @@ async function main() {
   const fila = [...achadas.entries()]
     .filter(([k]) => !cache.compras[k] || (cache.compras[k].parcial && cache.compras[k].lidoEm < hoje))
     .sort((a, b) => prioridade(a[1].municipio) - prioridade(b[1].municipio) || b[1].data.localeCompare(a[1].data));
+  /** quantos CNPJs ainda sem cidade (para em 51: só importa se são muitos) */
+  const cnpjsSemCidade = () => {
+    let n = 0;
+    for (const c of Object.values(cache.compras))
+      for (const it of c.itens || []) for (const e of it.c) if (!cache.cnpj[e[0]] || (cache.cnpj[e[0]].x && !cache.cnpj[e[0]].em)) if (++n > 50) return n;
+    return n;
+  };
   let lidas = 0;
   let falhas = 0;
   for (const [k, c] of fila) {
-    if (restam() < 50e3) break;
+    // com CNPJs ainda sem cidade, 30% do tempo fica para consultá-los (50% se forem muitos); senão uma fila grande de
+    // atas não deixa
+    const semCidade = cnpjsSemCidade();
+    if (restam() < Math.max(50e3, semCidade > 50 ? TEMPO_MS * 0.5 : semCidade ? TEMPO_MS * 0.3 : 0)) break;
     try {
       const r = await lerCompra(c, hoje);
       if (r) {
@@ -354,19 +426,24 @@ async function main() {
 
   // 2) cidade de cada CNPJ (cadastro público da Receita)
   const faltam = new Set();
-  for (const c of Object.values(cache.compras)) for (const it of c.itens || []) for (const e of it.c) if (!cache.cnpj[e[0]]) faltam.add(e[0]);
+  // "não encontrado" vale por 7 dias (as marcações antigas, sem data, são consultadas de novo)
+  const semCadastro = (cnpj) => {
+    const c = cache.cnpj[cnpj];
+    return !c || (c.x && (!c.em || (Date.parse(hoje) - Date.parse(c.em)) / 86400e3 >= 7));
+  };
+  for (const c of Object.values(cache.compras)) for (const it of c.itens || []) for (const e of it.c) if (semCadastro(e[0])) faltam.add(e[0]);
   let consultados = 0;
   const pendentes = [...faltam];
   await Promise.all(
-    [0, 1, 2].map(async () => {
+    [0, 1].map(async () => {
       while (pendentes.length && restam() > 20e3) {
         const cnpj = pendentes.pop();
-        const r = await cadastro(cnpj);
+        const r = await cadastro(cnpj, hoje);
         if (r) {
           cache.cnpj[cnpj] = r;
           consultados++;
         }
-        await sleep(250);
+        await sleep(350);
       }
     }),
   );
