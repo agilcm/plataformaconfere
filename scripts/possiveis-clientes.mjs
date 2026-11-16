@@ -168,71 +168,68 @@ async function descobrirPelaBusca(desde, hoje, cache) {
  * Caminho 2 (quando a busca falha): a consulta oficial do PNCP, município por município, começando pelos mais
  * próximos das cidades escolhidas. Cada execução olha alguns municípios e anota até onde foi (cache.varridoEm).
  */
-async function descobrirPelaConsulta(desde, hoje, cache, maxMunicipios = 45) {
-  const achadas = new Map();
-  // com muita ata já descoberta e ainda não lida, a maior parte do tempo vai para a leitura
-  const naFila = Object.keys(cache.achadas || {}).filter((k) => !cache.compras[k]).length;
-  const reserva = naFila > 30 ? 0.75 : 0.45;
+/** Municípios da Zona da Mata em ordem de prioridade (perto das cidades escolhidas primeiro; depois os há mais tempo sem consulta) */
+function municipiosEmOrdem(cache) {
   cache.varridoEm ??= {};
-  const municipios = Object.values(MICRORREGIOES)
+  return Object.values(MICRORREGIOES)
     .flat()
     .filter((m) => IBGE.has(chaveMun(m)))
     .sort((a, b) => prioridade(a) - prioridade(b) || String(cache.varridoEm[a] || '').localeCompare(String(cache.varridoEm[b] || '')));
-  const ymd = (iso) => iso.replace(/-/g, '');
-  let feitos = 0;
-  for (const mun of municipios) {
-    if (feitos >= maxMunicipios || restam() < TEMPO_MS * reserva) break;
-    if (cache.varridoEm[mun] === hoje) continue;
-    // primeira vez: o período inteiro (em duas metades); depois, só os últimos 60 dias
-    const ini = cache.varridoEm[mun] ? new Date(Date.parse(hoje) - 60 * 86400e3).toISOString().slice(0, 10) : desde;
-    const meio = new Date((Date.parse(ini) + Date.parse(hoje)) / 2).toISOString().slice(0, 10);
-    const janelas = cache.varridoEm[mun]
-      ? [[ini, hoje]]
-      : [
-          [ini, meio],
-          [meio, hoje],
-        ];
-    let ok = true;
-    for (const mod of [6, 8, 4]) {
-      for (const [de, ate] of janelas) {
-        for (let pagina = 1; pagina <= 20; pagina++) {
-          let d;
-          try {
-            d = await fetchJson(
-              `https://pncp.gov.br/api/consulta/v1/contratacoes/publicacao?dataInicial=${ymd(de)}&dataFinal=${ymd(ate)}&codigoModalidadeContratacao=${mod}&uf=MG&codigoMunicipioIbge=${IBGE.get(chaveMun(mun))}&pagina=${pagina}&tamanhoPagina=50`,
-              { retries: 2, timeout: 30000 },
-            );
-          } catch {
-            ok = false;
-            break;
-          }
-          for (const c of d?.data || []) {
-            if (fonteDe({ usuario_nome: c.usuarioNome, link_sistema_origem: c.linkSistemaOrigem }) !== PORTAL) continue;
-            const cnpj = c.orgaoEntidade?.cnpj;
-            if (!cnpj) continue;
-            achadas.set(`${cnpj}/${c.anoCompra}/${c.sequencialCompra}`, {
-              cnpj,
-              ano: String(c.anoCompra),
-              seq: String(c.sequencialCompra),
-              orgao: fixText(c.orgaoEntidade?.razaoSocial),
-              municipio: fixText(c.unidadeOrgao?.municipioNome || mun),
-              uf: c.unidadeOrgao?.ufSigla || 'MG',
-              titulo: /^\d+$/.test(String(c.numeroCompra || ''))
-                ? `Edital nº ${c.numeroCompra}/${c.anoCompra}`
-                : fixText(c.numeroCompra) || `Compra ${c.sequencialCompra}/${c.anoCompra}`,
-              objeto: fixText(c.objetoCompra),
-              modalidade: c.modalidadeNome,
-              data: String(c.dataPublicacaoPncp || '').slice(0, 10),
-            });
-          }
-          if (!d || pagina >= (d.totalPaginas || 1)) break;
+}
+
+const ymd = (iso) => iso.replace(/-/g, '');
+/**
+ * Caminho 2 (quando a busca falha): a consulta oficial do PNCP de um município. Na primeira vez, o período inteiro
+ * (em duas metades); depois, só os últimos 60 dias. Anota a data em cache.varridoEm quando vai até o fim.
+ */
+async function varrerMunicipio(mun, desde, hoje, cache, achadas) {
+  // primeira vez: o período inteiro (em duas metades); depois, só os últimos 60 dias
+  const ini = cache.varridoEm[mun] ? new Date(Date.parse(hoje) - 60 * 86400e3).toISOString().slice(0, 10) : desde;
+  const meio = new Date((Date.parse(ini) + Date.parse(hoje)) / 2).toISOString().slice(0, 10);
+  const janelas = cache.varridoEm[mun]
+    ? [[ini, hoje]]
+    : [
+        [ini, meio],
+        [meio, hoje],
+      ];
+  let ok = true;
+  for (const mod of [6, 8, 4]) {
+    for (const [de, ate] of janelas) {
+      for (let pagina = 1; pagina <= 60; pagina++) {
+        let d;
+        try {
+          d = await fetchJson(
+            `https://pncp.gov.br/api/consulta/v1/contratacoes/publicacao?dataInicial=${ymd(de)}&dataFinal=${ymd(ate)}&codigoModalidadeContratacao=${mod}&uf=MG&codigoMunicipioIbge=${IBGE.get(chaveMun(mun))}&pagina=${pagina}&tamanhoPagina=50`,
+            { retries: 2, timeout: 30000 },
+          );
+        } catch {
+          ok = false;
+          break;
         }
+        for (const c of d?.data || []) {
+          if (fonteDe({ usuario_nome: c.usuarioNome, link_sistema_origem: c.linkSistemaOrigem }) !== PORTAL) continue;
+          const cnpj = c.orgaoEntidade?.cnpj;
+          if (!cnpj) continue;
+          achadas.set(`${cnpj}/${c.anoCompra}/${c.sequencialCompra}`, {
+            cnpj,
+            ano: String(c.anoCompra),
+            seq: String(c.sequencialCompra),
+            orgao: fixText(c.orgaoEntidade?.razaoSocial),
+            municipio: fixText(c.unidadeOrgao?.municipioNome || mun),
+            uf: c.unidadeOrgao?.ufSigla || 'MG',
+            titulo: /^\d+$/.test(String(c.numeroCompra || ''))
+              ? `Edital nº ${c.numeroCompra}/${c.anoCompra}`
+              : fixText(c.numeroCompra) || `Compra ${c.sequencialCompra}/${c.anoCompra}`,
+            objeto: fixText(c.objetoCompra),
+            modalidade: c.modalidadeNome,
+            data: String(c.dataPublicacaoPncp || '').slice(0, 10),
+          });
+        }
+        if (!d || pagina >= (d.totalPaginas || 1)) break;
       }
     }
-    if (ok) cache.varridoEm[mun] = hoje;
-    feitos++;
   }
-  return achadas;
+  if (ok) cache.varridoEm[mun] = hoje;
 }
 
 /** Lê a ata de uma licitação: { itens } com a colocação de cada empresa, { semAta } ou null (tentar depois) */
@@ -457,24 +454,14 @@ async function main() {
     return;
   }
 
-  // licitações do portal: o que já se conhecia + o que a busca (ou a consulta por município) trouxe agora
+  // licitações do portal: o que já se conhecia + o que a busca do PNCP trouxer agora
   cache.achadas ??= {};
-  const busca = await descobrirPelaBusca(desde, hoje, cache);
-  let novas = busca.achadas;
-  if (busca.falhou) {
-    console.log(`A busca do PNCP falhou (${novas.size} achadas antes da falha): usando a consulta por município.`);
-    novas = new Map([...novas, ...(await descobrirPelaConsulta(desde, hoje, cache, Math.max(45, Math.floor(TEMPO_MS / 20e3))))]);
-  }
-  for (const [k, c] of novas) cache.achadas[k] = c;
   for (const k of Object.keys(cache.achadas)) if (cache.achadas[k].data < desde) delete cache.achadas[k];
-  const achadas = new Map(Object.entries(cache.achadas));
-  console.log(`${achadas.size} licitações do ${PORTAL} na Zona da Mata desde ${desde} (${novas.size} vistas agora).`);
-  if (!achadas.size && !Object.keys(cache.compras).length) throw new Error('O PNCP não trouxe nenhuma licitação');
+  const busca = await descobrirPelaBusca(desde, hoje, cache);
+  for (const [k, c] of busca.achadas) cache.achadas[k] = c;
+  let vistasAgora = busca.achadas.size;
+  if (busca.falhou) console.log(`A busca do PNCP falhou (${busca.achadas.size} achadas antes da falha): usando a consulta por município.`);
 
-  // 1) atas ainda não lidas: primeiro as dos municípios mais próximos, depois das mais novas para as mais antigas
-  const fila = [...achadas.entries()]
-    .filter(([k]) => !cache.compras[k] || (cache.compras[k].parcial && cache.compras[k].lidoEm < hoje))
-    .sort((a, b) => prioridade(a[1].municipio) - prioridade(b[1].municipio) || b[1].data.localeCompare(a[1].data));
   /** quantos CNPJs ainda sem cidade (para em 51: só importa se são muitos) */
   const cnpjsSemCidade = () => {
     let n = 0;
@@ -482,24 +469,56 @@ async function main() {
       for (const it of c.itens || []) for (const e of it.c) if (!cache.cnpj[e[0]] || (cache.cnpj[e[0]].x && !cache.cnpj[e[0]].em)) if (++n > 50) return n;
     return n;
   };
+  // tempo guardado para consultar a cidade dos CNPJs no fim (mais, se forem muitos)
+  const reserva = () => {
+    const n = cnpjsSemCidade();
+    return Math.max(50e3, n > 50 ? TEMPO_MS * 0.25 : n ? TEMPO_MS * 0.1 : 0);
+  };
+  const filaDeAtas = () =>
+    Object.entries(cache.achadas)
+      .filter(([k]) => !cache.compras[k] || (cache.compras[k].parcial && cache.compras[k].lidoEm < hoje))
+      .sort((a, b) => prioridade(a[1].municipio) - prioridade(b[1].municipio) || b[1].data.localeCompare(a[1].data));
+  const tentadas = new Set(); // atas sem novidade nesta execução (ainda não publicadas): não tenta de novo
   let lidas = 0;
   let falhas = 0;
-  for (const [k, c] of fila) {
-    // com CNPJs ainda sem cidade, 30% do tempo fica para consultá-los (50% se forem muitos); senão uma fila grande de
-    // atas não deixa
-    const semCidade = cnpjsSemCidade();
-    if (restam() < Math.max(50e3, semCidade > 50 ? TEMPO_MS * 0.5 : semCidade ? TEMPO_MS * 0.3 : 0)) break;
-    try {
-      const r = await lerCompra(c, hoje);
-      if (r) {
-        cache.compras[k] = { ...c, ...r, lidoEm: hoje };
-        lidas++;
+  // 1) ler as atas da fila; 2) procurar mais licitações em alguns municípios (3 de cada vez); repete até acabar o tempo
+  // ou não haver mais o que fazer hoje
+  for (;;) {
+    for (const [k, c] of filaDeAtas()) {
+      if (restam() < reserva()) break;
+      if (tentadas.has(k)) continue;
+      tentadas.add(k);
+      try {
+        const r = await lerCompra(c, hoje);
+        if (r) {
+          cache.compras[k] = { ...c, ...r, lidoEm: hoje };
+          lidas++;
+        }
+      } catch (e) {
+        falhas++;
+        if (falhas <= 5) console.log(`  ${k}: ${e.message}`);
       }
-    } catch (e) {
-      falhas++;
-      if (falhas <= 5) console.log(`  ${k}: ${e.message}`);
     }
+    if (!busca.falhou || restam() < reserva()) break;
+    const lote = municipiosEmOrdem(cache)
+      .filter((m) => cache.varridoEm[m] !== hoje)
+      .slice(0, 9);
+    if (!lote.length) break;
+    const novas = new Map();
+    const fila = [...lote];
+    await Promise.all(
+      [0, 1, 2].map(async () => {
+        while (fila.length && restam() > reserva() + 60e3) await varrerMunicipio(fila.shift(), desde, hoje, cache, novas);
+      }),
+    );
+    for (const [k, c] of novas) if (c.data >= desde) cache.achadas[k] = c;
+    vistasAgora += novas.size;
+    if (fila.length) break; // o tempo acabou no meio do lote
   }
+  const achadas = new Map(Object.entries(cache.achadas));
+  const naFila = filaDeAtas().length;
+  console.log(`${achadas.size} licitações do ${PORTAL} na Zona da Mata desde ${desde} (${vistasAgora} vistas agora).`);
+  if (!achadas.size && !Object.keys(cache.compras).length) throw new Error('O PNCP não trouxe nenhuma licitação');
   // o que saiu do período sai do cache
   for (const k of Object.keys(cache.compras)) if (cache.compras[k].data < desde) delete cache.compras[k];
 
@@ -533,13 +552,13 @@ async function main() {
     desde,
     ate: hoje,
     licitacoesNoPeriodo: achadas.size || Object.keys(cache.compras).length,
-    aindaNaFila: Math.max(0, fila.length - lidas),
+    aindaNaFila: naFila,
     cnpjsSemCidade: pendentes.length,
   });
   const comAta = Object.values(cache.compras).filter((c) => c.itens);
   const alvo = new Set(CIDADES_CLIENTES.map((c) => `${normCidade(c.nome)}|${c.uf}`));
   console.log(
-    `Lidas agora: ${lidas} atas (${falhas} falhas); no total ${comAta.length} com ata, ${fila.length - lidas} na fila. CNPJs consultados agora: ${consultados}; sem cidade ainda: ${pendentes.length}. ` +
+    `Lidas agora: ${lidas} atas (${falhas} falhas); no total ${comAta.length} com ata, ${naFila} na fila. CNPJs consultados agora: ${consultados}; sem cidade ainda: ${pendentes.length}. ` +
       `Possíveis clientes (${alvo.size} cidades): ${saida.empresas.length} empresas, ${saida.resumo.disputas} itens. ` +
       `Campeões: ${campeoes.resumo.empresas} empresas, ${campeoes.resumo.itens} itens. ${Math.round((Date.now() - t0) / 1000)} s.`,
   );
