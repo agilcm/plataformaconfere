@@ -60,7 +60,7 @@ export const MANUAL_OPERADOR = [
       'A cada 3 horas o sistema lê a pasta inteira: identifica cada documento, a competência escrita nele, valores, datas e pessoas. PDFs digitalizados e fotos passam por OCR.',
       'Com isso monta, para cada empresa e cada mês, o que foi entregue, o que falta, as divergências, os prazos legais, as guias pagas e o semáforo do pagamento.',
       'O fiscal confere o que precisa de olho humano, marca o que for necessário e emite o parecer, a notificação e os relatórios.',
-      'As marcações do fiscal (conferido, recusado, não se aplica) e o cadastro ficam guardados no navegador de quem usa. Use "Baixar cópia" e "Importar cópia" para levar a outro computador.',
+      'As marcações do fiscal (conferido, recusado, não se aplica) e o cadastro ficam guardados no navegador de quem usa. Com a planilha do órgão conectada ("Órgão e contratos" → "Conectar a planilha"), ficam também na planilha e todos os fiscais veem as mesmas marcações, em qualquer computador. Sem a planilha, use "Baixar cópia" e "Importar cópia" para levar a outro computador.',
     ],
   },
   {
@@ -150,7 +150,7 @@ export const MANUAL_OPERADOR = [
       'Recusado: documento errado, ilegível, de outro mês ou sem assinatura. Escreva o motivo: ele vai na notificação e na mensagem de cobrança.',
       'Não se aplica neste mês: a exigência não vale só neste mês (com justificativa da empresa).',
       'Não se aplica nesta contratada (todos os meses): a exigência nunca vale para esta empresa (ex.: contrato sem vale-transporte). Para voltar a cobrar, escolha outra opção no seletor.',
-      'Toda marcação guarda a data ("marcado em") e fica neste navegador. Para passar a outro fiscal, use "Baixar cópia" e "Importar cópia" em "Órgão e contratos".',
+      'Toda marcação guarda a data ("marcado em"). Com a planilha do órgão conectada, ela chega sozinha aos outros fiscais; sem a planilha, fica neste navegador e passa a outro fiscal por "Baixar cópia" e "Importar cópia" em "Órgão e contratos".',
     ],
   },
   {
@@ -265,7 +265,10 @@ export const MANUAL_OPERADOR = [
         ['Declaração em divergência', 'Mês diferente da pasta ou "houve / não houve" sem escolher: peça a declaração corrigida.'],
         ['Salários com pagamento incompleto', 'Peça os comprovantes que faltam: a soma precisa cobrir o líquido da folha.'],
         ['Leitura desatualizada', 'Para ler na hora: GitHub → Actions → "Publicar site no GitHub Pages" → Run workflow (responsável técnico).'],
-        ['Minhas marcações sumiram', 'Estão em outro navegador ou computador: use "Importar cópia" com o arquivo de "Baixar cópia".'],
+        [
+          'Minhas marcações sumiram',
+          'Estão em outro navegador ou computador: conecte a planilha do órgão em "Órgão e contratos" (as marcações voltam sozinhas) ou use "Importar cópia" com o arquivo de "Baixar cópia".',
+        ],
         ['Parecer ou notificação sem o órgão ou o fiscal', 'Preencha o órgão contratante e o fiscal do contrato em "Órgão e contratos".'],
       ],
     },

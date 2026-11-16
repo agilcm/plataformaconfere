@@ -5,7 +5,7 @@
 import { CONSULTING_SERVICES, OPERATIONAL_SERVICES } from './servicesData.ts';
 import { FAQ_ITEMS } from './faq.ts';
 
-/** Links internos: 'servico:<slug>', 'rota:licitacoes' ou 'home:#ancora' (resolvidos em ServicoPage) */
+/** Links internos: 'servico:<slug>', 'rota:licitacoes', 'rota:ondeAtuamos' ou 'home:#ancora' (resolvidos em ServicoPage) */
 export type Link = string;
 export interface Item {
   titulo: string;
@@ -241,6 +241,12 @@ export const PAGINAS_SERVICO: PaginaServico[] = [
       },
       { tipo: 'texto', titulo: 'Como entregamos', paragrafos: [suprimentos.fullDescription] },
       {
+        tipo: 'destaque',
+        titulo: 'Onde já fornecemos',
+        texto: 'Veja as prefeituras, câmaras municipais e autarquias que já compraram da Ágil CM por pregão ou dispensa e o que foi fornecido a cada uma.',
+        link: { rotulo: 'Ver os órgãos atendidos', href: 'rota:ondeAtuamos' },
+      },
+      {
         tipo: 'lista',
         titulo: 'Para quem é',
         itens: ['Secretarias de Educação e de Saúde', 'Almoxarifados públicos e privados', 'Centros de assistência social', 'Bancos e redes corporativas'],
@@ -254,7 +260,7 @@ export const PAGINAS_SERVICO: PaginaServico[] = [
     ],
     faq: [faq('A Ágil CM atende empresas e prefeituras'), faq('Em quais cidades')],
     relacionados: ['terceirizacao', 'limpeza-urbana', 'assessoria-licitacoes'],
-    atualizado: '2026-11-12',
+    atualizado: '2026-11-16',
   },
   {
     slug: 'prefeituras',
@@ -287,12 +293,13 @@ export const PAGINAS_SERVICO: PaginaServico[] = [
           { texto: 'Limpeza e portaria de prédios públicos', href: 'servico:terceirizacao' },
           { texto: 'Capina, roçada e jardinagem urbana', href: 'servico:limpeza-urbana' },
           { texto: 'Merenda, material escolar e suprimentos', href: 'servico:suprimentos' },
+          { texto: 'Órgãos públicos que já compraram da Ágil CM', href: 'rota:ondeAtuamos' },
         ],
       },
     ],
     faq: [faq('Como funciona o estudo do GILRAT'), faq('O PEM acabou'), faq('A Ágil CM atende empresas e prefeituras')],
     relacionados: ['gilrat', 'reparcelamento-previdenciario', 'limpeza-urbana'],
-    atualizado: '2026-11-12',
+    atualizado: '2026-11-16',
   },
   {
     slug: 'gilrat',
@@ -458,6 +465,7 @@ export const PAGINAS_SERVICO: PaginaServico[] = [
         tipo: 'destaque',
         titulo: 'Por que com a Ágil CM?',
         texto: 'Nós também vendemos para o poder público. Conhecemos na prática os editais, os portais e o que derruba uma proposta.',
+        link: { rotulo: 'Ver onde a Ágil CM já venceu', href: 'rota:ondeAtuamos' },
       },
       {
         tipo: 'lista',
@@ -489,7 +497,7 @@ export const PAGINAS_SERVICO: PaginaServico[] = [
     ],
     faq: [faq('Nunca vendi para prefeitura'), faq('A Ágil CM atende empresas e prefeituras'), faq('Em quais cidades')],
     relacionados: ['folha-de-pagamento', 'recuperacao-tributaria', 'suprimentos'],
-    atualizado: '2026-11-12',
+    atualizado: '2026-11-16',
   },
 ];
 

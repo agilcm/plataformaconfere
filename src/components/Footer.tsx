@@ -41,6 +41,11 @@ export default function Footer({ page = 'home' }: { page?: 'home' | 'licitacoes'
                   Editais abertos em MG
                 </a>
               </li>
+              <li>
+                <a href={ROUTES.ondeAtuamos} className="hover:text-white">
+                  Onde já atuamos
+                </a>
+              </li>
               {NAV_LINKS.map((l) => (
                 <li key={l.href}>
                   <a href={base + l.href} className="hover:text-white">

@@ -1,12 +1,14 @@
 // Pré-renderiza as páginas no build: o HTML completo vai para dist/,
 // assim buscadores e redes sociais leem o conteúdo sem executar JavaScript.
-// Também grava as páginas de serviço (/<slug>/index.html), o sitemap.xml e o llms.txt.
+// Também grava as páginas de serviço (/<slug>/index.html), a página Onde já atuamos, o sitemap.xml e o llms.txt.
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const dist = path.resolve('dist');
-const { render, faqJsonLd, paginasServico, headServico, sitemapXml, llmsTxt } = await import(pathToFileURL(path.resolve('dist-ssr/entry-server.js')).href);
+const { render, faqJsonLd, paginasServico, headServico, headOnde, sitemapXml, llmsTxt } = await import(
+  pathToFileURL(path.resolve('dist-ssr/entry-server.js')).href
+);
 
 for (const [page, file] of [
   ['home', 'index.html'],
@@ -31,6 +33,17 @@ for (const { slug } of paginasServico()) {
   console.log(`✓ ${slug}/index.html pré-renderizado`);
 }
 fs.rmSync(path.join(dist, 'servico'), { recursive: true, force: true });
+
+// "Onde já atuamos": órgãos públicos atendidos (src/data/ondeAtuamos.json, gerado por scripts/onde-atuamos.mjs)
+{
+  const alvo = path.join(dist, 'onde-atuamos/index.html');
+  const MARCA = /<!--head-onde-->[\s\S]*?<!--\/head-onde-->/;
+  let html = fs.readFileSync(alvo, 'utf8');
+  if (!MARCA.test(html) || !html.includes('<!--app-html-->')) throw new Error('onde-atuamos/index.html sem as marcações do modelo');
+  html = html.replace(MARCA, () => headOnde()).replace('<!--app-html-->', () => render('onde'));
+  fs.writeFileSync(alvo, html);
+  console.log('✓ onde-atuamos/index.html pré-renderizado');
+}
 
 fs.writeFileSync(path.join(dist, 'sitemap.xml'), sitemapXml(new Date().toISOString().slice(0, 10)));
 fs.writeFileSync(path.join(dist, 'llms.txt'), llmsTxt());

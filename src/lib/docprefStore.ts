@@ -1,6 +1,11 @@
-// DocPref: prestadoras e conferências guardadas neste navegador (com cópia de segurança em arquivo).
-// A leitura automática das pastas vem de docpref/leitura.json (GitHub Actions); aqui ficam só as marcações da equipe.
+// DocPref: o órgão, as contratadas e as conferências do fiscal. Ficam neste navegador e, com a planilha do órgão
+// conectada (scripts/apps-script/docpref.gs), numa planilha Google compartilhada: todos os fiscais veem as mesmas
+// marcações, em qualquer computador. A leitura automática das pastas vem de docpref/leitura.json (GitHub Actions).
 import { useSyncExternalStore } from 'react';
+import { ANTIGO, carimbar, limparRemovidos, mesclarDocPref, paraRegistros, resumoRegistro } from './docprefSinc.js';
+
+/** App da Web da planilha do órgão (https://script.google.com/macros/s/…/exec). Preenchido aqui, cada fiscal só digita a senha. */
+export const DOCPREF_URL = '';
 
 export interface Prestadora {
   id: string;
@@ -44,6 +49,8 @@ export interface DadosDocPref {
 
 const CHAVE = 'agilcm:docpref';
 const ANTIGA = 'agilcm:bancodoc'; // nome anterior do sistema
+const CHAVE_CARIMBOS = 'agilcm:docpref:carimbos'; // data da última mudança de cada registro e as remoções
+const CHAVE_PLANILHA = 'agilcm:docpref:planilha'; // endereço, senha e nome de quem usa
 const EVENTO = 'agilcm:docpref';
 export const CONFIG_PADRAO: ConfigDocPref = { contratante: '', cnpj: '', unidade: '', gestor: '', cidade: '', prazoRegularizacao: 5 };
 const VAZIO: DadosDocPref = { prestadoras: [], conferencias: {}, config: CONFIG_PADRAO, ajustes: {} };
@@ -63,14 +70,36 @@ function ler(): DadosDocPref {
   return cache;
 }
 
-function gravar(novo: DadosDocPref) {
-  cache = novo;
+function lerJson<T>(chave: string, padrao: T): T {
   try {
-    localStorage.setItem(CHAVE, JSON.stringify(novo));
+    const v = JSON.parse(localStorage.getItem(chave) || 'null');
+    return v && typeof v === 'object' ? v : padrao;
+  } catch {
+    return padrao;
+  }
+}
+function gravarJson(chave: string, v: unknown) {
+  try {
+    localStorage.setItem(chave, JSON.stringify(v));
   } catch {
     /* sem armazenamento: fica só enquanto a página estiver aberta */
   }
+}
+type Carimbos = { carimbos: Record<string, string>; removidos: Record<string, string> };
+const lerCarimbos = () => lerJson<Carimbos>(CHAVE_CARIMBOS, { carimbos: {}, removidos: {} });
+
+/** Grava os dados; `daPlanilha` = veio da sincronização (as datas já vêm prontas e nada é reenviado) */
+function gravar(novo: DadosDocPref, daPlanilha?: Carimbos) {
+  const antes = ler();
+  cache = novo;
+  gravarJson(CHAVE, novo);
+  if (daPlanilha) gravarJson(CHAVE_CARIMBOS, { carimbos: daPlanilha.carimbos, removidos: limparRemovidos(daPlanilha.removidos) });
+  else {
+    const c = lerCarimbos();
+    gravarJson(CHAVE_CARIMBOS, carimbar(antes, novo, c.carimbos, c.removidos));
+  }
   window.dispatchEvent(new Event(EVENTO));
+  if (!daPlanilha) agendarSincronizacao();
 }
 
 function assinar(aviso: () => void) {
@@ -82,6 +111,7 @@ function assinar(aviso: () => void) {
   };
   window.addEventListener(EVENTO, aviso);
   window.addEventListener('storage', deOutraAba);
+  iniciarSincronizacao();
   return () => {
     window.removeEventListener(EVENTO, aviso);
     window.removeEventListener('storage', deOutraAba);
@@ -159,4 +189,153 @@ export function importarDocPref(texto: string) {
     ajustes: { ...d.ajustes, ...(v.ajustes || {}) },
   });
   return v.prestadoras.length as number;
+}
+
+// ---------------------------------------------------------------- planilha do órgão (todos os fiscais veem o mesmo)
+
+export interface PlanilhaDocPref {
+  url: string;
+  senha: string;
+  nome: string;
+}
+export interface SincDocPref {
+  estado: 'desligada' | 'sincronizando' | 'ok' | 'erro';
+  em?: string;
+  erro?: string;
+}
+
+export const planilhaDocPref = (): PlanilhaDocPref | null => {
+  const e = lerJson<PlanilhaDocPref | null>(CHAVE_PLANILHA, null);
+  const url = e?.url || DOCPREF_URL;
+  return e?.senha && url ? { ...e, url } : null;
+};
+
+let sinc: SincDocPref = { estado: 'desligada' };
+const ouvintes = new Set<() => void>();
+function mudarSinc(x: SincDocPref) {
+  sinc = x;
+  ouvintes.forEach((f) => f());
+}
+export function useSincDocPref(): SincDocPref {
+  return useSyncExternalStore(
+    (f) => {
+      ouvintes.add(f);
+      return () => ouvintes.delete(f);
+    },
+    () => sinc,
+    () => sinc,
+  );
+}
+
+type RegistroPlanilha = { id: string; tipo: string; dados: any; atualizadoEm: string; removido?: boolean; por?: string; resumo?: string };
+
+/** Nome legível de cada contratada (para a coluna "Resumo" da planilha) */
+function nomes(d: DadosDocPref) {
+  const out: Record<string, string> = {};
+  for (const p of d.prestadoras) out[p.id] = p.razao;
+  for (const k of [...Object.keys(d.conferencias).map((x) => x.split('|')[0]), ...Object.keys(d.ajustes)])
+    if (!out[k] && k.startsWith('drive:')) out[k] = `pasta ${k.slice(6)}`;
+  return out;
+}
+
+/** Chamada ao App da Web: grava os registros (pode ser nenhum) e devolve todos os da planilha */
+async function chamar(e: PlanilhaDocPref, registros: RegistroPlanilha[]): Promise<Record<string, RegistroPlanilha>> {
+  // corpo em texto puro: o navegador não precisa pedir licença antes (o Apps Script não responde a essa pergunta)
+  const r = await fetch(e.url, { method: 'POST', body: JSON.stringify({ senha: e.senha, registros }), redirect: 'follow' });
+  let j: any;
+  try {
+    j = await r.json();
+  } catch {
+    throw new Error('A planilha do órgão não respondeu como esperado. Confira o endereço do App da Web.');
+  }
+  if (!j?.ok) throw new Error(j?.erro === 'senha' ? 'Senha da planilha errada.' : 'A planilha do órgão recusou o pedido.');
+  return j.registros || {};
+}
+
+let rodando: Promise<void> | null = null;
+let deNovo = false;
+/** Sincroniza agora com a planilha do órgão (se estiver conectada) */
+export function sincronizarDocPref(): Promise<void> {
+  if (rodando) {
+    deNovo = true;
+    return rodando;
+  }
+  const e = planilhaDocPref();
+  if (!e) {
+    mudarSinc({ estado: 'desligada' });
+    return Promise.resolve();
+  }
+  rodando = (async () => {
+    mudarSinc({ ...sinc, estado: 'sincronizando' });
+    try {
+      let servidor = await chamar(e, []);
+      const c = lerCarimbos();
+      let m = mesclarDocPref({ dados: ler(), ...c }, servidor, CONFIG_PADRAO);
+      if (m.enviar.length) {
+        const ns = nomes(m.dados);
+        const regs = m.enviar.map((r) => ({ ...r, por: e.nome, resumo: resumoRegistro(r.id, r.dados, ns) }));
+        servidor = await chamar(e, regs);
+        m = mesclarDocPref({ dados: m.dados, carimbos: m.carimbos, removidos: m.removidos }, servidor, CONFIG_PADRAO);
+      }
+      gravar(m.dados, { carimbos: m.carimbos, removidos: m.removidos });
+      mudarSinc({ estado: 'ok', em: new Date().toISOString() });
+    } catch (err) {
+      mudarSinc({ estado: 'erro', em: sinc.em, erro: (err as Error).message || 'Sem conexão com a planilha do órgão.' });
+    }
+  })().finally(() => {
+    rodando = null;
+    if (deNovo) {
+      deNovo = false;
+      sincronizarDocPref();
+    }
+  });
+  return rodando;
+}
+
+let espera: ReturnType<typeof setTimeout> | null = null;
+function agendarSincronizacao() {
+  if (!planilhaDocPref()) return;
+  if (espera) clearTimeout(espera);
+  espera = setTimeout(() => sincronizarDocPref(), 800);
+}
+
+let iniciada = false;
+function iniciarSincronizacao() {
+  if (iniciada || typeof window === 'undefined') return;
+  iniciada = true;
+  if (!planilhaDocPref()) return;
+  sincronizarDocPref();
+  const talvez = () => {
+    if (document.visibilityState === 'visible' && Date.now() - Date.parse(sinc.em || '0') > 20_000) sincronizarDocPref();
+  };
+  window.addEventListener('focus', talvez);
+  document.addEventListener('visibilitychange', talvez);
+  setInterval(talvez, 60_000);
+}
+
+/** Liga este navegador à planilha do órgão (testa a senha antes) e envia o que já estava marcado aqui */
+export async function conectarPlanilha(dados: PlanilhaDocPref): Promise<void> {
+  const e = { url: (dados.url || DOCPREF_URL).trim(), senha: dados.senha, nome: dados.nome.trim() };
+  if (!/^https:\/\/script\.google(usercontent)?\.com\//.test(e.url))
+    throw new Error('O endereço precisa ser o do App da Web do Apps Script (https://script.google.com/macros/s/…/exec).');
+  await chamar(e, []);
+  gravarJson(CHAVE_PLANILHA, { ...e, url: e.url === DOCPREF_URL ? '' : e.url });
+  // o que este navegador já tinha e nunca foi carimbado entra com data antiga: perde para o que já está na planilha
+  const c = lerCarimbos();
+  const carimbos = { ...c.carimbos };
+  for (const id of Object.keys(paraRegistros(ler()))) carimbos[id] ||= ANTIGO;
+  gravarJson(CHAVE_CARIMBOS, { ...c, carimbos });
+  iniciada = false;
+  iniciarSincronizacao();
+  await sincronizarDocPref();
+}
+
+/** Desliga este navegador da planilha (os dados daqui continuam) */
+export function desconectarPlanilha() {
+  try {
+    localStorage.removeItem(CHAVE_PLANILHA);
+  } catch {
+    /* sem armazenamento */
+  }
+  mudarSinc({ estado: 'desligada' });
 }

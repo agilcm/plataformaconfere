@@ -1,0 +1,41 @@
+name: Aviso do DocPref
+
+# Toda manhã, pelo Telegram (scripts/docpref-alerta.mjs): 5 dias antes, 2 dias antes e no dia do prazo, as contratadas
+# que ainda não enviaram tudo do mês; no dia seguinte ao prazo, os meses que passaram a "Pagamento condicionado".
+# Segredos (Settings → Secrets and variables → Actions → Secrets):
+#   TELEGRAM_BOT_TOKEN e TELEGRAM_CHAT_ID                   os mesmos do alerta de editais
+#   DOCPREF_TELEGRAM_CHAT_ID                                opcional: outra conversa só para o DocPref
+#   DOCPREF_PLANILHA_URL e DOCPREF_PLANILHA_SENHA           opcionais: a planilha do órgão (cadastro e conferências)
+on:
+  schedule:
+    - cron: '20 11 * * *' # 8h20 em Brasília, depois da leitura diária do Drive
+  workflow_dispatch:
+    inputs:
+      teste:
+        description: 'Mandar uma prévia da situação de hoje no Telegram'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docpref-alerta
+  cancel-in-progress: false
+
+jobs:
+  avisar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Conferir os prazos e avisar
+        run: node scripts/docpref-alerta.mjs ${{ inputs.teste && '--teste' || '' }}
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.DOCPREF_TELEGRAM_CHAT_ID || secrets.TELEGRAM_CHAT_ID }}
+          DOCPREF_PLANILHA_URL: ${{ secrets.DOCPREF_PLANILHA_URL }}
+          DOCPREF_PLANILHA_SENHA: ${{ secrets.DOCPREF_PLANILHA_SENHA }}

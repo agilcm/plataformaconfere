@@ -2,15 +2,16 @@
 
 O site institucional ocupa a raiz. O botão **Licitações** no cabeçalho abre a consulta de editais e contratos do PNCP.
 
-| Caminho | Conteúdo |
-| --- | --- |
-| `/` | Site principal da Ágil CM |
-| `/licitacoes/` | Painel de licitações, com as abas na ordem do trabalho: Editais abertos, Ágil CNAE (`#agil-cnae`), Raio-X (`#raio-x`), Contratos (`#contratos`) e Meus editais (`#meus-editais`). `?busca=texto` abre com a busca feita em toda Minas Gerais |
-| `/terceirizacao/`, `/gilrat/`… | Uma página por serviço (9 páginas), geradas no build a partir de `src/data/paginasServico.ts` |
-| `/dados/` | Simuladores internos (sem link no site): RH e Simples, pró-labore e regime (Simples × Lucro Presumido) |
-| `/docpref/` | DocPref: fiscalização documental dos contratos de um órgão público (painel do órgão, análise mês a mês, parecer e notificação) |
-| `/privado/` | Área restrita: organiza no Google Drive os termos de homologação/adjudicação e gera relatórios |
-| `/api/*` | Funções de consulta ao PNCP, para hospedagem compatível |
+| Caminho                        | Conteúdo                                                                                                                                                                                                                                     |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/`                            | Site principal da Ágil CM                                                                                                                                                                                                                    |
+| `/licitacoes/`                 | Painel de licitações, com as abas na ordem do trabalho: Editais abertos, Ágil CNAE (`#agil-cnae`), Raio-X (`#raio-x`), Contratos (`#contratos`) e Meus editais (`#meus-editais`). `?busca=texto` abre com a busca feita em toda Minas Gerais |
+| `/terceirizacao/`, `/gilrat/`… | Uma página por serviço (9 páginas), geradas no build a partir de `src/data/paginasServico.ts`                                                                                                                                                |
+| `/onde-atuamos/`               | Onde já atuamos: órgãos públicos em que a Ágil venceu pregão ou dispensa e o tipo de material fornecido (sem valores)                                                                                                                        |
+| `/dados/`                      | Simuladores internos (sem link no site): RH e Simples, pró-labore e regime (Simples × Lucro Presumido)                                                                                                                                       |
+| `/docpref/`                    | DocPref: fiscalização documental dos contratos de um órgão público (painel do órgão, análise mês a mês, parecer e notificação)                                                                                                               |
+| `/privado/`                    | Área restrita: organiza no Google Drive os termos de homologação/adjudicação e gera relatórios                                                                                                                                               |
+| `/api/*`                       | Funções de consulta ao PNCP, para hospedagem compatível                                                                                                                                                                                      |
 
 ## Desenvolvimento
 
@@ -36,6 +37,7 @@ O build gera o site completo em `dist/`, com a página principal e Licitações 
 
 - **Endereço oficial:** `https://www.agilcm.com.br` (o endereço sem `www` redireciona para ele). Canônico, Open Graph, dados estruturados, sitemap e `robots.txt` usam sempre o `www`; o valor fica em `COMPANY_PROFILE.siteUrl`.
 - **Páginas de serviço:** cada serviço tem a sua página, com título, descrição, H1, conteúdo, perguntas frequentes e dados estruturados (`Service`, `BreadcrumbList`, `FAQPage`). Para criar ou editar uma página, mexa só em `src/data/paginasServico.ts`; o build copia o modelo `servico/index.html` para `/<slug>/index.html` (`scripts/prerender.mjs`). Os textos repetem o que a empresa já afirma na página inicial: não invente números, prazos ou certificações.
+- **Onde já atuamos** (`/onde-atuamos/`): página pública com os órgãos em que a Ágil venceu, por município, e o tipo de material fornecido. O resumo fica em `src/data/ondeAtuamos.json` e é refeito em cada publicação por `scripts/onde-atuamos.mjs`, a partir da leitura da área Privado (`privado/leitura.json`). Saem só órgão, município, ano, modalidade, objeto e tipo de material: **nunca valores, quantidades, preços ou links da pasta** (`tests/ondeAtuamos.test.mjs` confere). Os tipos de material são reconhecidos por palavras no começo da descrição de cada item (`CATEGORIAS` em `src/lib/ondeAtuamos.js`). Se a leitura falhar, vale o resumo que está no repositório.
 - **Gerados no build:** `sitemap.xml` (só as páginas públicas) e `llms.txt` (a empresa em texto simples para assistentes de IA), a partir dos mesmos dados.
 - **Áreas internas** (`/privado/`, `/dados/`, `/docpref/`, `/eleicao/`): levam `noindex` na própria página e ficam fora do sitemap. Não as liste no `robots.txt`.
 - **Fontes e logos:** as fontes ficam em `public/fonts/` (sem Google Fonts) e o site usa os logos `.webp`; os `.png` continuam para os PDFs.
@@ -67,6 +69,8 @@ Hospedagens exclusivamente estáticas não executam `/api/*`; nesse caso, as con
 - **Órgão e contratos:** dados do órgão contratante (nome, CNPJ, secretaria, gestor, município) e de cada contrato (contratada, objeto, fiscal, prazo, início). Ficam no navegador; "Baixar cópia" leva a outro computador. As contratadas lidas na pasta e ainda sem cadastro aparecem com o botão "Completar cadastro"; as conferências já feitas passam para o cadastro novo. O município do órgão vai na linha de data dos PDFs. O parecer e a notificação (assinados pelo fiscal) saem no papel do órgão, com o nome dele no cabeçalho e sem o timbre da Ágil CM, quando o nome do órgão está preenchido; a opção "Papel do parecer e da notificação" volta ao timbre da Ágil. Os relatórios de análise ficam no papel da Ágil (`timbre` em `buildPdf`, `src/lib/pdfBuild.ts`).
 - **Orientações à contratada, Manual do fiscal e Base legal e funcionamento:** a cartilha e os modelos para a contratada, o manual de quem fiscaliza e o resumo dos artigos da lei.
 - **Semáforo:** Pagamento liberado, Aguardando documentos (prazo aberto) e Pagamento condicionado (prazo encerrado com pendência; art. 121, § 3º, II, quando previsto no edital ou no contrato).
+- **Planilha do órgão (opcional):** sem ela, cadastro e conferências ficam só no navegador de cada fiscal. Com ela, ficam numa planilha Google do órgão e todos os fiscais veem as mesmas marcações. Para criar: uma planilha nova → Extensões → Apps Script → colar `scripts/apps-script/docpref.gs` → trocar a `SENHA` → Implantar como App da Web (executar como "Eu", acesso "Qualquer pessoa"). Cada fiscal cola o endereço `/exec` e a senha em Órgão e contratos → Conectar a planilha. Para o endereço já vir preenchido para todos, coloque-o em `DOCPREF_URL` (`src/lib/docprefStore.ts`); a senha nunca vai para o repositório. Cada parte dos dados é uma linha da planilha (órgão, contrato, conferência do mês, ajuste) e vale sempre a mudança mais recente (`src/lib/docprefSinc.js`, `tests/docprefSinc.test.mjs`).
+- **Aviso no Telegram** (`.github/workflows/docpref-alerta.yml`, `scripts/docpref-alerta.mjs`): toda manhã, 5 dias antes, 2 dias antes e no dia do prazo, lista as contratadas que ainda não enviaram tudo do mês; no dia seguinte ao prazo, os meses que passaram a "Pagamento condicionado". Usa os segredos `TELEGRAM_BOT_TOKEN` e `TELEGRAM_CHAT_ID` (ou `DOCPREF_TELEGRAM_CHAT_ID`, para mandar a outra conversa). Com os segredos `DOCPREF_PLANILHA_URL` e `DOCPREF_PLANILHA_SENHA`, o aviso também usa o cadastro (dia do prazo, início do contrato) e as conferências da planilha do órgão; sem eles, vale o prazo padrão (último dia do mês seguinte). Em Actions → Aviso do DocPref → Run workflow, a opção "teste" manda uma prévia da situação de hoje.
 - A leitura da pasta do Drive vem de `docpref/leitura.json`, gerado no GitHub Actions (`scripts/docpref-dados.mjs`); o ID da pasta fica só no segredo `DOCPREF_PASTA_ID`.
 
 ## Eleições em dados
@@ -84,6 +88,7 @@ O build inclui o Cloudflare Web Analytics (sem cookies) quando a variável `CF_W
 O workflow `.github/workflows/monitor-pregoes.yml` roda `scripts/monitor-pregoes.mjs` a cada 5 minutos e avisa no Telegram quando, num pregão acompanhado, a situação da compra muda (suspensa, revogada…), um item muda de situação ou ganha resultado (destacando quando a AGIL vence) ou sai documento novo (esclarecimento, impugnação, ata…). Os dados vêm da API pública do PNCP. O chat do pregoeiro não entra: no Compras.gov.br ele só existe para o fornecedor logado, e o acompanhamento público exige hCaptcha.
 
 Configuração em **Settings → Secrets and variables → Actions**:
+
 - variável `MONITOR_PREGOES`: um pregão por linha (link do PNCP, número de controle ou CNPJ/ANO/SEQ), com apelido opcional depois;
 - segredos `TELEGRAM_BOT_TOKEN` e `TELEGRAM_CHAT_ID`.
 

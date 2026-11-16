@@ -52,6 +52,10 @@ jobs:
             privado-cache.json
             public/privado/leitura.json
           key: privado-${{ github.run_id }}
+      - name: Atualizar a página "Onde já atuamos" (órgãos atendidos, sem valores)
+        # sem leitura nova, vale o resumo que já está no repositório
+        continue-on-error: true
+        run: node scripts/onde-atuamos.mjs
       - name: Recuperar a última leitura das pastas do DocPref
         uses: actions/cache/restore@v4
         with:

@@ -2,7 +2,8 @@
 // documentos trabalhistas, previdenciários e do FGTS de cada contratada (Lei nº 14.133/2021, arts. 50, 117 e 121).
 // O GitHub Actions lê a pasta compartilhada (uma pasta por contratada, uma subpasta por mês) e publica
 // docpref/leitura.json; aqui o fiscal vê o painel do órgão, analisa mês a mês e emite o parecer, os relatórios e a
-// notificação em PDF. As marcações da equipe ficam neste navegador.
+// notificação em PDF. As marcações ficam neste navegador e, com a planilha do órgão conectada, numa planilha Google
+// compartilhada por todos os fiscais (lib/docprefStore.ts e scripts/apps-script/docpref.gs).
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Header from '../components/Header.tsx';
 import { Container, Icon } from '../components/ui.tsx';
@@ -34,19 +35,26 @@ import {
   resumoOrgao,
   vencimentos,
 } from '../lib/docpref.js';
+import { avaliarUnida, unirEmpresas } from '../lib/docprefAlerta.js';
 import { MODELOS, PASTAS_DO_MES, blocosCartilha } from '../lib/docprefCartilha.js';
 import { MANUAL_OPERADOR, blocosManualOperador } from '../lib/docprefManual.js';
 import { norm } from '../lib/docprefLeitor.js';
 import {
+  DOCPREF_URL,
   atualizarConferencia,
   chaveConferencia,
+  conectarPlanilha,
+  desconectarPlanilha,
   exportarDocPref,
   importarDocPref,
   naoAplicaSempre,
+  planilhaDocPref,
   removerPrestadora,
   salvarConfig,
   salvarPrestadora,
+  sincronizarDocPref,
   useDocPref,
+  useSincDocPref,
   type ConfigDocPref,
   type Conferencia,
   type Prestadora,
@@ -125,33 +133,8 @@ const timbreDoOrgao = (c: ConfigDocPref) =>
       }
     : undefined;
 
-/** Junta as prestadoras lidas no Drive com as cadastradas aqui (pelo nome da pasta, CNPJ ou razão social) */
-function unir(leitura: Leitura | null, prestadoras: Prestadora[]): Unida[] {
-  const usadas = new Set<string>();
-  const out: Unida[] = [];
-  for (const e of leitura?.empresas || []) {
-    const p = prestadoras.find(
-      (x) =>
-        !usadas.has(x.id) &&
-        ((x.drive && norm(x.drive) === norm(e.nome)) ||
-          (digitos(x.cnpj) && digitos(x.cnpj) === digitos(e.cnpj)) ||
-          (norm(e.nome).length >= 4 && ` ${norm(x.razao)} `.includes(` ${norm(e.nome)} `))),
-    );
-    if (p) usadas.add(p.id);
-    out.push({
-      chave: p ? p.id : `drive:${e.id}`,
-      nome: p?.razao || e.nome,
-      razao: p?.razao || e.razao || '',
-      cnpj: p?.cnpj || e.cnpj || '',
-      contrato: p?.contrato || e.contrato || '',
-      prestadora: p,
-      drive: e,
-    });
-  }
-  for (const p of prestadoras.filter((x) => !usadas.has(x.id)))
-    out.push({ chave: p.id, nome: p.razao, razao: p.razao, cnpj: p.cnpj, contrato: p.contrato, prestadora: p });
-  return out;
-}
+/** Junta as prestadoras lidas no Drive com as cadastradas aqui (mesma regra do aviso no Telegram) */
+const unir = (leitura: Leitura | null, prestadoras: Prestadora[]) => unirEmpresas(leitura, prestadoras) as Unida[];
 
 export default function DocPrefPage() {
   // abre no Painel do órgão; um link com #empresa=... abre direto o contrato
@@ -181,26 +164,7 @@ export default function DocPrefPage() {
 
   const empresas = useMemo(() => unir(leitura, dados.prestadoras), [leitura, dados.prestadoras]);
   const hoje = hojeISO();
-  const avaliacoes = useMemo(
-    () =>
-      new Map(
-        empresas.map((e) => {
-          const confs: Record<string, any> = {};
-          for (const [k, v] of Object.entries(dados.conferencias)) if (k.startsWith(`${e.chave}|`)) confs[k.slice(e.chave.length + 1)] = v;
-          return [
-            e.chave,
-            avaliarEmpresa(e.drive || { meses: [] }, {
-              hoje,
-              dia: e.prestadora?.dia || 0,
-              inicio: e.prestadora?.inicio || undefined,
-              conferencias: confs,
-              naoAplica: dados.ajustes[e.chave]?.naoAplica,
-            }),
-          ];
-        }),
-      ),
-    [empresas, dados.conferencias, dados.ajustes, hoje],
-  );
+  const avaliacoes = useMemo(() => new Map(empresas.map((e) => [e.chave, avaliarUnida(e, dados, hoje)])), [empresas, dados.conferencias, dados.ajustes, hoje]);
   // o endereço guarda a prestadora e o mês abertos (#empresa=drive:pilar&mes=2026-07): dá para voltar direto ao relatório
   const doEndereco = () => new URLSearchParams(location.hash.replace(/^#/, ''));
   const [sel, setSel] = useState(() => doEndereco().get('empresa') || '');
@@ -259,6 +223,9 @@ export default function DocPrefPage() {
                   Pasta lida em {new Date(leitura.atualizadoEm).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
                 </li>
               )}
+              <li>
+                <SeloPlanilha abrir={() => setAba('cadastro')} />
+              </li>
               {!orgao && (
                 <li>
                   <button
@@ -1251,6 +1218,7 @@ function ItemConferencia({
         </select>
         {valor === 'recusado' && (
           <input
+            key={manual?.motivo || ''}
             defaultValue={manual?.motivo || ''}
             onBlur={(e) => mudar(i.id, 'recusado', e.target.value)}
             placeholder="Motivo da recusa"
@@ -1660,6 +1628,151 @@ function Farol({
   );
 }
 
+// ---------------------------------------------------------------- planilha do órgão
+
+const hora = (iso?: string) => (iso ? new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '');
+
+/** Selo do cabeçalho: se as marcações estão só neste navegador ou na planilha do órgão */
+function SeloPlanilha({ abrir }: { abrir: () => void }) {
+  const sinc = useSincDocPref();
+  const ligada = planilhaDocPref();
+  if (!ligada)
+    return (
+      <button type="button" onClick={abrir} className="px-3 py-1.5 rounded-full bg-white/10 border border-white/25 hover:bg-white/20 cursor-pointer">
+        Marcações só neste navegador · conectar a planilha do órgão
+      </button>
+    );
+  return (
+    <span
+      role="status"
+      className={`inline-block px-3 py-1.5 rounded-full border ${sinc.estado === 'erro' ? 'bg-red-500/20 border-red-300/50' : 'bg-white/10 border-white/15'}`}
+    >
+      ☁ Planilha do órgão
+      {sinc.estado === 'sincronizando' ? ' · sincronizando…' : sinc.estado === 'erro' ? ' · sem conexão' : sinc.em ? ` · em dia às ${hora(sinc.em)}` : ''}
+    </span>
+  );
+}
+
+/** Conectar o DocPref à planilha Google do órgão, para todos os fiscais verem as mesmas marcações */
+function PainelPlanilha() {
+  const sinc = useSincDocPref();
+  const ligada = planilhaDocPref();
+  const [aberto, setAberto] = useState(false);
+  const [url, setUrl] = useState('');
+  const [senha, setSenha] = useState('');
+  const [nome, setNome] = useState('');
+  const [ocupado, setOcupado] = useState(false);
+  const [erro, setErro] = useState('');
+
+  if (ligada)
+    return (
+      <div className={`${card} lg:col-span-5 !py-4 bg-emerald-50 !border-emerald-200 flex flex-wrap items-center gap-x-4 gap-y-2 text-[15px]`}>
+        <span className="font-bold text-emerald-900">☁ Planilha do órgão{ligada.nome ? ` · você é ${ligada.nome}` : ''}</span>
+        <span className={sinc.estado === 'erro' ? 'text-red-700' : 'text-emerald-800'}>
+          {sinc.estado === 'sincronizando'
+            ? 'Sincronizando…'
+            : sinc.estado === 'erro'
+              ? sinc.erro
+              : sinc.em
+                ? `Igual à planilha (conferido às ${hora(sinc.em)}). Os outros fiscais veem as mesmas marcações.`
+                : 'Conectado'}
+        </span>
+        <span className="ml-auto flex gap-3">
+          <button type="button" onClick={() => sincronizarDocPref()} className="font-bold text-emerald-900 underline cursor-pointer">
+            Sincronizar agora
+          </button>
+          <button type="button" onClick={desconectarPlanilha} className="text-sm text-slate-600 underline cursor-pointer">
+            Desconectar
+          </button>
+        </span>
+      </div>
+    );
+
+  return (
+    <div className={`${card} lg:col-span-5`}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="max-w-3xl">
+          <h2 className="text-lg font-bold text-[#0F2053]">Planilha do órgão</h2>
+          <p className="mt-1 text-[15px] text-slate-600">
+            <strong className="text-[#0F2053]">Hoje as marcações ficam só neste navegador.</strong> Se o fiscal trocar de computador ou limpar o navegador, elas
+            se perdem, e outro fiscal não vê o que foi conferido. Conecte uma planilha Google do órgão: o cadastro, os dados do órgão e as conferências passam a
+            ficar nela, iguais para todos.
+          </p>
+        </div>
+        {!aberto && (
+          <button type="button" onClick={() => setAberto(true)} className={`${botao} bg-[#0F2053] hover:bg-[#13306f] text-white`}>
+            ☁ Conectar a planilha
+          </button>
+        )}
+      </div>
+      {aberto && (
+        <form
+          className="mt-4 grid sm:grid-cols-3 gap-3"
+          onSubmit={async (ev) => {
+            ev.preventDefault();
+            setOcupado(true);
+            setErro('');
+            try {
+              await conectarPlanilha({ url, senha, nome });
+              setAberto(false);
+            } catch (err) {
+              setErro((err as Error).message || 'Não deu para conectar.');
+            } finally {
+              setOcupado(false);
+            }
+          }}
+        >
+          {!DOCPREF_URL && (
+            <label className="sm:col-span-3 block">
+              <span className="block text-sm text-slate-600 mb-1">Endereço do App da Web da planilha (https://script.google.com/macros/s/…/exec)</span>
+              <input id="docpref-planilha-url" value={url} onChange={(e) => setUrl(e.target.value)} required className={campo} />
+            </label>
+          )}
+          <label className="block">
+            <span className="block text-sm text-slate-600 mb-1">Senha da planilha</span>
+            <input
+              id="docpref-planilha-senha"
+              type="password"
+              value={senha}
+              onChange={(e) => setSenha(e.target.value)}
+              required
+              autoComplete="current-password"
+              className={campo}
+            />
+          </label>
+          <label className="block">
+            <span className="block text-sm text-slate-600 mb-1">Seu nome (aparece na planilha em “Por”)</span>
+            <input id="docpref-planilha-nome" value={nome} onChange={(e) => setNome(e.target.value)} placeholder="ex.: Maria, fiscal" className={campo} />
+          </label>
+          <div className="flex items-end gap-3">
+            <button type="submit" disabled={ocupado} className={`${botao} bg-[#0F2053] hover:bg-[#13306f] text-white`}>
+              {ocupado ? 'Conectando…' : 'Conectar'}
+            </button>
+            <button type="button" onClick={() => setAberto(false)} className="py-2.5 text-sm text-slate-600 underline cursor-pointer">
+              Cancelar
+            </button>
+          </div>
+          {erro && (
+            <p role="alert" className="sm:col-span-3 text-[15px] text-red-700">
+              {erro}
+            </p>
+          )}
+          <details className="sm:col-span-3 text-sm text-slate-600">
+            <summary className="cursor-pointer font-bold text-[#0369B3]">Como criar a planilha do órgão (uma vez só)</summary>
+            <ol className="mt-2 space-y-1 list-decimal pl-5">
+              <li>Crie uma planilha Google vazia na conta do órgão, por exemplo “DocPref - Prefeitura de …”.</li>
+              <li>Em Extensões → Apps Script, apague o que estiver lá e cole o código do arquivo docpref.gs (a equipe da Ágil CM envia).</li>
+              <li>Na linha da senha, troque “TROQUE-ESTA-SENHA” por uma senha só dos fiscais e salve.</li>
+              <li>Implantar → Nova implantação → App da Web → Executar como “Eu” → Quem pode acessar “Qualquer pessoa” → Implantar e autorize.</li>
+              <li>Copie o endereço que termina em /exec e cole acima, com a senha. Cada fiscal faz a conexão uma vez no navegador dele.</li>
+            </ol>
+          </details>
+        </form>
+      )}
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------- órgão e contratos
 
 const NOVA = { razao: '', cnpj: '', contrato: '', email: '', pasta: '', dia: 0, drive: '', inicio: '', fiscal: '', objeto: '' };
@@ -1709,6 +1822,7 @@ function Cadastro({
 
   return (
     <div className="grid lg:grid-cols-5 gap-6 items-start">
+      <PainelPlanilha />
       <div className={`${card} lg:col-span-5`}>
         <h2 className="text-lg font-bold text-[#0F2053]">Órgão contratante</h2>
         <p className="text-sm text-slate-500">
@@ -1729,6 +1843,8 @@ function Cadastro({
               <span className="block text-sm text-slate-600 mb-1">{nome}</span>
               <input
                 id={`docpref-orgao-${k}`}
+                // a chave refaz o campo quando o valor chega da planilha do órgão (outro fiscal mudou)
+                key={config[k] || ''}
                 defaultValue={config[k] || ''}
                 onBlur={(e) => salvarConfig({ [k]: e.target.value.trim() })}
                 placeholder={exemplo}
@@ -1740,6 +1856,7 @@ function Cadastro({
             <span className="block text-sm text-slate-600 mb-1">Prazo para regularizar após a notificação (dias úteis)</span>
             <input
               id="docpref-orgao-prazo"
+              key={config.prazoRegularizacao || 0}
               type="number"
               min={0}
               max={30}
@@ -1766,7 +1883,7 @@ function Cadastro({
           {config.contratante.trim()
             ? 'Os relatórios de análise, a cartilha e o manual continuam no papel da Ágil CM. '
             : 'Preencha o nome do órgão para o parecer e a notificação saírem no papel do órgão. '}
-          Os dados são gravados ao sair de cada campo e ficam guardados neste navegador.
+          Os dados são gravados ao sair de cada campo{planilhaDocPref() ? ' e vão para a planilha do órgão.' : ' e ficam guardados neste navegador.'}
         </p>
       </div>
       <form
@@ -1955,7 +2072,9 @@ function Cadastro({
           </ul>
         )}
         <p className="mt-4 text-sm text-slate-500">
-          O cadastro e as marcações ficam guardados neste navegador. Use “Baixar cópia” para levar a outro computador.
+          {planilhaDocPref()
+            ? 'O cadastro e as marcações estão na planilha do órgão: os outros fiscais veem o mesmo. “Baixar cópia” guarda um arquivo de segurança.'
+            : 'O cadastro e as marcações ficam guardados neste navegador. Conecte a planilha do órgão para todos os fiscais verem o mesmo, ou use “Baixar cópia” para levar a outro computador.'}
         </p>
       </div>
     </div>

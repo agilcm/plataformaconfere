@@ -49,6 +49,7 @@ export default defineConfig(() => {
           docpref: path.resolve(import.meta.dirname, 'docpref/index.html'),
           eleicao: path.resolve(import.meta.dirname, 'eleicao/index.html'),
           servico: path.resolve(import.meta.dirname, 'servico/index.html'),
+          ondeAtuamos: path.resolve(import.meta.dirname, 'onde-atuamos/index.html'),
         },
       },
     },

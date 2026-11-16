@@ -1,0 +1,1146 @@
+{
+ "atualizadoEm": "2026-11-15",
+ "totais": {
+  "processos": 65,
+  "orgaos": 26,
+  "municipios": 21,
+  "desde": "2024",
+  "ate": "2026"
+ },
+ "categorias": [
+  {
+   "id": "informatica",
+   "nome": "Informática e tecnologia",
+   "processos": 19
+  },
+  {
+   "id": "eletro",
+   "nome": "Eletrodomésticos e eletrônicos",
+   "processos": 10
+  },
+  {
+   "id": "eletrico",
+   "nome": "Material elétrico",
+   "processos": 5
+  },
+  {
+   "id": "esporte",
+   "nome": "Material esportivo",
+   "processos": 4
+  },
+  {
+   "id": "pedagogico",
+   "nome": "Brinquedos e material pedagógico",
+   "processos": 5
+  },
+  {
+   "id": "artesanato",
+   "nome": "Artesanato e aviamentos",
+   "processos": 4
+  },
+  {
+   "id": "papelaria",
+   "nome": "Material de escritório e escolar",
+   "processos": 13
+  },
+  {
+   "id": "alimentos",
+   "nome": "Gêneros alimentícios",
+   "processos": 6
+  },
+  {
+   "id": "cozinha",
+   "nome": "Copa, cozinha e utensílios",
+   "processos": 9
+  },
+  {
+   "id": "limpeza",
+   "nome": "Limpeza, higiene e descartáveis",
+   "processos": 7
+  },
+  {
+   "id": "vestuario",
+   "nome": "Vestuário, cama e banho",
+   "processos": 2
+  },
+  {
+   "id": "moveis",
+   "nome": "Móveis e equipamentos",
+   "processos": 3
+  }
+ ],
+ "municipios": [
+  {
+   "nome": "Astolfo Dutra",
+   "uf": "MG",
+   "processos": 16,
+   "orgaos": [
+    {
+     "nome": "Prefeitura Municipal de Astolfo Dutra",
+     "tipo": "Prefeitura",
+     "processos": 14,
+     "anos": [
+      "2024",
+      "2025",
+      "2026"
+     ],
+     "categorias": [
+      "limpeza",
+      "cozinha",
+      "eletro",
+      "alimentos",
+      "papelaria",
+      "esporte",
+      "informatica",
+      "pedagogico",
+      "vestuario"
+     ],
+     "fornecimentos": [
+      {
+       "ano": "2026",
+       "modalidade": "Dispensa",
+       "objeto": "A aquisição visa a compra de produtos descartáveis para atender às necessidades na realização de eventos festivos do mês de junho/julho, visando garantir praticidade…",
+       "categorias": [
+        "cozinha",
+        "limpeza"
+       ]
+      },
+      {
+       "ano": "2025",
+       "modalidade": "Pregão",
+       "objeto": "Aquisição de brinquedos pedagógicos para atender as demandas das escolas e creches municipais",
+       "categorias": [
+        "pedagogico"
+       ]
+      },
+      {
+       "ano": "2025",
+       "modalidade": "Pregão",
+       "objeto": "Aquisição de equipamentos eletroeletrônicos para atividades das programações da vigilância em saúde/endemias",
+       "categorias": [
+        "eletro"
+       ]
+      },
+      {
+       "ano": "2025",
+       "modalidade": "Pregão",
+       "objeto": "Aquisição de itens de gêneros alimentícios e materiais de limpeza para atender a demanda das secretarias municipais de Astolfo Dutra",
+       "categorias": [
+        "limpeza"
+       ]
+      },
+      {
+       "ano": "2025",
+       "modalidade": "Pregão",
+       "objeto": "Aquisição de materias esportivos para atender a demanda da secretaria municipal de culutura, esporte, lazer e turismo",
+       "categorias": [
+        "esporte"
+       ]
+      },
+      {
+       "ano": "2025",
+       "modalidade": "Pregão",
+       "objeto": "Aquisição de utensílios de cozinha para atender a demanda da escolas municipais",
+       "categorias": [
+        "cozinha"
+       ]
+      },
+      {
+       "ano": "2025",
+       "modalidade": "Pregão",
+       "objeto": "Eletrodomésticos e eletroeletrônicos",
+       "categorias": [
+        "eletro"
+       ]
+      },
+      {
+       "ano": "2024",
+       "modalidade": "Pregão",
+       "objeto": "Aquisição de cartuchos de toner, refis de tintas e peças de reposição de impressoras para atender as necessidades de impressão das áreas administrativas das seguintes…",
+       "categorias": [
+        "informatica"
+       ]
+      },
+      {
+       "ano": "2024",
+       "modalidade": "Pregão",
+       "objeto": "Aquisição de gêneros alimentícios e embalagens para a secretaria em atendimento as escolas e creches da rede municipal de ensino",
+       "categorias": [
+        "alimentos",
+        "cozinha",
+        "limpeza"
+       ]
+      },
+      {
+       "ano": "2024",
+       "modalidade": "Pregão",
+       "objeto": "Aquisição de itens de higiene pessoal para utilização na creche municipal",
+       "categorias": [
+        "limpeza",
+        "papelaria",
+        "vestuario"
+       ]
+      },
+      {
+       "ano": "2024",
+       "modalidade": "Pregão",
+       "objeto": "Aquisição de material escolar para atender a demanda da secretaria de educação",
+       "categorias": [
+        "papelaria"
+       ]
+      },
+      {
+       "ano": "2024",
+       "modalidade": "Pregão",
+       "objeto": "Aquisição parcelada de equipamentos e mobiliário para a Secretaria Municipal de Educação",
+       "categorias": [
+        "eletro"
+       ]
+      },
+      {
+       "ano": "2024",
+       "modalidade": "Dispensa",
+       "objeto": "Contratação de empresa especializada para fornecimento de kits de enxoval para gestantes apara atender as necessidades da SMAS",
+       "categorias": [
+        "limpeza"
+       ]
+      },
+      {
+       "ano": "2024",
+       "modalidade": "Pregão",
+       "objeto": "Gêneros Alimentícios",
+       "categorias": [
+        "alimentos"
+       ]
+      }
+     ]
+    },
+    {
+     "nome": "Câmara Municipal de Astolfo Dutra",
+     "tipo": "Câmara Municipal",
+     "processos": 2,
+     "anos": [
+      "2025"
+     ],
+     "categorias": [
+      "informatica",
+      "papelaria"
+     ],
+     "fornecimentos": [
+      {
+       "ano": "2025",
+       "modalidade": "Pregão",
+       "objeto": "Aquisição de equipamentos e periféricos de informática e audiovisual, visando suprir as necessidades da Câmara Municipal de Astolfo Dutra pelo período de 12 (doze) meses",
+       "categorias": [
+        "informatica"
+       ]
+      },
+      {
+       "ano": "2025",
+       "modalidade": "Pregão",
+       "objeto": "Aquisição de materiais de expediente e de papelaria, visando suprir as necessidades da Câmara Municipal de Astolfo Dutra pelo período de 12 (doze) meses",
+       "categorias": [
+        "informatica",
+        "papelaria"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Rodeiro",
+   "uf": "MG",
+   "processos": 14,
+   "orgaos": [
+    {
+     "nome": "Prefeitura Municipal de Rodeiro",
+     "tipo": "Prefeitura",
+     "processos": 10,
+     "anos": [
+      "2024",
+      "2025",
+      "2026"
+     ],
+     "categorias": [
+      "papelaria",
+      "alimentos",
+      "artesanato",
+      "cozinha",
+      "eletro",
+      "eletrico",
+      "informatica"
+     ],
+     "fornecimentos": [
+      {
+       "ano": "2026",
+       "modalidade": "Pregão",
+       "objeto": "Registro de Preço para futura e eventual aquisição estimada de cordão Girassol e cordão Quebra-Cabeça, para distribuição gratuita no CRAS",
+       "categorias": [
+        "papelaria"
+       ]
+      },
+      {
+       "ano": "2026",
+       "modalidade": "Pregão",
+       "objeto": "Registro de preços para aquisição estimada de materiais elétricos, destinados à manutenção e instalação de sistemas elétricos, nos prédios das secretarias municipais",
+       "categorias": [
+        "eletrico"
+       ]
+      },
+      {
+       "ano": "2025",
+       "modalidade": "Pregão",
+       "objeto": "Aquisição de equipamentos, brinquedos, utilitários e outros, em atendimento às necessidades da secretaria municipal de educação",
+       "categorias": [
+        "eletro"
+       ]
+      },
+      {
+       "ano": "2025",
+       "modalidade": "Pregão",
+       "objeto": "Registro de Preço para aquisição estimada de materiais e equipamentos odontológicos para uso nas unidades de saúde, pela Secretaria Municipal de Saúde",
+       "categorias": [
+        "cozinha"
+       ]
+      },
+      {
+       "ano": "2025",
+       "modalidade": "Pregão",
+       "objeto": "Registro de preços para aquisição de materiais de escritório, escolares e artesanato em atendimento aos projetos do CRAS",
+       "categorias": [
+        "artesanato",
+        "papelaria"
+       ]
+      },
+      {
+       "ano": "2025",
+       "modalidade": "Pregão",
+       "objeto": "Registro de preços para aquisição estimada de materiais escolares e de escritório para atender as necessidades da secretaria demandante",
+       "categorias": [
+        "papelaria",
+        "artesanato"
+       ]
+      },
+      {
+       "ano": "2025",
+       "modalidade": "Pregão",
+       "objeto": "Registro de preços para futura e eventual aquisição de utensílios domésticos e de uso geral, destinados a atender às necessidades das diversas Secretarias Municipais",
+       "categorias": [
+        "cozinha"
+       ]
+      },
+      {
+       "ano": "2025",
+       "modalidade": "Pregão",
+       "objeto": "Registro de preços para futura e eventual aquisição estimada de aparelhos eletrônicos e equipamentos de informática para atender as necessidades da secretaria demandante",
+       "categorias": [
+        "informatica",
+        "eletro"
+       ]
+      },
+      {
+       "ano": "2024",
+       "modalidade": "Pregão",
+       "objeto": "Aquisição estimada de gêneros alimentícios para merenda escolar, em atendimento as escolas e creche da rede municipal de ensino, pela secretaria municipal de educação",
+       "categorias": [
+        "alimentos"
+       ]
+      },
+      {
+       "ano": "2024",
+       "modalidade": "Pregão",
+       "objeto": "Registro de preços para a aquisição estimada de gêneros alimentícios em atendimento a secretaria demandante",
+       "categorias": [
+        "alimentos"
+       ]
+      }
+     ]
+    },
+    {
+     "nome": "Câmara Municipal de Rodeiro",
+     "tipo": "Câmara Municipal",
+     "processos": 4,
+     "anos": [
+      "2024",
+      "2025",
+      "2026"
+     ],
+     "categorias": [
+      "cozinha",
+      "informatica",
+      "limpeza",
+      "papelaria"
+     ],
+     "fornecimentos": [
+      {
+       "ano": "2026",
+       "modalidade": "Pregão",
+       "objeto": "Aquisição de materiais de expediente, incluindo itens de papelaria, escritório e suprimentos de informática, para atender as necessidades da Câmara Municipal de Rodeiro",
+       "categorias": [
+        "papelaria"
+       ]
+      },
+      {
+       "ano": "2025",
+       "modalidade": "Pregão",
+       "objeto": "Aquisição de Mobiliários, Eletrodoméstico, Utensílios e Materiais Elétricos para equipar a nova sede da Câmara Municipal de Rodeiro",
+       "categorias": [
+        "cozinha",
+        "informatica",
+        "limpeza"
+       ]
+      },
+      {
+       "ano": "2025",
+       "modalidade": "Pregão",
+       "objeto": "Aquisição de Mobiliários, Eletrodomésticos e Equipamentos de som e informática para equipar a nova sede da Câmara Municipal de Rodeiro",
+       "categorias": [
+        "informatica"
+       ]
+      },
+      {
+       "ano": "2024",
+       "modalidade": "Pregão",
+       "objeto": "Aquisição de materiais e utensílios de limpeza, copa e cozinha, para atender às necessidades de manutenção e asseio da Câmara Municipal de Rodeiro, por 12 (doze) meses",
+       "categorias": [
+        "cozinha",
+        "limpeza"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Ubá",
+   "uf": "MG",
+   "processos": 13,
+   "orgaos": [
+    {
+     "nome": "Prefeitura Municipal de Ubá",
+     "tipo": "Prefeitura",
+     "processos": 11,
+     "anos": [
+      "2024",
+      "2025",
+      "2026"
+     ],
+     "categorias": [
+      "alimentos",
+      "artesanato",
+      "cozinha",
+      "papelaria",
+      "pedagogico",
+      "eletrico",
+      "esporte",
+      "vestuario"
+     ],
+     "fornecimentos": [
+      {
+       "ano": "2026",
+       "modalidade": "Pregão",
+       "objeto": "Registro de Preços para futura e eventual aquisição de materiais de copa e cozinha destinados a manutenção das atividades das diversas Secretarias Municipais",
+       "categorias": [
+        "cozinha"
+       ]
+      },
+      {
+       "ano": "2026",
+       "modalidade": "Pregão",
+       "objeto": "Registro de Preços para futura e eventual aquisição de materiais elétricos destinados à manutenção preventiva e corretiva para utilização de todas as Secretarias…",
+       "categorias": [
+        "eletrico"
+       ]
+      },
+      {
+       "ano": "2026",
+       "modalidade": "Pregão",
+       "objeto": "Registro de preços para futura e eventual aquisição de materiais esportivos e recreativos destinados ao atendimento das demandas das Secretarias Municipais de…",
+       "categorias": [
+        "esporte",
+        "pedagogico"
+       ]
+      },
+      {
+       "ano": "2025",
+       "modalidade": "Dispensa",
+       "objeto": "Aquisição de Gêneros alimentícios perecíveis e não perecíveis para atendimento da demanda da Secretaria Municipal de Desenvolvimento Social",
+       "categorias": [
+        "alimentos"
+       ]
+      },
+      {
+       "ano": "2025",
+       "modalidade": "Pregão",
+       "objeto": "REGISTRO DE PREÇO para aquisição de materiais de expediente para atender às necessidades advindas das atividades pertencentes à Secretaria Municipal de Desenvolvimento…",
+       "categorias": [
+        "papelaria"
+       ]
+      },
+      {
+       "ano": "2025",
+       "modalidade": "Pregão",
+       "objeto": "Registro de preços ara futura e eventual aquisição de material de copa e cozinha destinados a manutenção das atividades das diversas secretarias municipais",
+       "categorias": [
+        "cozinha"
+       ]
+      },
+      {
+       "ano": "2025",
+       "modalidade": "Pregão",
+       "objeto": "REGISTRO DE PREÇOS para aquisição de itens de vestuários,calçados e roupas íntimas para atender às necessidades dos usuários das unidades de acolhimento, pertencentes à…",
+       "categorias": [
+        "vestuario"
+       ]
+      },
+      {
+       "ano": "2025",
+       "modalidade": "Pregão",
+       "objeto": "REGISTRO DE PREÇOS para aquisição de materiais de consumo do tipo esportivos, para atender a demanda dos equipamentos da Divisão de Proteção Social Especial, pertencente…",
+       "categorias": [
+        "pedagogico"
+       ]
+      },
+      {
+       "ano": "2025",
+       "modalidade": "Pregão",
+       "objeto": "REGISTRO DE PREÇOS para Aquisição estimada de materiais de consumo para uso em atividades administrativas, projetos e outras demandas das Secretarias Municipais",
+       "categorias": [
+        "papelaria",
+        "artesanato"
+       ]
+      },
+      {
+       "ano": "2025",
+       "modalidade": "Pregão",
+       "objeto": "REGISTRO DE PREÇOS para futura e eventual aquisição de materiais de artesanato, destinados à manutenção das atividades da Secretaria Municipal de Cultura,Turismo e Lazer…",
+       "categorias": [
+        "artesanato"
+       ]
+      },
+      {
+       "ano": "2024",
+       "modalidade": "Pregão",
+       "objeto": "Registro de Preço para aquisição de óleo de soja destinados ao preparo da merenda escolar dos alunos da Rede Municipal de Ensino",
+       "categorias": [
+        "alimentos"
+       ]
+      }
+     ]
+    },
+    {
+     "nome": "Câmara Municipal de Ubá",
+     "tipo": "Câmara Municipal",
+     "processos": 2,
+     "anos": [
+      "2024"
+     ],
+     "categorias": [
+      "informatica",
+      "eletrico"
+     ],
+     "fornecimentos": [
+      {
+       "ano": "2024",
+       "modalidade": "Pregão",
+       "objeto": "Aquisição de materiais e equipamentos de Informática, elétricos e eletrônicos, para atender as demandas de diversos setores da Câmara Municipal de Ubá",
+       "categorias": [
+        "informatica"
+       ]
+      },
+      {
+       "ano": "2024",
+       "modalidade": "Pregão",
+       "objeto": "Aquisição de materiais para manutenção de bens móveis, manutenção predial, elétricos e eletrônicos, suprimentos e utensílios gerais para atender as necessidades da…",
+       "categorias": [
+        "eletrico",
+        "informatica"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Guarani",
+   "uf": "MG",
+   "processos": 3,
+   "orgaos": [
+    {
+     "nome": "Prefeitura Municipal de Guarani",
+     "tipo": "Prefeitura",
+     "processos": 3,
+     "anos": [
+      "2024",
+      "2025",
+      "2026"
+     ],
+     "categorias": [
+      "eletro",
+      "moveis",
+      "papelaria",
+      "pedagogico"
+     ],
+     "fornecimentos": [
+      {
+       "ano": "2026",
+       "modalidade": "Pregão",
+       "objeto": "Registro de preços para aquisição de equipamentos de informática e soluções de projeção e comunicação em atendimento ao município de guarani",
+       "categorias": [
+        "eletro",
+        "moveis"
+       ]
+      },
+      {
+       "ano": "2025",
+       "modalidade": "Dispensa",
+       "objeto": "Registro de Preços para futura e eventual aquisição de materiais pedagógicos para atender os alunos da rede municipal de ensino",
+       "categorias": [
+        "pedagogico"
+       ]
+      },
+      {
+       "ano": "2024",
+       "modalidade": "Pregão",
+       "objeto": "REGISTRO DE PREÇOS, para futura e eventual contratação de microempresas (ME), empresas de pequeno porte (EPP), ou equiparadas, para fornecimento de material de…",
+       "categorias": [
+        "papelaria"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Pedro Leopoldo",
+   "uf": "MG",
+   "processos": 2,
+   "orgaos": [
+    {
+     "nome": "Câmara Municipal de Pedro Leopoldo",
+     "tipo": "Câmara Municipal",
+     "processos": 1,
+     "anos": [
+      "2025"
+     ],
+     "categorias": [
+      "informatica"
+     ],
+     "fornecimentos": [
+      {
+       "ano": "2025",
+       "modalidade": "Pregão",
+       "objeto": "Registro de Preços para aquisição de equipamentos de informática e suprimentos de tecnologia da informação e comunicação",
+       "categorias": [
+        "informatica"
+       ]
+      }
+     ]
+    },
+    {
+     "nome": "Prefeitura Municipal de Pedro Leopoldo",
+     "tipo": "Prefeitura",
+     "processos": 1,
+     "anos": [
+      "2025"
+     ],
+     "categorias": [
+      "eletrico",
+      "informatica"
+     ],
+     "fornecimentos": [
+      {
+       "ano": "2025",
+       "modalidade": "Pregão",
+       "objeto": "Aquisição de periféricos e ativos de informática",
+       "categorias": [
+        "informatica",
+        "eletrico"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Sete Lagoas",
+   "uf": "MG",
+   "processos": 2,
+   "orgaos": [
+    {
+     "nome": "Câmara Municipal de Sete Lagoas",
+     "tipo": "Câmara Municipal",
+     "processos": 1,
+     "anos": [
+      "2024"
+     ],
+     "categorias": [
+      "eletro"
+     ],
+     "fornecimentos": [
+      {
+       "ano": "2024",
+       "modalidade": "Pregão",
+       "objeto": "Aquisição de televisores, computadores, periféricos e outros equipamentos de informática",
+       "categorias": [
+        "eletro"
+       ]
+      }
+     ]
+    },
+    {
+     "nome": "Prefeitura Municipal de Sete Lagoas",
+     "tipo": "Prefeitura",
+     "processos": 1,
+     "anos": [
+      "2024"
+     ],
+     "categorias": [
+      "eletrico",
+      "informatica"
+     ],
+     "fornecimentos": [
+      {
+       "ano": "2024",
+       "modalidade": "Pregão",
+       "objeto": "Registro de preços para a eventual aquisição de aparelhos, peças, periféricos e ferramentas de informática, bem como itens relacionados à tecnologia da informação (ti)…",
+       "categorias": [
+        "informatica",
+        "eletrico"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Abre Campo",
+   "uf": "MG",
+   "processos": 1,
+   "orgaos": [
+    {
+     "nome": "SAAE de Abre Campo",
+     "tipo": "Serviço de água e esgoto",
+     "processos": 1,
+     "anos": [
+      "2025"
+     ],
+     "categorias": [
+      "papelaria"
+     ],
+     "fornecimentos": [
+      {
+       "ano": "2025",
+       "modalidade": "Dispensa",
+       "objeto": "Aquisição de material de escritório",
+       "categorias": [
+        "papelaria"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Aiuruoca",
+   "uf": "MG",
+   "processos": 1,
+   "orgaos": [
+    {
+     "nome": "Prefeitura Municipal de Aiuruoca",
+     "tipo": "Prefeitura",
+     "processos": 1,
+     "anos": [
+      "2025"
+     ],
+     "categorias": [
+      "informatica"
+     ],
+     "fornecimentos": [
+      {
+       "ano": "2025",
+       "modalidade": "Pregão",
+       "objeto": "Aquisição de Equipamentos de Informática, peças e suprimentos em geral, para as Secretarias Municipais de Aiuruoca",
+       "categorias": [
+        "informatica"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Dom Silvério",
+   "uf": "MG",
+   "processos": 1,
+   "orgaos": [
+    {
+     "nome": "Prefeitura Municipal de Dom Silvério",
+     "tipo": "Prefeitura",
+     "processos": 1,
+     "anos": [
+      "2025"
+     ],
+     "categorias": [
+      "eletro",
+      "moveis"
+     ],
+     "fornecimentos": [
+      {
+       "ano": "2025",
+       "modalidade": "Pregão",
+       "objeto": "Registro de preço para futura e eventual aquisição de material de limpeza, de uso sanitário, higiene pessoal, mesa, banho, copa e cozinha e eletrodoméstico, em geral…",
+       "categorias": [
+        "eletro",
+        "moveis"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Dores do Turvo",
+   "uf": "MG",
+   "processos": 1,
+   "orgaos": [
+    {
+     "nome": "Prefeitura Municipal de Dores do Turvo",
+     "tipo": "Prefeitura",
+     "processos": 1,
+     "anos": [
+      "2025"
+     ],
+     "categorias": [
+      "esporte"
+     ],
+     "fornecimentos": [
+      {
+       "ano": "2025",
+       "modalidade": "Pregão",
+       "objeto": "Registro de preço para Aquisição de Materiais Esportivos para atender as demandas dos trabalhos do NASF da Secretaria de Saúde da Prefeitura Municipal de Dores do Turvo…",
+       "categorias": [
+        "esporte"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Fortuna de Minas",
+   "uf": "MG",
+   "processos": 1,
+   "orgaos": [
+    {
+     "nome": "Prefeitura Municipal de Fortuna de Minas",
+     "tipo": "Prefeitura",
+     "processos": 1,
+     "anos": [
+      "2024"
+     ],
+     "categorias": [
+      "informatica"
+     ],
+     "fornecimentos": [
+      {
+       "ano": "2024",
+       "modalidade": "Pregão",
+       "objeto": "Registro de preço de equipamentos e de materiais e insumos de informática",
+       "categorias": [
+        "informatica"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Goianá",
+   "uf": "MG",
+   "processos": 1,
+   "orgaos": [
+    {
+     "nome": "Prefeitura Municipal de Goianá",
+     "tipo": "Prefeitura",
+     "processos": 1,
+     "anos": [
+      "2024"
+     ],
+     "categorias": [
+      "moveis",
+      "papelaria"
+     ],
+     "fornecimentos": [
+      {
+       "ano": "2024",
+       "modalidade": "Pregão",
+       "objeto": "Registro de preço visando futura e eventual aquisição de material permanente",
+       "categorias": [
+        "moveis",
+        "papelaria"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Itaobim",
+   "uf": "MG",
+   "processos": 1,
+   "orgaos": [
+    {
+     "nome": "Prefeitura Municipal de Itaobim",
+     "tipo": "Prefeitura",
+     "processos": 1,
+     "anos": [
+      "2024"
+     ],
+     "categorias": [
+      "informatica"
+     ],
+     "fornecimentos": [
+      {
+       "ano": "2024",
+       "modalidade": "Pregão",
+       "objeto": "Registro de preço para futura e eventual aquisição Equipamentos e Materiais de Informática para manutenção das atividades da Administração Pública",
+       "categorias": [
+        "informatica"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Lagoa da Prata",
+   "uf": "MG",
+   "processos": 1,
+   "orgaos": [
+    {
+     "nome": "Prefeitura Municipal de Lagoa da Prata",
+     "tipo": "Prefeitura",
+     "processos": 1,
+     "anos": [
+      "2024"
+     ],
+     "categorias": [
+      "informatica"
+     ],
+     "fornecimentos": [
+      {
+       "ano": "2024",
+       "modalidade": "Pregão",
+       "objeto": "Aquisição de equipamentos diversos (notebooks, aparelhos telefonicos, hd externo, nobreak, switch), para atender as necessidades das secretarias de saude, secretaria de…",
+       "categorias": [
+        "informatica"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Pedra Bonita",
+   "uf": "MG",
+   "processos": 1,
+   "orgaos": [
+    {
+     "nome": "Prefeitura Municipal de Pedra Bonita",
+     "tipo": "Prefeitura",
+     "processos": 1,
+     "anos": [
+      "2025"
+     ],
+     "categorias": [
+      "informatica"
+     ],
+     "fornecimentos": [
+      {
+       "ano": "2025",
+       "modalidade": "Pregão",
+       "objeto": "Registro de Preços para futura e eventual aquisição de materiais de expediente, equipamentos e periféricos de informática, mídias e itens correlatos",
+       "categorias": [
+        "informatica"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Ponte Nova",
+   "uf": "MG",
+   "processos": 1,
+   "orgaos": [
+    {
+     "nome": "Prefeitura Municipal de Ponte Nova",
+     "tipo": "Prefeitura",
+     "processos": 1,
+     "anos": [
+      "2025"
+     ],
+     "categorias": [
+      "informatica"
+     ],
+     "fornecimentos": [
+      {
+       "ano": "2025",
+       "modalidade": "Pregão",
+       "objeto": "Aquisição de eletroeletrônicos",
+       "categorias": [
+        "informatica"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Presidente Prudente",
+   "uf": "SP",
+   "processos": 1,
+   "orgaos": [
+    {
+     "nome": "Prefeitura Municipal de Presidente Prudente",
+     "tipo": "Prefeitura",
+     "processos": 1,
+     "anos": [
+      "2024"
+     ],
+     "categorias": [
+      "eletro",
+      "informatica"
+     ],
+     "fornecimentos": [
+      {
+       "ano": "2024",
+       "modalidade": "Pregão",
+       "objeto": "Aquisição de equipamentos de informática",
+       "categorias": [
+        "informatica",
+        "eletro"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Santa Bárbara",
+   "uf": "MG",
+   "processos": 1,
+   "orgaos": [
+    {
+     "nome": "Prefeitura Municipal de Santa Bárbara",
+     "tipo": "Prefeitura",
+     "processos": 1,
+     "anos": [
+      "2025"
+     ],
+     "categorias": [
+      "eletro"
+     ],
+     "fornecimentos": [
+      {
+       "ano": "2025",
+       "modalidade": "Dispensa",
+       "objeto": "Aquisição do iPhone 16 Pro Max e acessórios para o setor de Relações Institucionais e Comunicação Social, visando otimizar a produção de fotos e vídeos institucionais. O…",
+       "categorias": [
+        "eletro"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Santa Margarida",
+   "uf": "MG",
+   "processos": 1,
+   "orgaos": [
+    {
+     "nome": "Câmara Municipal de Santa Margarida",
+     "tipo": "Câmara Municipal",
+     "processos": 1,
+     "anos": [
+      "2025"
+     ],
+     "categorias": [
+      "informatica"
+     ],
+     "fornecimentos": [
+      {
+       "ano": "2025",
+       "modalidade": "Dispensa",
+       "objeto": "Contratação de pessoa jurídica especializada para aquisição de equipamentos de informática (computadores, notebook, câmara digital), visando atender as demandas da…",
+       "categorias": [
+        "informatica"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "São Pedro dos Ferros",
+   "uf": "MG",
+   "processos": 1,
+   "orgaos": [
+    {
+     "nome": "Prefeitura Municipal de São Pedro dos Ferros",
+     "tipo": "Prefeitura",
+     "processos": 1,
+     "anos": [
+      "2025"
+     ],
+     "categorias": [
+      "esporte",
+      "pedagogico"
+     ],
+     "fornecimentos": [
+      {
+       "ano": "2025",
+       "modalidade": "Pregão",
+       "objeto": "Material pedagogico",
+       "categorias": [
+        "pedagogico",
+        "esporte"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Sericita",
+   "uf": "MG",
+   "processos": 1,
+   "orgaos": [
+    {
+     "nome": "Prefeitura Municipal de Sericita",
+     "tipo": "Prefeitura",
+     "processos": 1,
+     "anos": [
+      "2025"
+     ],
+     "categorias": [
+      "papelaria"
+     ],
+     "fornecimentos": [
+      {
+       "ano": "2025",
+       "modalidade": "Pregão",
+       "objeto": "Contratação de empresa para fornecimento parcelado de materiais de consumo de expediente, escritório, escolares e outros produtos, para atender aos diversos setores…",
+       "categorias": [
+        "papelaria"
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
