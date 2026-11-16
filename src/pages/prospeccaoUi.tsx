@@ -10,6 +10,9 @@ export const chip = (ativo: boolean) =>
   }`;
 export const brl = (v: number | null | undefined) =>
   v == null ? '—' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: v < 10 ? 4 : 2 });
+/** Lance ou valor vencedor: em reais ou, no maior desconto, em percentual */
+export const valorLance = (v: number | null | undefined, desconto?: boolean) =>
+  v == null ? '—' : desconto ? `${v.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}% de desconto` : brl(v);
 export const dataBR = (iso?: string) => (iso ? iso.slice(0, 10).split('-').reverse().join('/') : '');
 
 export interface Licitacao {

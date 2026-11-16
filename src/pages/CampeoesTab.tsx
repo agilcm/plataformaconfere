@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { Container, Icon } from '../components/ui.tsx';
 import { cnpjFormatado, filtrarCampeoes, linhasPlanilhaCampeoes } from '../lib/possiveisClientes.js';
 import { baixarXlsx } from '../lib/xlsx.js';
-import { AvisoCarregando, brl, campo, chip, LinhaLicitacao, listaCidades, NotaFonte, useProspeccao, type MetaProspeccao } from './prospeccaoUi.tsx';
+import { AvisoCarregando, brl, campo, chip, LinhaLicitacao, listaCidades, valorLance, NotaFonte, useProspeccao, type MetaProspeccao } from './prospeccaoUi.tsx';
 
 interface Vitoria {
   lic: number;
@@ -14,6 +14,8 @@ interface Vitoria {
   total: number | null;
   participantes: number;
   lote?: boolean;
+  /** maior desconto: o valor é percentual */
+  desconto?: boolean;
 }
 interface Campeao {
   cnpj: string;
@@ -91,7 +93,7 @@ function CartaoCampeao({ e, posicao, licitacoes }: { e: Campeao; posicao: number
                 <span className="text-slate-800">{v.desc}</span>
               </p>
               <p className="mt-1 text-slate-700">
-                Valor vencedor {brl(v.valor)}
+                {v.desconto ? 'Venceu com' : 'Valor vencedor'} {valorLance(v.valor, v.desconto)}
                 {v.total != null && !v.lote && <> · total {brl(v.total)}</>} ·{' '}
                 {v.participantes === 1 ? 'sem concorrente' : `${v.participantes} empresas ${v.lote ? 'no lote' : 'no item'}`}
               </p>

@@ -373,6 +373,49 @@ test('campeões: quem ganhou e levou cada item, de qualquer cidade, com o total 
   assert.equal(linhas[0]['Link no PNCP'], 'https://pncp.gov.br/app/editais/18000000000100/2026/7');
 });
 
+test('maior desconto: os valores são percentuais, sem diferença em %, e a planilha não os trata como reais', () => {
+  const cache = {
+    compras: {
+      '18338178000102/2026/230': {
+        orgao: 'Prefeitura de Juiz de Fora',
+        municipio: 'Juiz de Fora',
+        uf: 'MG',
+        titulo: 'Edital 230',
+        objeto: 'Obra',
+        modalidade: 'Concorrência - Eletrônica',
+        data: '2026-08-01',
+        itens: [
+          {
+            n: '0001',
+            d: 'Contratação semi-integrada',
+            v: 25.02,
+            t: 64053996.53,
+            c: [
+              ['22222222000122', 1, 25.02, 3, 'ALFA'],
+              ['11111111000111', 2, 20.5, 2, 'BETA'],
+            ],
+          },
+        ],
+      },
+    },
+    cnpj: CACHE.cnpj,
+  };
+  const cli = montarClientes(cache, CIDADES);
+  const d = cli.empresas[0].disputas[0];
+  assert.equal(d.desconto, true);
+  assert.equal(diferenca(d), null);
+  const linha = linhasPlanilha(cli, cli.empresas)[0];
+  assert.equal(linha['Critério'], 'Maior desconto (%)');
+  assert.deepEqual(linha['Melhor lance'], { v: 20.5, tipo: 'numero' });
+  const camp = montarCampeoes(cache, CIDADES);
+  assert.equal(camp.empresas[0].vitorias[0].desconto, true);
+  assert.equal(camp.empresas[0].total, 64053996.53);
+  // menor preço continua sem a marca e em reais
+  const precos = montarClientes(CACHE, CIDADES);
+  assert.ok(precos.empresas.every((e) => e.disputas.every((x) => !x.desconto)));
+  assert.equal(typeof linhasPlanilha(precos, precos.empresas)[0]['Melhor lance'], 'number');
+});
+
 test('utilidades: nome sem CPF, descrição curta e PDF dentro do zip', () => {
   assert.equal(nomeSemCpf('JULIANA DE TAL 05604031607'), 'JULIANA DE TAL');
   assert.equal(nomeSemCpf('63.803.161 VANDER DE TAL'), 'VANDER DE TAL');

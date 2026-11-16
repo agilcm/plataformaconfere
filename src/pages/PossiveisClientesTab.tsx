@@ -7,13 +7,13 @@ import { cnpjFormatado, diferenca, filtrarClientes, linhasPlanilha, textoColocac
 import { baixarXlsx } from '../lib/xlsx.js';
 import {
   AvisoCarregando,
-  brl,
   campo,
   chip,
   LinhaLicitacao,
   listaCidades,
   NotaFonte,
   useProspeccao,
+  valorLance,
   type Licitacao,
   type MetaProspeccao,
 } from './prospeccaoUi.tsx';
@@ -29,6 +29,8 @@ interface Disputa {
   participantes: number;
   /** julgamento por lote: a disputa foi pelo lote inteiro */
   lote?: boolean;
+  /** maior desconto: os valores são percentuais */
+  desconto?: boolean;
 }
 interface Empresa {
   cnpj: string;
@@ -134,8 +136,8 @@ function CartaoEmpresa({ e, licitacoes }: { e: Empresa; licitacoes: Licitacao[] 
                     <span className="text-slate-800">{d.desc}</span>
                   </p>
                   <p className="mt-1 text-slate-700">
-                    Melhor lance {brl(d.melhor)}
-                    {d.venc != null && <> · vencedora {brl(d.venc)}</>}
+                    Melhor lance {valorLance(d.melhor, d.desconto)}
+                    {d.venc != null && <> · vencedora {valorLance(d.venc, d.desconto)}</>}
                     {dif != null && Math.abs(dif) < 1000 && (
                       <>
                         {' '}

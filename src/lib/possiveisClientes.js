@@ -24,6 +24,19 @@ export function nomeSemCpf(nome) {
     .trim();
 }
 
+/**
+ * Licitação por maior desconto: os lances são percentuais e a vencedora tem o maior. Sai da ordem das colocações (a
+ * 1ª com valor maior que a 2ª) e de todos os valores estarem entre 0 e 100. Com um só participante não dá para saber.
+ */
+export function ehDesconto(it) {
+  const ord = (it.c || []).filter((x) => x[1] >= 1).sort((a, b) => a[1] - b[1]);
+  if (ord.length < 2) return false;
+  return ord[0][2] > ord[1][2] && it.c.every((x) => x[2] >= 0 && x[2] <= 100);
+}
+
+/** Célula da planilha: no maior desconto o valor é percentual (número comum, não moeda) */
+const celulaValor = (v, desconto) => (desconto && v != null && v !== '' ? { v, tipo: 'numero' } : v);
+
 export const cnpjFormatado = (c) => String(c || '').replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
 
 /** Texto da colocação: 0 = ofertou melhor que a vencedora e não levou */
@@ -71,7 +84,18 @@ export function montarClientes(cache, cidades, meta = {}) {
           iLic = licitacoes.length;
           licitacoes.push({ id, orgao: c.orgao, municipio: c.municipio, uf: c.uf, titulo: c.titulo, objeto: c.objeto, modalidade: c.modalidade, data: c.data });
         }
-        e.disputas.push({ lic: iLic, item: it.n, desc: it.d, col, melhor, venc: it.v, lances, participantes: it.c.length, ...(it.l ? { lote: true } : {}) });
+        e.disputas.push({
+          lic: iLic,
+          item: it.n,
+          desc: it.d,
+          col,
+          melhor,
+          venc: it.v,
+          lances,
+          participantes: it.c.length,
+          ...(it.l ? { lote: true } : {}),
+          ...(ehDesconto(it) ? { desconto: true } : {}),
+        });
         disputas++;
       }
     }
@@ -91,7 +115,8 @@ export function montarClientes(cache, cidades, meta = {}) {
 
 /** Quanto o melhor lance da empresa ficou do valor da vencedora, em % (positivo = mais caro) */
 export function diferenca(d) {
-  if (d.venc == null || !d.venc || d.melhor == null) return null;
+  // no maior desconto os valores já são percentuais: a diferença em % de % confunde mais do que ajuda
+  if (d.desconto || d.venc == null || !d.venc || d.melhor == null) return null;
   return ((d.melhor - d.venc) / d.venc) * 100;
 }
 
@@ -137,8 +162,9 @@ export function linhasPlanilha(dados, empresas) {
         Colocação: textoColocacao(d.col),
         Item: d.lote ? `Lote ${Number(d.item) || d.item}` : d.item,
         'Descrição do item': d.desc,
-        'Melhor lance': d.melhor,
-        'Valor da vencedora': d.venc ?? '',
+        Critério: d.desconto ? 'Maior desconto (%)' : 'Menor preço (R$)',
+        'Melhor lance': celulaValor(d.melhor, d.desconto),
+        'Valor da vencedora': celulaValor(d.venc ?? '', d.desconto),
         'Diferença (%)': dif == null ? '' : Math.round(dif * 10) / 10,
         'Empresas no item': d.participantes,
         Órgão: lic.orgao,
@@ -208,6 +234,7 @@ export function montarCampeoes(cache, cidades, meta = {}, o = {}) {
         total: it.t ?? null,
         participantes: it.c.length,
         ...(it.l ? { lote: true } : {}),
+        ...(ehDesconto(it) ? { desconto: true } : {}),
       });
       if (it.t != null) e.total += it.t;
       itens++;
@@ -261,7 +288,8 @@ export function linhasPlanilhaCampeoes(dados, empresas) {
         'Atividade principal': e.atividade,
         Item: v.lote ? `Lote ${Number(v.item) || v.item}` : v.item,
         'Descrição do item': v.desc,
-        'Valor vencedor': v.valor,
+        Critério: v.desconto ? 'Maior desconto (%)' : 'Menor preço (R$)',
+        'Valor vencedor': celulaValor(v.valor, v.desconto),
         'Valor total ganho': v.total ?? '',
         'Empresas no item': v.participantes,
         Órgão: lic.orgao,
