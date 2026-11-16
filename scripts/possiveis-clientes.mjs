@@ -193,6 +193,7 @@ async function varrerMunicipio(mun, desde, hoje, cache, achadas) {
         [meio, hoje],
       ];
   let ok = true;
+  let motivo = '';
   for (const mod of [6, 8, 4]) {
     for (const [de, ate] of janelas) {
       for (let pagina = 1; pagina <= 60; pagina++) {
@@ -202,8 +203,9 @@ async function varrerMunicipio(mun, desde, hoje, cache, achadas) {
             `https://pncp.gov.br/api/consulta/v1/contratacoes/publicacao?dataInicial=${ymd(de)}&dataFinal=${ymd(ate)}&codigoModalidadeContratacao=${mod}&uf=MG&codigoMunicipioIbge=${IBGE.get(chaveMun(mun))}&pagina=${pagina}&tamanhoPagina=50`,
             { retries: 2, timeout: 30000 },
           );
-        } catch {
+        } catch (e) {
           ok = false;
+          motivo = e.message || 'erro';
           break;
         }
         for (const c of d?.data || []) {
@@ -230,6 +232,7 @@ async function varrerMunicipio(mun, desde, hoje, cache, achadas) {
     }
   }
   if (ok) cache.varridoEm[mun] = hoje;
+  return ok ? '' : motivo;
 }
 
 /** Lê a ata de uma licitação: { itens } com a colocação de cada empresa, { semAta } ou null (tentar depois) */
@@ -479,6 +482,8 @@ async function main() {
       .filter(([k]) => !cache.compras[k] || (cache.compras[k].parcial && cache.compras[k].lidoEm < hoje))
       .sort((a, b) => prioridade(a[1].municipio) - prioridade(b[1].municipio) || b[1].data.localeCompare(a[1].data));
   const tentadas = new Set(); // atas sem novidade nesta execução (ainda não publicadas): não tenta de novo
+  const munTentados = new Set();
+  const munFalhas = [];
   let lidas = 0;
   let falhas = 0;
   // 1) ler as atas da fila; 2) procurar mais licitações em alguns municípios (3 de cada vez); repete até acabar o tempo
@@ -500,15 +505,21 @@ async function main() {
       }
     }
     if (!busca.falhou || restam() < reserva()) break;
+    // cada município uma vez por execução: um que falhou não volta para o começo da fila e não trava os outros
     const lote = municipiosEmOrdem(cache)
-      .filter((m) => cache.varridoEm[m] !== hoje)
+      .filter((m) => cache.varridoEm[m] !== hoje && !munTentados.has(m))
       .slice(0, 9);
     if (!lote.length) break;
     const novas = new Map();
     const fila = [...lote];
     await Promise.all(
       [0, 1, 2].map(async () => {
-        while (fila.length && restam() > reserva() + 60e3) await varrerMunicipio(fila.shift(), desde, hoje, cache, novas);
+        while (fila.length && restam() > reserva() + 60e3) {
+          const mun = fila.shift();
+          munTentados.add(mun);
+          const falha = await varrerMunicipio(mun, desde, hoje, cache, novas);
+          if (falha) munFalhas.push(`${mun} (${falha})`);
+        }
       }),
     );
     for (const [k, c] of novas) if (c.data >= desde) cache.achadas[k] = c;
@@ -518,6 +529,11 @@ async function main() {
   const achadas = new Map(Object.entries(cache.achadas));
   const naFila = filaDeAtas().length;
   console.log(`${achadas.size} licitações do ${PORTAL} na Zona da Mata desde ${desde} (${vistasAgora} vistas agora).`);
+  if (munTentados.size)
+    console.log(
+      `Municípios consultados agora: ${munTentados.size - munFalhas.length} de ${munTentados.size}` +
+        (munFalhas.length ? `; com falha (ficam para a próxima): ${munFalhas.slice(0, 12).join(', ')}${munFalhas.length > 12 ? '…' : ''}` : '.'),
+    );
   if (!achadas.size && !Object.keys(cache.compras).length) throw new Error('O PNCP não trouxe nenhuma licitação');
   // o que saiu do período sai do cache
   for (const k of Object.keys(cache.compras)) if (cache.compras[k].data < desde) delete cache.compras[k];
