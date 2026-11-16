@@ -163,6 +163,9 @@ async function descobrirPelaBusca(desde, hoje, cache) {
  */
 async function descobrirPelaConsulta(desde, hoje, cache, maxMunicipios = 45) {
   const achadas = new Map();
+  // com muita ata já descoberta e ainda não lida, a maior parte do tempo vai para a leitura
+  const naFila = Object.keys(cache.achadas || {}).filter((k) => !cache.compras[k]).length;
+  const reserva = naFila > 30 ? 0.75 : 0.45;
   cache.varridoEm ??= {};
   const municipios = Object.values(MICRORREGIOES)
     .flat()
@@ -171,7 +174,7 @@ async function descobrirPelaConsulta(desde, hoje, cache, maxMunicipios = 45) {
   const ymd = (iso) => iso.replace(/-/g, '');
   let feitos = 0;
   for (const mun of municipios) {
-    if (feitos >= maxMunicipios || restam() < TEMPO_MS * 0.45) break;
+    if (feitos >= maxMunicipios || restam() < TEMPO_MS * reserva) break;
     if (cache.varridoEm[mun] === hoje) continue;
     // primeira vez: o período inteiro (em duas metades); depois, só os últimos 60 dias
     const ini = cache.varridoEm[mun] ? new Date(Date.parse(hoje) - 60 * 86400e3).toISOString().slice(0, 10) : desde;
@@ -316,7 +319,7 @@ async function main() {
   let lidas = 0;
   let falhas = 0;
   for (const [k, c] of fila) {
-    if (restam() < 90e3) break;
+    if (restam() < 50e3) break;
     try {
       const r = await lerCompra(c, hoje);
       if (r) {
