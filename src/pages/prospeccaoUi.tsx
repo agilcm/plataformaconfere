@@ -24,17 +24,24 @@ export interface Licitacao {
   objeto: string;
   modalidade: string;
   data: string;
+  /** licitação da Zona da Mata */
+  zm?: number;
 }
 export interface MetaProspeccao {
   atualizadoEm?: string;
   desde?: string;
   ate?: string;
-  municipiosConsultados?: number;
-  municipiosTotal?: number;
+  /** onde estão as licitações da lista: "Minas Gerais" (Possíveis clientes) ou "Zona da Mata" (Campeões) */
+  abrangencia?: string;
+  /** parte da busca no PNCP (Minas inteira, 12 meses) já feita, de 0 a 100 */
+  buscaFeita?: number;
   portal?: string;
   licitacoesNoPeriodo?: number;
   licitacoesLidas?: number;
+  /** licitações ainda não procuradas */
   aindaNaFila?: number;
+  /** licitações recentes cuja ata ainda não saiu */
+  aguardandoAta?: number;
   cidades: string[];
   licitacoes: Licitacao[];
 }
@@ -81,12 +88,16 @@ export function AvisoCarregando({ estado }: { estado: 'carregando' | 'ok' | 'sem
 /** "Cataguases, Miraí e Rodeiro" */
 export const listaCidades = (cidades: string[]) => cidades.join(', ').replace(/, ([^,]*)$/, ' e $1');
 
+/** "em Minas Gerais" ou "na Zona da Mata" */
+const ondeTexto = (dados: MetaProspeccao) => (dados.abrangencia === 'Minas Gerais' ? 'em Minas Gerais' : 'na Zona da Mata');
+
 /** Período das licitações (últimos 12 meses) e quanto da leitura já foi feito */
 export function Periodo({ dados }: { dados: MetaProspeccao }) {
   const lidas = dados.licitacoesLidas ?? 0;
   const total = dados.licitacoesNoPeriodo ?? 0;
-  const faltaMun = dados.municipiosTotal ? dados.municipiosTotal - (dados.municipiosConsultados ?? 0) : 0;
-  const emAndamento = (dados.aindaNaFila ?? 0) > 0 || faltaMun > 0;
+  const naFila = dados.aindaNaFila ?? 0;
+  const busca = dados.buscaFeita ?? 100;
+  const emAndamento = naFila > 0 || busca < 100;
   return (
     <div className="mt-4 p-3 sm:p-4 rounded-2xl bg-white border border-slate-200 text-[15px] text-slate-700 leading-relaxed">
       <p>
@@ -96,17 +107,19 @@ export function Periodo({ dados }: { dados: MetaProspeccao }) {
             : de {dataBR(dados.desde)} a {dataBR(dados.ate || dados.atualizadoEm)}
           </>
         )}
-        , na Zona da Mata.
+        , {ondeTexto(dados)}.
       </p>
       {emAndamento ? (
         <p className="mt-1">
-          <span className="font-semibold text-amber-800">Leitura em andamento:</span> {lidas} de {total} licitações lidas
-          {dados.municipiosTotal ? `, ${dados.municipiosConsultados ?? 0} de ${dados.municipiosTotal} municípios consultados` : ''}. A lista cresce a cada
-          leitura (4 por dia) até cobrir o período inteiro.
+          <span className="font-semibold text-amber-800">Leitura em andamento:</span> {lidas} atas lidas de {total} licitações já encontradas
+          {naFila ? ` (${naFila} na fila)` : ''}
+          {busca < 100 ? `; a busca das licitações no PNCP está em ${busca}%` : ''}. A lista cresce a cada leitura (8 por dia), começando pelas licitações mais
+          perto das cidades escolhidas, até cobrir o período inteiro.
         </p>
       ) : (
         <p className="mt-1">
-          Todas as {total} licitações do período já foram lidas, nos {dados.municipiosTotal ?? ''} municípios da Zona da Mata.
+          Todas as {total} licitações do período {ondeTexto(dados)} já foram procuradas: {lidas} tinham a ata com os lances
+          {dados.aguardandoAta ? ` e ${dados.aguardandoAta} ainda esperam a ata da sessão` : ''}.
         </p>
       )}
     </div>
@@ -122,7 +135,7 @@ export function NotaFonte({ dados, campeoes = false }: { dados: MetaProspeccao; 
           ? 'A vencedora de cada item e o valor que ela levou saem da ata da sessão'
           : 'O PNCP só registra a vencedora de cada item. A colocação das outras empresas sai da ata da sessão'}{' '}
         que o {dados.portal || 'Portal de Compras Públicas'} anexa no PNCP, com todos os lances: {dados.licitacoesLidas ?? 0} atas lidas de{' '}
-        {dados.licitacoesNoPeriodo ?? 0} licitações desse portal na Zona da Mata desde {dataBR(dados.desde)}
+        {dados.licitacoesNoPeriodo ?? 0} licitações desse portal {ondeTexto(dados)} desde {dataBR(dados.desde)}
         {dados.aindaNaFila ? ` (${dados.aindaNaFila} ainda na fila; a lista cresce a cada atualização)` : ''}.
       </p>
       <p>

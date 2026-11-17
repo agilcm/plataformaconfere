@@ -46,8 +46,9 @@ export const textoColocacao = (col) => (col === 0 ? 'Melhor preço, não levou' 
  * @param {{ compras: Record<string, any>, cnpj: Record<string, any> }} cache
  * @param {{ nome: string, uf: string }[]} cidades
  * @param {Record<string, any>} [meta]
+ * @param {{ naZonaDaMata?: (compra: any) => boolean }} [o]  marca as licitações da Zona da Mata (zm: 1), para o filtro por região
  */
-export function montarClientes(cache, cidades, meta = {}) {
+export function montarClientes(cache, cidades, meta = {}, o = {}) {
   const alvo = new Map(cidades.map((c) => [`${normCidade(c.nome)}|${c.uf}`, c.nome]));
   const licitacoes = [];
   const empresas = new Map();
@@ -82,7 +83,17 @@ export function montarClientes(cache, cidades, meta = {}) {
         if (col === 1 || col > MAX_COLOCACAO) continue;
         if (iLic < 0) {
           iLic = licitacoes.length;
-          licitacoes.push({ id, orgao: c.orgao, municipio: c.municipio, uf: c.uf, titulo: c.titulo, objeto: c.objeto, modalidade: c.modalidade, data: c.data });
+          licitacoes.push({
+            id,
+            orgao: c.orgao,
+            municipio: c.municipio,
+            uf: c.uf,
+            titulo: c.titulo,
+            objeto: c.objeto,
+            modalidade: c.modalidade,
+            data: c.data,
+            ...(o.naZonaDaMata?.(c) ? { zm: 1 } : {}),
+          });
         }
         e.disputas.push({
           lic: iLic,
@@ -125,7 +136,8 @@ export function diferenca(d) {
 /**
  * Filtra as empresas e as disputas de cada uma.
  * @param {any} dados  saída de montarClientes
- * @param {{ cidade?: string, colocacoes?: number[], q?: string, municipio?: string }} f  colocacoes: [] = todas
+ * @param {{ cidade?: string, colocacoes?: number[], q?: string, municipio?: string, regiao?: '' | 'zm' | 'fora' }} f
+ *   colocacoes: [] = todas; regiao: onde foi a licitação ('' = Minas inteira, 'zm' = Zona da Mata, 'fora' = o resto de Minas)
  */
 export function filtrarClientes(dados, f = {}) {
   const termos = normCidade(f.q || '')
@@ -139,6 +151,7 @@ export function filtrarClientes(dados, f = {}) {
       if (cols.size && !cols.has(d.col)) return false;
       const lic = dados.licitacoes[d.lic];
       if (f.municipio && lic.municipio !== f.municipio) return false;
+      if (f.regiao && (f.regiao === 'zm') !== !!lic.zm) return false;
       if (!termos.length) return true;
       const texto = normCidade(`${e.razao} ${e.fantasia} ${e.cnpj} ${e.atividade} ${d.desc} ${lic.orgao} ${lic.municipio} ${lic.objeto}`);
       return termos.every((t) => texto.includes(t));
@@ -171,6 +184,7 @@ export function linhasPlanilha(dados, empresas) {
         'Empresas no item': d.participantes,
         Órgão: lic.orgao,
         'Cidade da licitação': `${lic.municipio} - ${lic.uf}`,
+        'Região da licitação': lic.zm ? 'Zona da Mata' : 'Outras regiões de MG',
         Licitação: lic.titulo,
         Objeto: lic.objeto,
         Data: lic.data.split('-').reverse().join('/'),

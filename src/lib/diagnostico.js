@@ -148,7 +148,7 @@ export function blocosDiagnostico(empresa, dados, o) {
     },
     {
       type: 'para',
-      text: `Analisamos as licitações da Zona da Mata mineira ${periodo} em que a empresa participou e não venceu. Os números abaixo saem das atas das sessões, publicadas pelos próprios órgãos no Portal Nacional de Contratações Públicas (PNCP).`,
+      text: `Analisamos as licitações de Minas Gerais ${periodo} em que a empresa participou e não venceu. Os números abaixo saem das atas das sessões, publicadas pelos próprios órgãos no Portal Nacional de Contratações Públicas (PNCP).`,
     },
     { type: 'heading', text: 'Resumo' },
     {
@@ -226,7 +226,7 @@ export function mensagemContato(empresa, dados) {
   if (!fatos.length) fatos.push(`disputou ${plural(a.itens, 'item', 'itens')} sem vencer`);
   const lista = fatos.length > 1 ? `${fatos.slice(0, -1).join(', ')} e ${fatos.at(-1)}` : fatos[0];
   return (
-    `Olá! Sou da Ágil CM, de Astolfo Dutra. Analisamos as licitações públicas da Zona da Mata nos últimos 12 meses e vimos que a ${empresa.razao} ${lista}. ` +
+    `Olá! Sou da Ágil CM, de Astolfo Dutra. Analisamos as licitações públicas de Minas Gerais nos últimos 12 meses e vimos que a ${empresa.razao} ${lista}. ` +
     `Preparamos um diagnóstico gratuito mostrando onde dá para virar esse resultado. Posso te enviar?`
   );
 }

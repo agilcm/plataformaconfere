@@ -13,7 +13,7 @@ import {
   nomeSemCpf,
   textoColocacao,
 } from '../src/lib/possiveisClientes.js';
-import { pdfDoZip } from '../scripts/possiveis-clientes.mjs';
+import { pdfDoZip, quinzenas } from '../scripts/possiveis-clientes.mjs';
 
 // Ata de mentira, no formato das linhas que saem do PDF do Portal de Compras Públicas (colunas separadas por 3 espaços)
 const ATA = `ATA FINAL
@@ -340,6 +340,62 @@ test('filtros e planilha', () => {
   assert.equal(dl.empresas.flatMap((e) => e.disputas).filter((x) => x.lote).length, 3, 'FULANA (2º), BETA (3º) e EPSILON (5º) no lote 1');
   assert.equal(linhasPlanilha(dl, filtrarClientes(dl, { cidade: 'Dona Euzébia' }))[0].Item, 'Lote 1');
   assert.equal(textoColocacao(2), '2º lugar');
+});
+
+test('Minas inteira: licitação de fora da Zona da Mata entra e o filtro por região separa', () => {
+  const mg = JSON.parse(JSON.stringify(CACHE));
+  mg.compras['18000000000200/2026/3'] = {
+    orgao: 'Prefeitura de Belo Horizonte',
+    municipio: 'Belo Horizonte',
+    uf: 'MG',
+    titulo: 'Edital nº 3/2026',
+    objeto: 'Material de escritório',
+    modalidade: 'Pregão - Eletrônico',
+    data: '2026-05-10',
+    itens: [
+      {
+        n: '0001',
+        d: 'PAPEL A4',
+        v: 20,
+        t: 2000,
+        c: [
+          ['55555555000155', 1, 20, 3, 'GAMA'],
+          ['22222222000122', 2, 20.5, 3, 'ALFA'],
+        ],
+      },
+    ],
+  };
+  const d = montarClientes(mg, CIDADES, {}, { naZonaDaMata: (c) => c.municipio === 'Ubá' });
+  assert.deepEqual(
+    d.licitacoes.map((l) => [l.municipio, l.zm]),
+    [
+      ['Belo Horizonte', undefined],
+      ['Ubá', 1],
+    ],
+    'a mais nova primeiro; só a da Zona da Mata leva a marca',
+  );
+  assert.equal(d.empresas.find((e) => e.razao.startsWith('ALFA')).disputas.length, 3, 'ALFA: 2 itens em Ubá e 1 em BH');
+  assert.deepEqual(
+    filtrarClientes(d, { regiao: 'fora' }).map((e) => [e.razao.split(' ')[0], e.disputas.length]),
+    [['ALFA', 1]],
+  );
+  assert.equal(filtrarClientes(d, { regiao: 'zm' }).length, 4);
+  assert.equal(filtrarClientes(d, {}).length, 4);
+  const linhas = linhasPlanilha(d, filtrarClientes(d, { regiao: 'fora' }));
+  assert.equal(linhas[0]['Região da licitação'], 'Outras regiões de MG');
+  assert.equal(linhasPlanilha(d, filtrarClientes(d, { regiao: 'zm' }))[0]['Região da licitação'], 'Zona da Mata');
+});
+
+test('busca em Minas: o período vai em quinzenas, a primeira a partir do início do período', () => {
+  const q = quinzenas('2025-11-17', '2026-11-17');
+  assert.deepEqual(q[0], ['2025-11-2', '2025-11-17', '2025-11-30']);
+  assert.deepEqual(q[1], ['2025-12-1', '2025-12-01', '2025-12-15']);
+  assert.deepEqual(
+    q.find((x) => x[0] === '2026-02-2'),
+    ['2026-02-2', '2026-02-16', '2026-02-28'],
+  );
+  assert.deepEqual(q.at(-1), ['2026-11-2', '2026-11-16', '2026-11-30']);
+  assert.equal(q.length, 25, '1 de nov/2025 + 22 de dez a out + 2 de nov/2026');
 });
 
 test('campeões: quem ganhou e levou cada item, de qualquer cidade, com o total ganho', () => {

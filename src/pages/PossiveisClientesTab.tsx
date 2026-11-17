@@ -1,5 +1,5 @@
-// Aba "Possíveis clientes" das Licitações (aberta a todos): empresas das cidades vizinhas que disputaram licitações da
-// Zona da Mata e ficaram do 2º ao 5º lugar (ou ofertaram o melhor preço e não levaram), com a licitação, o item e a
+// Aba "Possíveis clientes" das Licitações (aberta a todos): empresas das cidades vizinhas que disputaram licitações de
+// Minas Gerais e ficaram do 2º ao 5º lugar (ou ofertaram o melhor preço e não levaram), com a licitação, o item e a
 // colocação. Os dados vêm de prospeccao/clientes.json, gerado por scripts/possiveis-clientes.mjs a partir das atas do PNCP.
 import { useMemo, useState } from 'react';
 import { Container, Icon } from '../components/ui.tsx';
@@ -71,6 +71,12 @@ const FAIXAS: { id: string; rotulo: string; cols: number[] }[] = [
   { id: '4', rotulo: '4º lugar', cols: [4] },
   { id: '5', rotulo: '5º lugar', cols: [5] },
   { id: '0', rotulo: 'Melhor preço, não levou', cols: [0] },
+];
+// filtro "Onde foi a licitação"
+const REGIOES: { id: '' | 'zm' | 'fora'; rotulo: string }[] = [
+  { id: '', rotulo: 'Minas inteira' },
+  { id: 'zm', rotulo: 'Zona da Mata' },
+  { id: 'fora', rotulo: 'Outras regiões de MG' },
 ];
 
 // ---------------------------------------------------------------- funil de prospecção
@@ -287,6 +293,7 @@ function CartaoEmpresa({ e, completa, dados, registro }: { e: Empresa; completa:
 export default function PossiveisClientesTab() {
   const { dados, estado } = useProspeccao<Dados>('clientes');
   const [cidade, setCidade] = useState('');
+  const [regiao, setRegiao] = useState<'' | 'zm' | 'fora'>('');
   const [faixas, setFaixas] = useState<string[]>(FAIXAS.map((f) => f.id));
   const [q, setQ] = useState('');
   const [mostrar, setMostrar] = useState(30);
@@ -295,7 +302,10 @@ export default function PossiveisClientesTab() {
   const registroDe = (cnpj: string) => funil[PREFIXO_FUNIL + cnpj];
 
   const colocacoes = useMemo(() => FAIXAS.filter((f) => faixas.includes(f.id)).flatMap((f) => f.cols), [faixas]);
-  const filtradas = useMemo(() => (dados ? (filtrarClientes(dados, { cidade, colocacoes, q }) as Empresa[]) : []), [dados, cidade, colocacoes, q]);
+  const filtradas = useMemo(
+    () => (dados ? (filtrarClientes(dados, { cidade, colocacoes, q, regiao }) as Empresa[]) : []),
+    [dados, cidade, colocacoes, q, regiao],
+  );
   const testeFunil = FILTROS_FUNIL.find((f) => f.id === filtroFunil)?.teste || (() => true);
   const lista = filtradas.filter((e) => testeFunil(funil[PREFIXO_FUNIL + e.cnpj]));
   const contaFunil = (id: string) =>
@@ -304,9 +314,14 @@ export default function PossiveisClientesTab() {
   const porCnpj = useMemo(() => new Map((dados?.empresas || []).map((x) => [x.cnpj, x])), [dados]);
   const porCidade = useMemo(() => {
     const m: Record<string, number> = {};
-    if (dados) for (const e of filtrarClientes(dados, { colocacoes, q }) as Empresa[]) m[e.cidade] = (m[e.cidade] || 0) + 1;
+    if (dados) for (const e of filtrarClientes(dados, { colocacoes, q, regiao }) as Empresa[]) m[e.cidade] = (m[e.cidade] || 0) + 1;
     return m;
-  }, [dados, colocacoes, q]);
+  }, [dados, colocacoes, q, regiao]);
+  const porRegiao = useMemo(() => {
+    const m: Record<string, number> = {};
+    if (dados) for (const r of REGIOES) m[r.id] = filtrarClientes(dados, { cidade, colocacoes, q, regiao: r.id }).length;
+    return m;
+  }, [dados, cidade, colocacoes, q]);
 
   const excel = () => {
     if (!dados) return;
@@ -341,7 +356,7 @@ export default function PossiveisClientesTab() {
           Possíveis clientes
         </h2>
         <p className="mt-2 max-w-4xl text-base sm:text-lg text-slate-700 leading-relaxed">
-          Empresas de {dados ? listaCidades(dados.cidades) : 'cidades vizinhas'} que disputaram licitações da Zona da Mata e ficaram do 2º ao 5º lugar. Quem
+          Empresas de {dados ? listaCidades(dados.cidades) : 'cidades vizinhas'} que disputaram licitações em Minas Gerais e ficaram do 2º ao 5º lugar. Quem
           chega perto já participa, mas perde: é para essas empresas que a assessoria em licitações faz diferença.
         </p>
 
@@ -376,6 +391,27 @@ export default function PossiveisClientesTab() {
                   {dados.cidades.map((c) => (
                     <button key={c} type="button" aria-pressed={cidade === c} onClick={() => setCidade(cidade === c ? '' : c)} className={chip(cidade === c)}>
                       {c} <span className="tabular-nums opacity-80">({porCidade[c] || 0})</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <p id="rotulo-regiao" className="text-sm font-bold text-slate-700">
+                  Onde foi a licitação
+                </p>
+                <div role="group" aria-labelledby="rotulo-regiao" className="mt-2 flex flex-wrap gap-2">
+                  {REGIOES.map((r) => (
+                    <button
+                      key={r.id || 'mg'}
+                      type="button"
+                      aria-pressed={regiao === r.id}
+                      onClick={() => {
+                        setRegiao(r.id);
+                        setMostrar(30);
+                      }}
+                      className={chip(regiao === r.id)}
+                    >
+                      {r.rotulo} <span className="tabular-nums opacity-80">({porRegiao[r.id] || 0})</span>
                     </button>
                   ))}
                 </div>

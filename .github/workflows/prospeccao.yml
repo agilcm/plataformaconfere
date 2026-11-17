@@ -1,13 +1,15 @@
 name: Prospecção (atas do PNCP)
 
-# Lê as atas das licitações da Zona da Mata dos últimos 12 meses (scripts/possiveis-clientes.mjs) para as abas
-# Possíveis clientes e Campeões do painel de licitações, avisa no Telegram as oportunidades novas (empresas das cidades
-# escolhidas que perderam por pouco ou com o melhor preço) e, ao terminar, publica o site com as listas novas.
-# Cada leitura trabalha até 50 minutos e continua de onde a anterior parou (o que já foi lido fica no cache do Actions).
+# Lê as atas das licitações de Minas Gerais dos últimos 12 meses (scripts/possiveis-clientes.mjs) para as abas
+# Possíveis clientes (Minas inteira) e Campeões (Zona da Mata) do painel de licitações, avisa no Telegram as
+# oportunidades novas (empresas das cidades escolhidas que perderam por pouco ou com o melhor preço) e, ao terminar,
+# publica o site com as listas novas. Cada leitura trabalha até 50 minutos e continua de onde a anterior parou (o que
+# já foi lido fica no cache do Actions); a primeira volta por Minas inteira leva alguns dias. Depois dela, cada
+# leitura só pega o que saiu de novo e termina em poucos minutos.
 # A publicação do site (pages.yml) só remonta as listas a partir desse cache.
 on:
   schedule:
-    - cron: '41 2,8,14,20 * * *' # 4 vezes por dia
+    - cron: '41 */3 * * *' # 8 vezes por dia
   workflow_dispatch:
 
 permissions:
