@@ -50,6 +50,7 @@ export default defineConfig(() => {
           eleicao: path.resolve(import.meta.dirname, 'eleicao/index.html'),
           servico: path.resolve(import.meta.dirname, 'servico/index.html'),
           ondeAtuamos: path.resolve(import.meta.dirname, 'onde-atuamos/index.html'),
+          diagnostico: path.resolve(import.meta.dirname, 'diagnostico-licitacoes/index.html'),
         },
       },
     },

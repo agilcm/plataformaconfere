@@ -46,6 +46,11 @@ export default function Footer({ page = 'home' }: { page?: 'home' | 'licitacoes'
                   Onde já atuamos
                 </a>
               </li>
+              <li>
+                <a href={ROUTES.diagnostico} className="hover:text-white">
+                  Diagnóstico de licitações grátis
+                </a>
+              </li>
               {NAV_LINKS.map((l) => (
                 <li key={l.href}>
                   <a href={base + l.href} className="hover:text-white">

@@ -1,0 +1,39 @@
+name: Lembrete da prospecção
+
+# Nos dias úteis de manhã, pelo Telegram (scripts/funil-retorno.mjs): as empresas do funil de Possíveis clientes para
+# retornar hoje, os retornos atrasados e as mais quentes ainda sem contato. Lê a planilha da equipe (Meus editais).
+# Segredos (Settings → Secrets and variables → Actions → Secrets):
+#   TELEGRAM_BOT_TOKEN e TELEGRAM_CHAT_ID (ou PROSPECCAO_TELEGRAM_CHAT_ID)   os mesmos do alerta de editais
+#   MEUS_EDITAIS_SENHA                                                      a senha da equipe definida no Apps Script
+on:
+  schedule:
+    - cron: '23 10 * * 1-5' # 7h23 em Brasília, de segunda a sexta
+  workflow_dispatch:
+    inputs:
+      teste:
+        description: 'Mandar a mensagem mesmo sem retorno marcado para hoje'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: funil-retorno
+  cancel-in-progress: false
+
+jobs:
+  lembrar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Ler o funil e avisar
+        run: node scripts/funil-retorno.mjs ${{ inputs.teste && '--teste' || '' }}
+        env:
+          MEUS_EDITAIS_SENHA: ${{ secrets.MEUS_EDITAIS_SENHA }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.PROSPECCAO_TELEGRAM_CHAT_ID || secrets.TELEGRAM_CHAT_ID }}

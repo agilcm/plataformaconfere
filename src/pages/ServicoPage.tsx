@@ -13,7 +13,7 @@ const resolver = (href: Link) =>
   href.startsWith('servico:')
     ? rotaServico(href.slice(8))
     : href.startsWith('rota:')
-      ? ROUTES[href.slice(5) as 'licitacoes' | 'ondeAtuamos']
+      ? ROUTES[href.slice(5) as 'licitacoes' | 'ondeAtuamos' | 'diagnostico']
       : href.startsWith('home:')
         ? ROUTES.home + href.slice(5)
         : href;

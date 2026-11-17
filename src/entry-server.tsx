@@ -5,6 +5,7 @@ import App from './App.tsx';
 import LicitacoesPage from './pages/LicitacoesPage.tsx';
 import ServicoPage from './pages/ServicoPage.tsx';
 import OndeAtuamosPage, { ATUACAO, resumoEmFrase } from './pages/OndeAtuamosPage.tsx';
+import DiagnosticoPage from './pages/DiagnosticoPage.tsx';
 import { FAQ_ITEMS } from './data/faq.ts';
 import { COMPANY_PROFILE } from './data/servicesData.ts';
 import { PAGINAS_SERVICO, paginaServico } from './data/paginasServico.ts';
@@ -13,9 +14,11 @@ const SITE = COMPANY_PROFILE.siteUrl;
 const EMPRESA = 'Ágil CM Soluções Integradas';
 const urlServico = (slug: string) => `${SITE}/${slug}/`;
 const URL_ONDE = `${SITE}/onde-atuamos/`;
+const URL_DIAGNOSTICO = `${SITE}/diagnostico-licitacoes/`;
 
-export function render(page: 'home' | 'licitacoes' | 'servico' | 'onde' = 'home', slug = '') {
+export function render(page: 'home' | 'licitacoes' | 'servico' | 'onde' | 'diagnostico' = 'home', slug = '') {
   if (page === 'onde') return renderToString(<OndeAtuamosPage />);
+  if (page === 'diagnostico') return renderToString(<DiagnosticoPage />);
   if (page === 'servico') {
     const pagina = paginaServico(slug);
     if (!pagina) throw new Error(`Página de serviço desconhecida: ${slug}`);
@@ -180,6 +183,50 @@ export function headOnde() {
   return tagsHead({ title: ONDE_TITLE, description: descricaoOnde(), url: URL_ONDE, dados });
 }
 
+const DIAGNOSTICO_TITLE = 'Diagnóstico de licitações grátis por CNPJ | Ágil CM';
+const DIAGNOSTICO_DESCRICAO =
+  'Digite o CNPJ e veja em quais licitações de Minas Gerais dos últimos 12 meses sua empresa ficou do 2º ao 5º lugar, por quanto perdeu e o que fazer para vencer. Grátis e na hora.';
+
+/** <head> da página "Diagnóstico de licitações": título, descrição, canônico e dados estruturados */
+export function headDiagnostico() {
+  const dados = {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'BreadcrumbList',
+        itemListElement: [
+          { '@type': 'ListItem', position: 1, name: 'Início', item: `${SITE}/` },
+          { '@type': 'ListItem', position: 2, name: 'Diagnóstico de licitações', item: URL_DIAGNOSTICO },
+        ],
+      },
+      {
+        '@type': 'WebApplication',
+        '@id': `${URL_DIAGNOSTICO}#ferramenta`,
+        name: 'Diagnóstico de licitações por CNPJ',
+        url: URL_DIAGNOSTICO,
+        description: DIAGNOSTICO_DESCRICAO,
+        applicationCategory: 'BusinessApplication',
+        operatingSystem: 'Qualquer navegador',
+        inLanguage: 'pt-BR',
+        isAccessibleForFree: true,
+        offers: { '@type': 'Offer', price: '0', priceCurrency: 'BRL' },
+        provider: { '@id': `${SITE}/#empresa` },
+        areaServed: { '@type': 'State', name: 'Minas Gerais' },
+      },
+      {
+        '@type': ['Organization', 'ProfessionalService'],
+        '@id': `${SITE}/#empresa`,
+        name: EMPRESA,
+        url: `${SITE}/`,
+        logo: `${SITE}/brand/logo-completo.png`,
+        telephone: '+55 32 99921-7912',
+        email: COMPANY_PROFILE.email,
+      },
+    ],
+  };
+  return tagsHead({ title: DIAGNOSTICO_TITLE, description: DIAGNOSTICO_DESCRICAO, url: URL_DIAGNOSTICO, dados });
+}
+
 /** sitemap.xml com as páginas públicas (as áreas internas ficam de fora) */
 export function sitemapXml(hoje: string) {
   const urls = [
@@ -187,6 +234,7 @@ export function sitemapXml(hoje: string) {
     { loc: `${SITE}/licitacoes/`, lastmod: hoje },
     ...PAGINAS_SERVICO.map((p) => ({ loc: urlServico(p.slug), lastmod: p.atualizado })),
     { loc: URL_ONDE, lastmod: ATUACAO.atualizadoEm || hoje },
+    { loc: URL_DIAGNOSTICO, lastmod: hoje },
   ];
   return `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
@@ -228,6 +276,7 @@ Segunda a sexta, das 8h às 18h.
 - [Página inicial](${SITE}/): todos os serviços, pedido de orçamento e contato
 - [Painel de licitações de Minas Gerais](${SITE}/licitacoes/): editais abertos e contratos das prefeituras, com dados oficiais do PNCP e foco na Zona da Mata
 - [Onde já atuamos](${URL_ONDE}): prefeituras, câmaras e autarquias que já compraram da Ágil CM e o que foi fornecido
+- [Diagnóstico de licitações grátis](${URL_DIAGNOSTICO}): a empresa digita o CNPJ e vê em quais licitações de Minas Gerais dos últimos 12 meses ficou do 2º ao 5º lugar e por quanto perdeu
 
 ## Perguntas frequentes
 ${FAQ_ITEMS.map((f) => `### ${f.q}\n${f.a}`).join('\n\n')}

@@ -1,19 +1,7 @@
 import type { ReactNode } from 'react';
 
 // Cabeçalho padrão das seções: rótulo curto + título (h2) + frase de apoio
-export function SectionHeader({
-  eyebrow,
-  title,
-  lead,
-  center = false,
-  id,
-}: {
-  eyebrow: string;
-  title: string;
-  lead?: string;
-  center?: boolean;
-  id?: string;
-}) {
+export function SectionHeader({ eyebrow, title, lead, center = false, id }: { eyebrow: string; title: string; lead?: string; center?: boolean; id?: string }) {
   return (
     <header className={`mb-10 sm:mb-12 max-w-3xl ${center ? 'mx-auto text-center' : ''}`}>
       <p className="text-sm font-bold text-[#0369B3] mb-2">{eyebrow}</p>
@@ -26,11 +14,13 @@ export function SectionHeader({
 }
 
 const PATHS: Record<string, string> = {
-  building:
-    'M3 21h18M5 21V5a2 2 0 012-2h10a2 2 0 012 2v16M9 7h1m4 0h1M9 11h1m4 0h1M9 15h1m4 0h1M10 21v-3h4v3',
+  phone:
+    'M3 5a2 2 0 012-2h3.28a1 1 0 01.95.68l1.5 4.49a1 1 0 01-.5 1.21l-2.26 1.13a11.04 11.04 0 005.52 5.52l1.13-2.26a1 1 0 011.21-.5l4.49 1.5a1 1 0 01.68.95V19a2 2 0 01-2 2h-1C9.72 21 3 14.28 3 6V5z',
+  building: 'M3 21h18M5 21V5a2 2 0 012-2h10a2 2 0 012 2v16M9 7h1m4 0h1M9 11h1m4 0h1M9 15h1m4 0h1M10 21v-3h4v3',
   tree: 'M12 22v-6m0 0l-3-3m3 3l3-3M12 3a5 5 0 00-5 5c0 1 .3 2 .8 2.8A4 4 0 008 18h8a4 4 0 00.2-7.2A5 5 0 0012 3z',
   box: 'M21 8l-9-5-9 5m18 0l-9 5m9-5v8l-9 5m0-8L3 8m9 5v8M3 8v8l9 5',
-  users: 'M17 20h5v-2a3 3 0 00-5.4-1.8M9 20H2v-2a3 3 0 015.4-1.8M15 7a3 3 0 11-6 0 3 3 0 016 0zm-9 3a2 2 0 11-4 0 2 2 0 014 0zm16 0a2 2 0 11-4 0 2 2 0 014 0zM7.4 16.2a5 5 0 019.2 0',
+  users:
+    'M17 20h5v-2a3 3 0 00-5.4-1.8M9 20H2v-2a3 3 0 015.4-1.8M15 7a3 3 0 11-6 0 3 3 0 016 0zm-9 3a2 2 0 11-4 0 2 2 0 014 0zm16 0a2 2 0 11-4 0 2 2 0 014 0zM7.4 16.2a5 5 0 019.2 0',
   sheet: 'M9 17v-6m3 6v-3m3 3V9M5 21h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v14a2 2 0 002 2z',
   receipt: 'M9 14l2 2 4-4M7 3h10a2 2 0 012 2v16l-3-2-2 2-2-2-2 2-2-2-3 2V5a2 2 0 012-2z',
   search: 'M21 21l-4.3-4.3M10 18a8 8 0 100-16 8 8 0 000 16zM7 10h6m-3-3v6',

@@ -79,7 +79,7 @@ export function analisar(empresa, licitacoes) {
 }
 
 /** Em ordem de "dá para virar": melhor preço sem levar, depois os mais perto da vencedora */
-function maisPerto(ds) {
+export function maisPerto(ds) {
   const chave = (d) => {
     if (d.col === 0) return -1;
     const x = distancia(d);
@@ -221,6 +221,9 @@ export function blocosDiagnostico(empresa, dados, o) {
 }
 
 /** Mensagem curta para o primeiro contato (WhatsApp ou e-mail) */
+/**
+ * @param {{ abrangencia?: string, link?: string }} [o]  link: endereço do diagnóstico da empresa no site
+ */
 export function mensagemContato(empresa, dados, o = {}) {
   const a = analisar(empresa, dados.licitacoes);
   const fatos = [];
@@ -231,6 +234,84 @@ export function mensagemContato(empresa, dados, o = {}) {
   const lista = fatos.length > 1 ? `${fatos.slice(0, -1).join(', ')} e ${fatos.at(-1)}` : fatos[0];
   return (
     `Olá! Sou da Ágil CM, de Astolfo Dutra. Analisamos as licitações públicas ${deOnde(o.abrangencia)} nos últimos 12 meses e vimos que a ${empresa.razao} ${lista}. ` +
-    `Preparamos um diagnóstico gratuito mostrando onde dá para virar esse resultado. Posso te enviar?`
+    (o.link
+      ? `Preparamos um diagnóstico gratuito mostrando onde dá para virar esse resultado, que você pode ver aqui: ${o.link} . Podemos conversar?`
+      : `Preparamos um diagnóstico gratuito mostrando onde dá para virar esse resultado. Posso te enviar?`)
+  );
+}
+
+// ---------------------------------------------------------------- nota de oportunidade (quem ligar primeiro)
+
+const diasEntre = (de, ate) => Math.round((Date.parse(String(ate).slice(0, 10)) - Date.parse(String(de).slice(0, 10))) / 86400e3);
+const valorCurto = (v) => {
+  if (v >= 1e6) {
+    const m = v / 1e6;
+    return `R$ ${m.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} ${m >= 2 ? 'milhões' : 'milhão'}`;
+  }
+  return v >= 1e3 ? `R$ ${Math.round(v / 1e3).toLocaleString('pt-BR')} mil` : moedaInteira(v);
+};
+
+/**
+ * Nota de 0 a 100: quanto vale ligar para a empresa agora. Soma quatro coisas:
+ *   - perdas que dava para virar: itens em que ofertou o melhor preço e não levou, empatou ou ficou até 5% (2 p.p.)
+ *     da vencedora (até 40 pontos);
+ *   - quando foi a última disputa (até 25: quem disputou no último mês está com a dor fresca);
+ *   - dinheiro na mesa: o valor que as vencedoras levaram nesses itens (até 20);
+ *   - quantas licitações diferentes disputou (até 15: participa sempre, não foi um caso isolado).
+ * @param {{ disputas: any[] }} empresa
+ * @param {any[]} licitacoes
+ * @param {string} hoje  AAAA-MM-DD
+ * @returns {{ nota: number, faixa: 'quente' | 'morna' | 'fria', motivos: string[], perto: number, valorPerto: number, ultima: string, dias: number | null }}
+ */
+export function notaOportunidade(empresa, licitacoes, hoje) {
+  const ds = empresa.disputas || [];
+  const viravel = ds.filter((d) => d.col === 0 || ficouPerto(d) || (d.col >= 2 && !!distancia(d)?.empate));
+  const valorPerto = viravel.reduce((s, d) => s + (d.vt || 0), 0);
+  const ultima = ds.reduce((m, d) => {
+    const data = String(licitacoes[d.lic]?.data || '');
+    return data > m ? data : m;
+  }, '');
+  const dias = ultima ? Math.max(0, diasEntre(ultima, hoje)) : null;
+  const nLic = new Set(ds.map((d) => d.lic)).size;
+  const pPerto = Math.min(40, viravel.length * 8);
+  const pRecente = dias == null ? 0 : dias <= 30 ? 25 : dias <= 90 ? 15 : dias <= 180 ? 5 : 0;
+  const pValor = valorPerto >= 500e3 ? 20 : valorPerto >= 100e3 ? 15 : valorPerto >= 20e3 ? 10 : valorPerto > 0 ? 5 : 0;
+  const pFreq = Math.min(15, nLic * 3);
+  const nota = Math.min(100, pPerto + pRecente + pValor + pFreq);
+  const motivos = [];
+  if (viravel.length) motivos.push(`perdeu ${plural(viravel.length, 'item', 'itens')} por pouco ou com o melhor preço`);
+  if (dias != null) motivos.push(dias === 0 ? 'disputou hoje' : `última disputa há ${plural(dias, 'dia', 'dias')}`);
+  if (valorPerto > 0) motivos.push(`${valorCurto(valorPerto)} levados pelas vencedoras nesses itens`);
+  if (nLic > 1) motivos.push(`${nLic} licitações disputadas`);
+  return { nota, faixa: nota >= 60 ? 'quente' : nota >= 35 ? 'morna' : 'fria', motivos, perto: viravel.length, valorPerto, ultima, dias };
+}
+
+/**
+ * Objeto do edital legível: sem o "[Portal…] - " do começo, sem o "registro de preços para futura e eventual" e, se
+ * vier todo em maiúsculas, só com a primeira letra maiúscula.
+ */
+export function objetoLegivel(t) {
+  let s = String(t || '')
+    .replace(/^\s*\[[^\]]*\]\s*[-–:]?\s*/, '')
+    .replace(/^(objeto\s*:\s*)/i, '')
+    .replace(/^(o\s+)?registro\s+de\s+pre[cç]os?\s+(para|visando|objetivando)\s+(a\s+|à\s+)?((futura|eventual)\s+e\s+(futura|eventual)\s+)?/i, '')
+    .trim();
+  const letras = s.replace(/[^A-Za-zÀ-ÿ]/g, '');
+  if (letras && letras === letras.toUpperCase()) s = s.toLowerCase();
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/**
+ * Mensagem de contato a partir de um edital aberto que combina com o que a empresa vende (motivo para ligar hoje).
+ * @param {{ razao: string }} empresa
+ * @param {{ orgao: string, municipio?: string, objeto?: string, titulo?: string, propostasAte?: string | null }} edital
+ */
+export function mensagemEdital(empresa, edital) {
+  const prazo = edital.propostasAte ? ` (propostas até ${dataBR(edital.propostasAte)})` : '';
+  const onde = edital.municipio && !semAcento(edital.orgao).includes(semAcento(edital.municipio)) ? ` de ${edital.municipio}` : '';
+  const objeto = curta(objetoLegivel(edital.objeto || edital.titulo || 'fornecimento'), 110).replace(/\.$/, '');
+  return (
+    `Olá! Sou da Ágil CM, de Astolfo Dutra. Está aberta uma licitação de ${edital.orgao}${onde}${prazo}: ${objeto.charAt(0).toLowerCase()}${objeto.slice(1)}. ` +
+    `É parecida com as que a ${empresa.razao} já disputou e perdeu por pouco. Podemos ajudar a preparar a proposta e acompanhar a sessão para virar esse resultado. Quer conversar?`
   );
 }

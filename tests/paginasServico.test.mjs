@@ -40,6 +40,6 @@ test('páginas de serviço: todo link interno aponta para uma página que existe
   assert.ok(links.length >= 8);
   for (const [slug, href] of links) {
     if (href.startsWith('servico:')) assert.ok(paginaServico(href.slice(8)), `${slug}: ${href}`);
-    else assert.match(href, /^(rota:licitacoes|rota:ondeAtuamos|home:#[a-z-]+)$/, `${slug}: ${href}`);
+    else assert.match(href, /^(rota:licitacoes|rota:ondeAtuamos|rota:diagnostico|home:#[a-z-]+)$/, `${slug}: ${href}`);
   }
 });

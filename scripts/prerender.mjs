@@ -1,12 +1,12 @@
 // Pré-renderiza as páginas no build: o HTML completo vai para dist/,
 // assim buscadores e redes sociais leem o conteúdo sem executar JavaScript.
-// Também grava as páginas de serviço (/<slug>/index.html), a página Onde já atuamos, o sitemap.xml e o llms.txt.
+// Também grava as páginas de serviço (/<slug>/index.html), as páginas Onde já atuamos e Diagnóstico de licitações, o sitemap.xml e o llms.txt.
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const dist = path.resolve('dist');
-const { render, faqJsonLd, paginasServico, headServico, headOnde, sitemapXml, llmsTxt } = await import(
+const { render, faqJsonLd, paginasServico, headServico, headOnde, headDiagnostico, sitemapXml, llmsTxt } = await import(
   pathToFileURL(path.resolve('dist-ssr/entry-server.js')).href
 );
 
@@ -43,6 +43,17 @@ fs.rmSync(path.join(dist, 'servico'), { recursive: true, force: true });
   html = html.replace(MARCA, () => headOnde()).replace('<!--app-html-->', () => render('onde'));
   fs.writeFileSync(alvo, html);
   console.log('✓ onde-atuamos/index.html pré-renderizado');
+}
+
+// "Diagnóstico de licitações": a empresa digita o CNPJ (os dados são carregados no navegador, de prospeccao/cnpj/)
+{
+  const alvo = path.join(dist, 'diagnostico-licitacoes/index.html');
+  const MARCA = /<!--head-diagnostico-->[\s\S]*?<!--\/head-diagnostico-->/;
+  let html = fs.readFileSync(alvo, 'utf8');
+  if (!MARCA.test(html) || !html.includes('<!--app-html-->')) throw new Error('diagnostico-licitacoes/index.html sem as marcações do modelo');
+  html = html.replace(MARCA, () => headDiagnostico()).replace('<!--app-html-->', () => render('diagnostico'));
+  fs.writeFileSync(alvo, html);
+  console.log('✓ diagnostico-licitacoes/index.html pré-renderizado');
 }
 
 fs.writeFileSync(path.join(dist, 'sitemap.xml'), sitemapXml(new Date().toISOString().slice(0, 10)));

@@ -5,7 +5,7 @@
 import { CONSULTING_SERVICES, OPERATIONAL_SERVICES } from './servicesData.ts';
 import { FAQ_ITEMS } from './faq.ts';
 
-/** Links internos: 'servico:<slug>', 'rota:licitacoes', 'rota:ondeAtuamos' ou 'home:#ancora' (resolvidos em ServicoPage) */
+/** Links internos: 'servico:<slug>', 'rota:licitacoes', 'rota:ondeAtuamos', 'rota:diagnostico' ou 'home:#ancora' (resolvidos em ServicoPage) */
 export type Link = string;
 export interface Item {
   titulo: string;
@@ -466,6 +466,13 @@ export const PAGINAS_SERVICO: PaginaServico[] = [
         titulo: 'Por que com a Ágil CM?',
         texto: 'Nós também vendemos para o poder público. Conhecemos na prática os editais, os portais e o que derruba uma proposta.',
         link: { rotulo: 'Ver onde a Ágil CM já venceu', href: 'rota:ondeAtuamos' },
+      },
+      {
+        tipo: 'destaque',
+        titulo: 'Sua empresa já disputa e perde por pouco?',
+        texto:
+          'Digite o CNPJ e veja, de graça e na hora, em quais licitações de Minas Gerais dos últimos 12 meses ela ficou do 2º ao 5º lugar, por quanto perdeu e o que dá para mudar.',
+        link: { rotulo: 'Fazer o diagnóstico grátis', href: 'rota:diagnostico' },
       },
       {
         tipo: 'lista',

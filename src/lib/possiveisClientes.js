@@ -39,6 +39,19 @@ const celulaValor = (v, desconto) => (desconto && v != null && v !== '' ? { v, t
 
 export const cnpjFormatado = (c) => String(c || '').replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
 
+/** CNPJ com os 14 dígitos e os dois dígitos verificadores certos */
+export function cnpjValido(c) {
+  const d = String(c || '').replace(/\D/g, '');
+  if (d.length !== 14 || /^(\d)\1{13}$/.test(d)) return false;
+  const dv = (n) => {
+    let soma = 0;
+    for (let i = 0; i < n; i++) soma += Number(d[i]) * (((n - i - 1) % 8) + 2);
+    const r = soma % 11;
+    return r < 2 ? 0 : 11 - r;
+  };
+  return dv(12) === Number(d[12]) && dv(13) === Number(d[13]);
+}
+
 /** Texto da colocação: 0 = ofertou melhor que a vencedora e não levou */
 export const textoColocacao = (col) => (col === 0 ? 'Melhor preço, não levou' : `${col}º lugar`);
 
@@ -317,4 +330,105 @@ export function linhasPlanilhaCampeoes(dados, empresas) {
       });
     }
   return linhas;
+}
+
+/** Quantos dígitos do CNPJ separam as partes do diagnóstico por CNPJ (3: até mil arquivos pequenos) */
+export const DIGITOS_PARTE = 3;
+
+/**
+ * Diagnóstico por CNPJ (página pública /diagnostico-licitacoes/): todas as empresas, de qualquer cidade, que ficaram do
+ * 2º ao 5º lugar ou ofertaram o melhor preço e não levaram. Vai dividido em partes pelos primeiros dígitos do CNPJ (a
+ * página baixa só a parte do CNPJ digitado) e em formato enxuto (listas no lugar de objetos); `expandirDiagnostico`
+ * devolve o formato de montarClientes. Cada parte leva as suas licitações.
+ *   parte = { l: [[id, órgão, município, UF, data]],
+ *             e: { cnpj: [razão, fantasia, cidade, UF, porte, atividade, vitórias, [[lic, item, descrição, colocação,
+ *                  melhor lance, valor da vencedora, lances, participantes, total da vencedora, marcas (1 lote, 2 desconto)]]] } }
+ * @param {{ compras: Record<string, any>, cnpj: Record<string, any> }} cache
+ * @param {{ nomeCidade?: (municipio: string, uf: string) => string }} [o]
+ * @returns {Map<string, { l: any[][], e: Record<string, any[]> }>}
+ */
+export function montarDiagnosticos(cache, o = {}) {
+  const nomeCidade = o.nomeCidade || tituloCidade;
+  // a descrição do item vai encurtada (o PDF mostra até 64 letras): é a maior parte do tamanho dos arquivos
+  const desc = (t) => {
+    const x = String(t || '').replace(/…$/, '');
+    return x.length > 72 ? `${x.slice(0, 72).replace(/\s+\S*$/, '')}…` : x;
+  };
+  const partes = new Map();
+  const parte = (cnpj) => {
+    const k = cnpj.slice(0, DIGITOS_PARTE);
+    if (!partes.has(k)) partes.set(k, { l: [], iLic: new Map(), e: {} });
+    return partes.get(k);
+  };
+  for (const [id, c] of Object.entries(cache.compras || {}).sort((a, b) => String(b[1].data).localeCompare(String(a[1].data)))) {
+    for (const it of c.itens || []) {
+      const marcas = (it.l ? 1 : 0) + (ehDesconto(it) ? 2 : 0);
+      for (const [cnpj, col, melhor, lances, nomeAta] of it.c) {
+        if (!/^\d{14}$/.test(cnpj) || col > MAX_COLOCACAO) continue;
+        const p = parte(cnpj);
+        if (!p.e[cnpj]) {
+          const cad = cache.cnpj?.[cnpj] || {};
+          p.e[cnpj] = [nomeSemCpf(cad.r || nomeAta), nomeSemCpf(cad.f), cad.m ? nomeCidade(cad.m, cad.u) : '', cad.u || '', cad.p || '', cad.a || '', 0, []];
+        }
+        const e = p.e[cnpj];
+        if (col === 1) {
+          if (it.v != null) e[6]++;
+          continue;
+        }
+        if (!p.iLic.has(id)) {
+          p.iLic.set(id, p.l.length);
+          // o diagnóstico só usa o órgão, a cidade e a data (e o id para o link do PNCP)
+          p.l.push([id, c.orgao, c.municipio, c.uf, c.data]);
+        }
+        e[7].push([p.iLic.get(id), it.n, desc(it.d), col, melhor, it.v, lances, it.c.length, it.t ?? null, marcas]);
+      }
+    }
+  }
+  const out = new Map();
+  for (const [k, p] of [...partes.entries()].sort()) {
+    // só quem tem disputa sem vencer (quem só venceu não precisa de diagnóstico)
+    const e = Object.fromEntries(Object.entries(p.e).filter(([, x]) => x[7].length));
+    if (Object.keys(e).length) out.set(k, { l: p.l, e });
+  }
+  return out;
+}
+
+/**
+ * Uma empresa de uma parte do diagnóstico por CNPJ, no formato de montarClientes (para diagnostico.js).
+ * @returns {{ empresa: any, licitacoes: any[] } | null}
+ */
+export function expandirDiagnostico(parte, cnpj) {
+  const x = parte?.e?.[cnpj];
+  if (!x) return null;
+  const usadas = [...new Set(x[7].map((d) => d[0]))];
+  const novo = new Map(usadas.map((i, j) => [i, j]));
+  const licitacoes = usadas.map((i) => {
+    const [id, orgao, municipio, uf, data] = parte.l[i];
+    return { id, orgao, municipio, uf, data };
+  });
+  const empresa = {
+    cnpj,
+    razao: x[0],
+    fantasia: x[1],
+    cidade: x[2],
+    uf: x[3],
+    porte: x[4],
+    atividade: x[5],
+    situacao: '',
+    vitorias: x[6],
+    disputas: x[7].map(([lic, item, desc, col, melhor, venc, lances, participantes, vt, marcas]) => ({
+      lic: novo.get(lic),
+      item,
+      desc,
+      col,
+      melhor,
+      venc,
+      lances,
+      participantes,
+      ...(vt != null ? { vt } : {}),
+      ...(marcas & 1 ? { lote: true } : {}),
+      ...(marcas & 2 ? { desconto: true } : {}),
+    })),
+  };
+  return { empresa, licitacoes };
 }

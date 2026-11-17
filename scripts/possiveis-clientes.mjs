@@ -24,7 +24,7 @@ import { CIDADES_CLIENTES, MESES_CLIENTES } from '../src/data/clientesConfig.js'
 import { CIDADES_MG, COORDS } from '../src/data/coordenadasMunicipios.js';
 import { microrregiaoDe } from '../src/data/zonaDaMata.js';
 import { classificarItem, descricaoCurta, ehAtaPcp, lerAtaPcp } from '../src/lib/ataPcp.js';
-import { MAX_COLOCACAO, montarCampeoes, montarClientes, nomeSemCpf, normCidade } from '../src/lib/possiveisClientes.js';
+import { MAX_COLOCACAO, montarCampeoes, montarClientes, montarDiagnosticos, nomeSemCpf, normCidade } from '../src/lib/possiveisClientes.js';
 import { fetchJson, fixText, fonteDe } from '../src/lib/pncp.js';
 import { linhasDoPdf } from '../src/lib/privado/pdfTexto.js';
 import { mensagemOportunidades, oportunidades } from '../src/lib/oportunidades.js';
@@ -451,11 +451,35 @@ function gravarListas(cache, desde, hoje) {
   fs.mkdirSync(SAIDA, { recursive: true });
   fs.writeFileSync(`${SAIDA}/clientes.json`, JSON.stringify(saida));
   fs.writeFileSync(`${SAIDA}/campeoes.json`, JSON.stringify(campeoes));
+  // diagnóstico por CNPJ (página /diagnostico-licitacoes/): uma parte por começo de CNPJ, de qualquer cidade
+  const partes = montarDiagnosticos(cache, { nomeCidade });
+  const pastaCnpj = `${SAIDA}/cnpj`;
+  fs.rmSync(pastaCnpj, { recursive: true, force: true });
+  fs.mkdirSync(pastaCnpj, { recursive: true });
+  let empresasDiag = 0;
+  for (const [k, parte] of partes) {
+    fs.writeFileSync(`${pastaCnpj}/${k}.json`, JSON.stringify(parte));
+    empresasDiag += Object.keys(parte.e).length;
+  }
+  fs.writeFileSync(
+    `${pastaCnpj}/info.json`,
+    JSON.stringify({
+      atualizadoEm: comum.atualizadoEm,
+      desde,
+      ate: hoje,
+      abrangencia: 'Minas Gerais',
+      portal: PORTAL,
+      empresas: empresasDiag,
+      licitacoesLidas: metaClientes.licitacoesLidas,
+      buscaFeita: comum.buscaFeita,
+    }),
+  );
   fs.rmSync(SAIDA_ANTIGA, { force: true });
   console.log(
     `Listas: ${metaClientes.licitacoesLidas} atas lidas de ${metaClientes.licitacoesNoPeriodo} licitações em Minas desde ${desde} ` +
       `(${metaClientes.aindaNaFila} na fila, ${metaClientes.aguardandoAta} esperando a ata; busca no PNCP ${comum.buscaFeita}% feita). ` +
-      `Possíveis clientes: ${saida.empresas.length} empresas; Campeões (Zona da Mata): ${campeoes.resumo.empresas} empresas.`,
+      `Possíveis clientes: ${saida.empresas.length} empresas; Campeões (Zona da Mata): ${campeoes.resumo.empresas} empresas; ` +
+      `diagnóstico por CNPJ: ${empresasDiag} empresas em ${partes.size} partes.`,
   );
   return { saida, campeoes };
 }
