@@ -14,6 +14,19 @@ export const ETAPAS = [
 ] as const;
 export type Etapa = (typeof ETAPAS)[number]['id'];
 
+// Funil de prospecção (aba Possíveis clientes): cada empresa abordada vira um registro "funil:<CNPJ>" nesta mesma lista,
+// para ir junto à planilha da equipe e às cópias de segurança. As telas de editais não mostram esses registros.
+export const ETAPAS_FUNIL = [
+  { id: 'contato', nome: 'Mensagem enviada', cor: 'bg-sky-100 text-sky-800' },
+  { id: 'respondeu', nome: 'Respondeu', cor: 'bg-indigo-100 text-indigo-800' },
+  { id: 'diagnostico', nome: 'Diagnóstico enviado', cor: 'bg-amber-100 text-amber-900' },
+  { id: 'reuniao', nome: 'Reunião marcada', cor: 'bg-violet-100 text-violet-900' },
+  { id: 'fechou', nome: 'Fechou', cor: 'bg-emerald-100 text-emerald-800' },
+  { id: 'naoquis', nome: 'Não quis', cor: 'bg-slate-200 text-slate-600' },
+] as const;
+export type EtapaFunil = (typeof ETAPAS_FUNIL)[number]['id'];
+export const PREFIXO_FUNIL = 'funil:';
+
 export interface MeuEdital {
   edital: {
     id: string;
@@ -30,7 +43,7 @@ export interface MeuEdital {
     local?: string;
     linkLocal?: string | null;
   };
-  etapa: Etapa;
+  etapa: Etapa | EtapaFunil;
   nota: string;
   por?: string; // quem salvou (nome digitado ao conectar à planilha da equipe)
   salvoEm: string;
@@ -95,9 +108,81 @@ function assinar(aviso: () => void) {
 }
 
 const VAZIO: Record<string, MeuEdital> = {};
+// a lista separada em editais e funil (refeita só quando a lista muda)
+let separada: { base: Record<string, MeuEdital> | null; editais: Record<string, MeuEdital>; funil: Record<string, MeuEdital> } = {
+  base: null,
+  editais: VAZIO,
+  funil: VAZIO,
+};
+function separar() {
+  const base = ler();
+  if (separada.base !== base) {
+    const editais: Record<string, MeuEdital> = {};
+    const funil: Record<string, MeuEdital> = {};
+    for (const [id, m] of Object.entries(base)) (id.startsWith(PREFIXO_FUNIL) ? funil : editais)[id] = m;
+    separada = { base, editais, funil };
+  }
+  return separada;
+}
 /** Os editais salvos (atualiza a tela quando mudam, inclusive em outra aba do navegador) */
 export function useMeusEditais(): Record<string, MeuEdital> {
-  return useSyncExternalStore(assinar, ler, () => VAZIO);
+  return useSyncExternalStore(
+    assinar,
+    () => separar().editais,
+    () => VAZIO,
+  );
+}
+/** O funil de prospecção: "funil:<CNPJ>" → etapa, anotação e data de retorno (em edital.propostasAte) */
+export function useFunil(): Record<string, MeuEdital> {
+  return useSyncExternalStore(
+    assinar,
+    () => separar().funil,
+    () => VAZIO,
+  );
+}
+
+/**
+ * Muda a etapa, a anotação ou a data de retorno de uma empresa no funil. Etapa '' ("sem contato") tira do funil.
+ * @param e  a empresa da lista Possíveis clientes
+ */
+export function atualizarFunil(
+  e: { cnpj: string; razao: string; cidade: string; uf: string },
+  p: { etapa?: EtapaFunil | ''; nota?: string; retornarEm?: string | null },
+) {
+  const id = PREFIXO_FUNIL + e.cnpj;
+  const atual = { ...ler() };
+  if (p.etapa === '') return atual[id] ? removerMeuEdital(id) : undefined;
+  const agora = new Date().toISOString();
+  const antes = atual[id];
+  const base: MeuEdital = antes ?? {
+    edital: {
+      id,
+      titulo: e.razao,
+      objeto: `Prospecção: ${e.razao}`,
+      orgao: '',
+      municipio: e.cidade,
+      uf: e.uf,
+      modalidade: 'Prospecção',
+      valor: null,
+      propostasAte: null,
+      link: 'https://www.agilcm.com.br/licitacoes/#possiveis-clientes',
+    },
+    etapa: 'contato',
+    nota: '',
+    por: equipe()?.nome || '',
+    salvoEm: agora,
+    atualizadoEm: agora,
+  };
+  atual[id] = {
+    ...base,
+    edital: p.retornarEm !== undefined ? { ...base.edital, propostasAte: p.retornarEm || null } : base.edital,
+    ...(p.etapa ? { etapa: p.etapa } : {}),
+    ...(p.nota !== undefined ? { nota: p.nota } : {}),
+    atualizadoEm: agora,
+  };
+  const removidos = lerRemovidos();
+  delete removidos[id];
+  gravar(atual, removidos);
 }
 
 /** Guarda só o que a lista precisa mostrar (o edital completo do PNCP é grande) */
@@ -156,7 +241,7 @@ export function importarMeusEditais(texto: string): number {
   const atual = { ...ler() };
   let n = 0;
   for (const [id, m] of Object.entries(vindos)) {
-    if (!m?.edital?.id || !ETAPAS.some((e) => e.id === m.etapa)) continue;
+    if (!m?.edital?.id || ![...ETAPAS, ...ETAPAS_FUNIL].some((e) => e.id === m.etapa)) continue;
     if (!atual[id] || (m.atualizadoEm || '') > (atual[id].atualizadoEm || '')) {
       atual[id] = m;
       n++;

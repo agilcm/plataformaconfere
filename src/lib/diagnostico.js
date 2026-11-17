@@ -28,10 +28,14 @@ export function distancia(d) {
   if (d.venc == null || d.melhor == null) return null;
   if (d.desconto) {
     const pp = d.venc - d.melhor;
+    if (Math.abs(pp) < 0.005) return { valor: 0, texto: 'mesmo desconto', empate: true };
     return { valor: pp, texto: `${pp.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} p.p. de desconto a menos` };
   }
   const dif = diferenca(d);
-  return dif == null ? null : { valor: dif, texto: `${dif >= 0 ? '+' : ''}${pct(dif)}` };
+  if (dif == null) return null;
+  // mesmo lance da vencedora: perdeu no desempate (leva quem registrou o lance primeiro)
+  if (Math.abs(dif) < 0.05) return { valor: 0, texto: 'mesmo preço', empate: true };
+  return { valor: dif, texto: `${dif >= 0 ? '+' : ''}${pct(dif)}` };
 }
 
 /** Ficou perto: até 5% acima do preço vencedor, ou até 2 pontos de desconto abaixo */
@@ -68,6 +72,7 @@ export function analisar(empresa, licitacoes) {
     medianaDiferenca: mediana,
     // lances por item contam a proposta: 1 = só mandou a proposta e não disputou
     soProposta: conta((d) => d.lances <= 1),
+    empates: conta((d) => d.col >= 2 && !!distancia(d)?.empate),
     vitorias: empresa.vitorias || 0,
     valorNaMesa: ds.reduce((s, d) => s + (d.vt || 0), 0),
   };
@@ -89,6 +94,10 @@ export function leituras(a) {
   if (a.naoLevou)
     out.push(
       `Em ${plural(a.naoLevou, 'item', 'itens')} a empresa ofereceu o melhor preço e mesmo assim não levou. Isso costuma vir de documento de habilitação faltando ou vencido, proposta fora do modelo do edital ou desclassificação técnica: é perda que se evita conferindo tudo antes do envio.`,
+    );
+  if (a.empates)
+    out.push(
+      `Em ${plural(a.empates, 'item', 'itens')} a empresa deu o mesmo lance da vencedora e perdeu no desempate, que fica com quem registrou o lance primeiro. Lançar no momento certo resolve esse tipo de perda.`,
     );
   if (a.perto)
     out.push(

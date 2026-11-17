@@ -1,7 +1,8 @@
 name: Prospecção (atas do PNCP)
 
 # Lê as atas das licitações da Zona da Mata dos últimos 12 meses (scripts/possiveis-clientes.mjs) para as abas
-# Possíveis clientes e Campeões do painel de licitações e, ao terminar, publica o site com as listas novas.
+# Possíveis clientes e Campeões do painel de licitações, avisa no Telegram as oportunidades novas (empresas das cidades
+# escolhidas que perderam por pouco ou com o melhor preço) e, ao terminar, publica o site com as listas novas.
 # Cada leitura trabalha até 50 minutos e continua de onde a anterior parou (o que já foi lido fica no cache do Actions).
 # A publicação do site (pages.yml) só remonta as listas a partir desse cache.
 on:
@@ -42,6 +43,9 @@ jobs:
         run: node scripts/possiveis-clientes.mjs
         env:
           CLIENTES_TEMPO_MIN: '50'
+          # aviso de oportunidade: os mesmos segredos do alerta de editais (ou outra conversa só para a prospecção)
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.PROSPECCAO_TELEGRAM_CHAT_ID || secrets.TELEGRAM_CHAT_ID }}
       - name: Guardar o que foi lido
         if: always() && hashFiles('clientes-cache.json') != ''
         uses: actions/cache/save@v4

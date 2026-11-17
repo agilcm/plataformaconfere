@@ -30,7 +30,7 @@ const dataHora = (s: string | null) => {
   return m ? `${m[3]}/${m[2]}/${m[1]}${m[4] ? ` às ${m[4]}:${m[5]}` : ''}` : 'Ver no edital';
 };
 
-const ENCERRADAS = new Set<Etapa>(['ganhamos', 'perdemos', 'desistimos']);
+const ENCERRADAS = new Set<string>(['ganhamos', 'perdemos', 'desistimos']);
 
 function grupoDoPrazo(m: MeuEdital): string {
   const d = diasPara(m.edital.propostasAte);

@@ -24,6 +24,8 @@ import { classificarItem, descricaoCurta, ehAtaPcp, lerAtaPcp } from '../src/lib
 import { montarCampeoes, montarClientes, nomeSemCpf, normCidade } from '../src/lib/possiveisClientes.js';
 import { fetchJson, fixText, fonteDe } from '../src/lib/pncp.js';
 import { linhasDoPdf } from '../src/lib/privado/pdfTexto.js';
+import { mensagemOportunidades, oportunidades } from '../src/lib/oportunidades.js';
+import { telegram } from './telegram.mjs';
 
 const VERSAO = 3; // 2: atas com julgamento por lote; 3: itens com um só participante e valor total ganho
 const CACHE = process.env.CLIENTES_CACHE || 'clientes-cache.json';
@@ -583,6 +585,21 @@ async function main() {
       }
     }),
   );
+  // aviso no Telegram: empresas das cidades escolhidas que acabaram de perder por pouco ou com o melhor preço
+  try {
+    cache.avisados ??= {};
+    const novas = oportunidades(cache, CIDADES_CLIENTES, { hoje, avisados: cache.avisados });
+    if (novas.length) {
+      await telegram(mensagemOportunidades(novas));
+      for (const g of novas) cache.avisados[g.chave] = hoje;
+      console.log(`Aviso de oportunidade no Telegram: ${novas.length} empresa(s) e licitação(ões).`);
+    }
+    // avisos com mais de 120 dias já não voltam (a licitação saiu da janela de 60 dias)
+    const limite = new Date(Date.parse(hoje) - 120 * 86400e3).toISOString().slice(0, 10);
+    for (const [k, d] of Object.entries(cache.avisados)) if (d < limite) delete cache.avisados[k];
+  } catch (e) {
+    console.log(`Aviso de oportunidade não enviado: ${e.message}`);
+  }
   fs.writeFileSync(CACHE, JSON.stringify(cache));
 
   // 3) saída

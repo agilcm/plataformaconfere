@@ -8,6 +8,7 @@ import { baixarXlsx } from '../lib/xlsx.js';
 import { blocosDiagnostico, mensagemContato } from '../lib/diagnostico.js';
 import { dateText, downloadPdf, slug } from '../lib/pdfReport.ts';
 import { COMPANY_PROFILE } from '../data/servicesData.ts';
+import { atualizarFunil, ETAPAS_FUNIL, PREFIXO_FUNIL, useFunil, type EtapaFunil, type MeuEdital } from '../lib/meusEditais.ts';
 import {
   AvisoCarregando,
   campo,
@@ -72,6 +73,23 @@ const FAIXAS: { id: string; rotulo: string; cols: number[] }[] = [
   { id: '0', rotulo: 'Melhor preço, não levou', cols: [0] },
 ];
 
+// ---------------------------------------------------------------- funil de prospecção
+const hojeISO = () => new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 10);
+const somarDias = (n: number) => new Date(Date.now() - 3 * 3600e3 + n * 86400e3).toISOString().slice(0, 10);
+const etapaDe = (r?: MeuEdital) => (r ? ETAPAS_FUNIL.find((x) => x.id === r.etapa) : undefined);
+const EM_ANDAMENTO = new Set<string>(['contato', 'respondeu', 'diagnostico', 'reuniao']);
+/** Retorno marcado para hoje ou antes, numa etapa ainda em andamento */
+const retornoVencido = (r?: MeuEdital) => !!r && EM_ANDAMENTO.has(r.etapa) && !!r.edital.propostasAte && r.edital.propostasAte <= hojeISO();
+// grupos do filtro do funil
+const FILTROS_FUNIL: { id: string; rotulo: string; teste: (r?: MeuEdital) => boolean }[] = [
+  { id: '', rotulo: 'Todas', teste: () => true },
+  { id: 'sem', rotulo: 'Sem contato', teste: (r) => !r },
+  { id: 'andamento', rotulo: 'Em andamento', teste: (r) => !!r && EM_ANDAMENTO.has(r.etapa) },
+  { id: 'retornar', rotulo: 'Retornar hoje', teste: retornoVencido },
+  { id: 'fechou', rotulo: 'Fecharam', teste: (r) => r?.etapa === 'fechou' },
+  { id: 'naoquis', rotulo: 'Não quiseram', teste: (r) => r?.etapa === 'naoquis' },
+];
+
 // contato da Ágil CM no diagnóstico
 const CONTATO = { whatsapp: COMPANY_PROFILE.phoneDisplay, email: COMPANY_PROFILE.email, site: 'www.agilcm.com.br/assessoria-licitacoes/' };
 const acao =
@@ -80,7 +98,7 @@ const acao =
 /**
  * Um cartão por empresa. `e` traz as disputas do filtro atual; `completa`, todas (o diagnóstico usa todas).
  */
-function CartaoEmpresa({ e, completa, dados }: { e: Empresa; completa: Empresa; dados: Dados }) {
+function CartaoEmpresa({ e, completa, dados, registro }: { e: Empresa; completa: Empresa; dados: Dados; registro?: MeuEdital }) {
   const licitacoes = dados.licitacoes;
   const [copiado, setCopiado] = useState('');
   const [gerando, setGerando] = useState(false);
@@ -104,6 +122,8 @@ function CartaoEmpresa({ e, completa, dados }: { e: Empresa; completa: Empresa; 
     try {
       await navigator.clipboard.writeText(mensagemContato(completa, dados));
       avisar('mensagem');
+      // primeira abordagem: entra no funil como "Mensagem enviada", com retorno em 3 dias
+      if (!registro) atualizarFunil(e, { etapa: 'contato', retornarEm: somarDias(3) });
     } catch {
       /* sem área de transferência */
     }
@@ -149,6 +169,15 @@ function CartaoEmpresa({ e, completa, dados }: { e: Empresa; completa: Empresa; 
               )}
               {e.vitorias > 0 && (
                 <span className="px-2.5 py-0.5 rounded-full text-sm font-bold bg-emerald-100 text-emerald-900">venceu {e.vitorias} no período</span>
+              )}
+              {etapaDe(registro) && <span className={`px-2.5 py-0.5 rounded-full text-sm font-bold ${etapaDe(registro)!.cor}`}>{etapaDe(registro)!.nome}</span>}
+              {registro?.edital.propostasAte && EM_ANDAMENTO.has(registro.etapa) && (
+                <span
+                  className={`px-2.5 py-0.5 rounded-full text-sm font-bold ${retornoVencido(registro) ? 'bg-red-100 text-red-800' : 'bg-slate-100 text-slate-700'}`}
+                >
+                  retornar {registro.edital.propostasAte <= hojeISO() ? (registro.edital.propostasAte < hojeISO() ? '(atrasado) ' : 'hoje ') : 'em '}
+                  {registro.edital.propostasAte.split('-').reverse().join('/')}
+                </span>
               )}
             </span>
           </span>
@@ -204,8 +233,52 @@ function CartaoEmpresa({ e, completa, dados }: { e: Empresa; completa: Empresa; 
           {copiado === 'cnpj' ? 'CNPJ copiado' : 'Copiar o CNPJ'}
         </button>
         <span role="status" className="sr-only">
-          {copiado === 'mensagem' ? 'Mensagem copiada' : copiado === 'cnpj' ? 'CNPJ copiado' : ''}
+          {copiado === 'mensagem'
+            ? registro
+              ? 'Mensagem copiada'
+              : 'Mensagem copiada e empresa marcada como Mensagem enviada'
+            : copiado === 'cnpj'
+              ? 'CNPJ copiado'
+              : ''}
         </span>
+        <div className="w-full grid grid-cols-1 sm:grid-cols-[auto_auto_1fr] gap-2 sm:gap-3 sm:items-end mt-1">
+          <label className="block">
+            <span className="block text-sm font-bold text-slate-700">Etapa</span>
+            <select
+              value={registro?.etapa || ''}
+              onChange={(ev) => atualizarFunil(e, { etapa: ev.target.value as EtapaFunil | '' })}
+              className="mt-1 w-full sm:w-auto px-3 py-2.5 rounded-xl border border-slate-300 bg-white text-[15px]"
+            >
+              <option value="">Sem contato</option>
+              {ETAPAS_FUNIL.map((x) => (
+                <option key={x.id} value={x.id}>
+                  {x.nome}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="block text-sm font-bold text-slate-700">Retornar em</span>
+            <input
+              type="date"
+              value={registro?.edital.propostasAte || ''}
+              disabled={!registro}
+              onChange={(ev) => atualizarFunil(e, { retornarEm: ev.target.value || null })}
+              className="mt-1 w-full sm:w-auto px-3 py-2 rounded-xl border border-slate-300 bg-white text-[15px] disabled:bg-slate-50 disabled:text-slate-400"
+            />
+          </label>
+          <label className="block">
+            <span className="block text-sm font-bold text-slate-700">Anotação</span>
+            <input
+              key={registro?.nota || ''}
+              defaultValue={registro?.nota || ''}
+              disabled={!registro}
+              onBlur={(ev) => ev.target.value !== (registro?.nota || '') && atualizarFunil(e, { nota: ev.target.value })}
+              placeholder={registro ? 'ex.: falar com o João, prefere WhatsApp' : 'Escolha uma etapa para anotar'}
+              className="mt-1 w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-white text-[15px] disabled:bg-slate-50"
+            />
+          </label>
+        </div>
       </div>
     </li>
   );
@@ -217,9 +290,16 @@ export default function PossiveisClientesTab() {
   const [faixas, setFaixas] = useState<string[]>(FAIXAS.map((f) => f.id));
   const [q, setQ] = useState('');
   const [mostrar, setMostrar] = useState(30);
+  const funil = useFunil();
+  const [filtroFunil, setFiltroFunil] = useState('');
+  const registroDe = (cnpj: string) => funil[PREFIXO_FUNIL + cnpj];
 
   const colocacoes = useMemo(() => FAIXAS.filter((f) => faixas.includes(f.id)).flatMap((f) => f.cols), [faixas]);
-  const lista = useMemo(() => (dados ? (filtrarClientes(dados, { cidade, colocacoes, q }) as Empresa[]) : []), [dados, cidade, colocacoes, q]);
+  const filtradas = useMemo(() => (dados ? (filtrarClientes(dados, { cidade, colocacoes, q }) as Empresa[]) : []), [dados, cidade, colocacoes, q]);
+  const testeFunil = FILTROS_FUNIL.find((f) => f.id === filtroFunil)?.teste || (() => true);
+  const lista = filtradas.filter((e) => testeFunil(funil[PREFIXO_FUNIL + e.cnpj]));
+  const contaFunil = (id: string) =>
+    filtradas.filter((e) => (FILTROS_FUNIL.find((f) => f.id === id)?.teste || (() => true))(funil[PREFIXO_FUNIL + e.cnpj])).length;
   const itens = lista.reduce((s, e) => s + e.disputas.length, 0);
   const porCnpj = useMemo(() => new Map((dados?.empresas || []).map((x) => [x.cnpj, x])), [dados]);
   const porCidade = useMemo(() => {
@@ -230,12 +310,21 @@ export default function PossiveisClientesTab() {
 
   const excel = () => {
     if (!dados) return;
-    const linhas = linhasPlanilha(dados, lista) as Record<string, string | number>[];
+    const linhas = (linhasPlanilha(dados, lista) as Record<string, string | number>[]).map((l) => {
+      const r = registroDe(String(l.CNPJ).replace(/\D/g, ''));
+      const linha: Record<string, string | number> = {
+        ...l,
+        'Etapa da prospecção': etapaDe(r)?.nome || 'Sem contato',
+        'Retornar em': r?.edital.propostasAte ? r.edital.propostasAte.split('-').reverse().join('/') : '',
+        Anotação: r?.nota || '',
+      };
+      return linha;
+    });
     if (!linhas.length) return;
     const titulos = Object.keys(linhas[0]);
     const moeda = new Set(['Melhor lance', 'Valor da vencedora']);
     const numero = new Set(['Diferença (%)', 'Empresas no item']);
-    const larga = new Set(['Empresa', 'Descrição do item', 'Órgão', 'Objeto', 'Atividade principal', 'Link no PNCP']);
+    const larga = new Set(['Empresa', 'Descrição do item', 'Órgão', 'Objeto', 'Atividade principal', 'Link no PNCP', 'Anotação']);
     baixarXlsx(`possiveis-clientes-${new Date().toISOString().slice(0, 10)}.xlsx`, [
       {
         nome: 'Possíveis clientes',
@@ -290,6 +379,31 @@ export default function PossiveisClientesTab() {
                     </button>
                   ))}
                 </div>
+              </div>
+              <div>
+                <p id="rotulo-funil" className="text-sm font-bold text-slate-700">
+                  Prospecção
+                </p>
+                <div role="group" aria-labelledby="rotulo-funil" className="mt-2 flex flex-wrap gap-2">
+                  {FILTROS_FUNIL.map((f) => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      aria-pressed={filtroFunil === f.id}
+                      onClick={() => {
+                        setFiltroFunil(f.id);
+                        setMostrar(30);
+                      }}
+                      className={`${chip(filtroFunil === f.id)} ${f.id === 'retornar' && contaFunil('retornar') && filtroFunil !== f.id ? '!border-red-400 !text-red-800' : ''}`}
+                    >
+                      {f.rotulo} <span className="tabular-nums opacity-80">({contaFunil(f.id)})</span>
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-2 text-sm text-slate-600">
+                  A etapa, o retorno e a anotação de cada empresa ficam neste navegador. Com a planilha da equipe conectada (em Meus editais), ficam iguais para
+                  todos.
+                </p>
               </div>
               <div>
                 <p id="rotulo-colocacao" className="text-sm font-bold text-slate-700">
@@ -350,12 +464,12 @@ export default function PossiveisClientesTab() {
             </p>
             {lista.length === 0 && (
               <p className="mt-3 p-4 rounded-xl bg-white border border-slate-200 text-slate-700">
-                Nenhuma empresa com esses filtros. Marque mais colocações ou limpe a busca.
+                Nenhuma empresa com esses filtros. Marque mais colocações, escolha outra etapa da prospecção ou limpe a busca.
               </p>
             )}
             <ul className="mt-4 space-y-3">
               {lista.slice(0, mostrar).map((e) => (
-                <CartaoEmpresa key={e.cnpj} e={e} completa={porCnpj.get(e.cnpj) || e} dados={dados} />
+                <CartaoEmpresa key={e.cnpj} e={e} completa={porCnpj.get(e.cnpj) || e} dados={dados} registro={registroDe(e.cnpj)} />
               ))}
             </ul>
             {lista.length > mostrar && (
