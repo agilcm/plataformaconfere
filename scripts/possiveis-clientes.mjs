@@ -178,6 +178,28 @@ function municipiosEmOrdem(cache) {
 }
 
 const ymd = (iso) => iso.replace(/-/g, '');
+
+// A consulta do PNCP responde 429 ("muitas consultas") quando os pedidos vêm em paralelo: um pedido por vez, com pelo
+// menos 1 s entre eles, e, no 429, espera de 20 s, 40 s e 60 s antes de tentar de novo.
+let ultimoPedido = 0;
+let filaPncp = Promise.resolve();
+function consultaPncp(url) {
+  const vez = filaPncp.then(async () => {
+    for (let t = 0; ; t++) {
+      const espera = ultimoPedido + 1000 - Date.now();
+      if (espera > 0) await sleep(espera);
+      ultimoPedido = Date.now();
+      try {
+        return await fetchJson(url, { retries: 1, timeout: 30000 });
+      } catch (e) {
+        if (e.status !== 429 || t >= 3 || restam() < 120e3) throw e;
+        await sleep(20e3 * (t + 1));
+      }
+    }
+  });
+  filaPncp = vez.catch(() => null);
+  return vez;
+}
 /**
  * Caminho 2 (quando a busca falha): a consulta oficial do PNCP de um município. Na primeira vez, o período inteiro
  * (em duas metades); depois, só os últimos 60 dias. Anota a data em cache.varridoEm quando vai até o fim.
@@ -199,7 +221,7 @@ async function varrerMunicipio(mun, desde, hoje, cache, achadas) {
       for (let pagina = 1; pagina <= 60; pagina++) {
         let d;
         try {
-          d = await fetchJson(
+          d = await consultaPncp(
             `https://pncp.gov.br/api/consulta/v1/contratacoes/publicacao?dataInicial=${ymd(de)}&dataFinal=${ymd(ate)}&codigoModalidadeContratacao=${mod}&uf=MG&codigoMunicipioIbge=${IBGE.get(chaveMun(mun))}&pagina=${pagina}&tamanhoPagina=50`,
             { retries: 2, timeout: 30000 },
           );
@@ -486,7 +508,7 @@ async function main() {
   const munFalhas = [];
   let lidas = 0;
   let falhas = 0;
-  // 1) ler as atas da fila; 2) procurar mais licitações em alguns municípios (3 de cada vez); repete até acabar o tempo
+  // 1) ler as atas da fila; 2) procurar mais licitações em alguns municípios (um pedido por vez); repete até acabar o tempo
   // ou não haver mais o que fazer hoje
   for (;;) {
     for (const [k, c] of filaDeAtas()) {
@@ -513,7 +535,7 @@ async function main() {
     const novas = new Map();
     const fila = [...lote];
     await Promise.all(
-      [0, 1, 2].map(async () => {
+      [0].map(async () => {
         while (fila.length && restam() > reserva() + 60e3) {
           const mun = fila.shift();
           munTentados.add(mun);
