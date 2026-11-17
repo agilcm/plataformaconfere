@@ -88,6 +88,11 @@ test('PDF: dados da empresa, resumo, itens mais perto primeiro, contato e fonte'
   );
   const texto = JSON.stringify(blocos);
   assert.equal(blocos[1].text, 'Diagnóstico de licitações');
+  assert.match(texto, /Analisamos as licitações de Minas Gerais de 17\/11\/2025/);
+  const zm = JSON.stringify(
+    blocosDiagnostico(empresa, { licitacoes, desde: '2025-11-17', ate: '2026-11-17' }, { data: '', contato: {}, abrangencia: 'Zona da Mata' }),
+  );
+  assert.match(zm, /Analisamos as licitações da Zona da Mata mineira de 17\/11\/2025/);
   assert.match(texto, /BETA COMERCIO LTDA/);
   assert.match(texto, /CNPJ 11\.111\.111\/0001-11 · Cataguases - MG · BETA/);
   assert.match(texto, /de 17\/11\/2025 a 17\/11\/2026/);
@@ -119,5 +124,7 @@ test('mensagem para o primeiro contato', () => {
   assert.match(m, /^Olá! Sou da Ágil CM/);
   assert.match(m, /BETA COMERCIO LTDA em 1 item ofereceu o melhor preço e não levou, ficou em 2º lugar em 1 item e em 2 itens perdeu por muito pouco/);
   assert.match(m, /diagnóstico gratuito/);
+  assert.match(m, /licitações públicas de Minas Gerais nos últimos 12 meses/);
+  assert.match(mensagemContato(empresa, { licitacoes }, { abrangencia: 'Zona da Mata' }), /licitações públicas da Zona da Mata nos últimos 12 meses/);
   assert.match(mensagemContato({ ...empresa, disputas: [d({ col: 4, melhor: 20, venc: 10 })] }, { licitacoes }), /disputou 1 item sem vencer/);
 });

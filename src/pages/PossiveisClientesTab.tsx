@@ -52,6 +52,8 @@ interface Empresa {
   disputas: Disputa[];
 }
 interface Dados extends MetaProspeccao {
+  /** quanto da leitura já foi feito só nas licitações da Zona da Mata */
+  zonaDaMata?: Pick<MetaProspeccao, 'licitacoesNoPeriodo' | 'licitacoesLidas' | 'aindaNaFila' | 'aguardandoAta'>;
   resumo: { empresas: number; disputas: number; licitacoes: number };
   empresas: Empresa[];
 }
@@ -72,11 +74,11 @@ const FAIXAS: { id: string; rotulo: string; cols: number[] }[] = [
   { id: '5', rotulo: '5º lugar', cols: [5] },
   { id: '0', rotulo: 'Melhor preço, não levou', cols: [0] },
 ];
-// filtro "Onde foi a licitação"
-const REGIOES: { id: '' | 'zm' | 'fora'; rotulo: string }[] = [
-  { id: '', rotulo: 'Minas inteira' },
-  { id: 'zm', rotulo: 'Zona da Mata' },
-  { id: 'fora', rotulo: 'Outras regiões de MG' },
+// as duas listas: licitações da Zona da Mata e licitações de Minas inteira (a Zona da Mata incluída)
+type Vista = 'zm' | 'mg';
+const VISTAS: { id: Vista; titulo: string; abrangencia: string }[] = [
+  { id: 'zm', titulo: 'Licitações na Zona da Mata', abrangencia: 'Zona da Mata' },
+  { id: 'mg', titulo: 'Licitações em Minas Gerais', abrangencia: 'Minas Gerais' },
 ];
 
 // ---------------------------------------------------------------- funil de prospecção
@@ -102,9 +104,22 @@ const acao =
   'inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-[15px] font-bold cursor-pointer disabled:opacity-60 disabled:cursor-wait';
 
 /**
- * Um cartão por empresa. `e` traz as disputas do filtro atual; `completa`, todas (o diagnóstico usa todas).
+ * Um cartão por empresa. `e` traz as disputas do filtro atual; `completa`, todas as da lista escolhida (Zona da Mata
+ * ou Minas Gerais): o diagnóstico e a mensagem usam essas.
  */
-function CartaoEmpresa({ e, completa, dados, registro }: { e: Empresa; completa: Empresa; dados: Dados; registro?: MeuEdital }) {
+function CartaoEmpresa({
+  e,
+  completa,
+  dados,
+  registro,
+  abrangencia,
+}: {
+  e: Empresa;
+  completa: Empresa;
+  dados: Dados;
+  registro?: MeuEdital;
+  abrangencia: string;
+}) {
   const licitacoes = dados.licitacoes;
   const [copiado, setCopiado] = useState('');
   const [gerando, setGerando] = useState(false);
@@ -118,7 +133,7 @@ function CartaoEmpresa({ e, completa, dados, registro }: { e: Empresa; completa:
       await downloadPdf(
         `diagnostico-licitacoes-${slug(completa.razao)}.pdf`,
         `Diagnóstico de licitações - ${completa.razao}`,
-        blocosDiagnostico(completa, dados, { data: dateText(), contato: CONTATO }) as Parameters<typeof downloadPdf>[2],
+        blocosDiagnostico(completa, dados, { data: dateText(), contato: CONTATO, abrangencia }) as Parameters<typeof downloadPdf>[2],
       );
     } finally {
       setGerando(false);
@@ -126,7 +141,7 @@ function CartaoEmpresa({ e, completa, dados, registro }: { e: Empresa; completa:
   };
   const copiarMensagem = async () => {
     try {
-      await navigator.clipboard.writeText(mensagemContato(completa, dados));
+      await navigator.clipboard.writeText(mensagemContato(completa, dados, { abrangencia }));
       avisar('mensagem');
       // primeira abordagem: entra no funil como "Mensagem enviada", com retorno em 3 dias
       if (!registro) atualizarFunil(e, { etapa: 'contato', retornarEm: somarDias(3) });
@@ -293,7 +308,10 @@ function CartaoEmpresa({ e, completa, dados, registro }: { e: Empresa; completa:
 export default function PossiveisClientesTab() {
   const { dados, estado } = useProspeccao<Dados>('clientes');
   const [cidade, setCidade] = useState('');
-  const [regiao, setRegiao] = useState<'' | 'zm' | 'fora'>('');
+  const [vista, setVista] = useState<Vista>('zm');
+  const [soFora, setSoFora] = useState(false);
+  const regiao = vista === 'zm' ? 'zm' : soFora ? 'fora' : '';
+  const abrangencia = VISTAS.find((v) => v.id === vista)!.abrangencia;
   const [faixas, setFaixas] = useState<string[]>(FAIXAS.map((f) => f.id));
   const [q, setQ] = useState('');
   const [mostrar, setMostrar] = useState(30);
@@ -311,17 +329,27 @@ export default function PossiveisClientesTab() {
   const contaFunil = (id: string) =>
     filtradas.filter((e) => (FILTROS_FUNIL.find((f) => f.id === id)?.teste || (() => true))(funil[PREFIXO_FUNIL + e.cnpj])).length;
   const itens = lista.reduce((s, e) => s + e.disputas.length, 0);
-  const porCnpj = useMemo(() => new Map((dados?.empresas || []).map((x) => [x.cnpj, x])), [dados]);
+  // a lista escolhida inteira, sem os outros filtros: números do topo, diagnóstico e mensagem
+  const daVista = useMemo(() => (dados ? (filtrarClientes(dados, { regiao: vista === 'zm' ? 'zm' : '' }) as Empresa[]) : []), [dados, vista]);
+  const porCnpj = useMemo(() => new Map(daVista.map((x) => [x.cnpj, x])), [daVista]);
+  const contaVista: Record<Vista, number> = useMemo(
+    () => ({ zm: dados ? filtrarClientes(dados, { regiao: 'zm' }).length : 0, mg: dados?.empresas.length ?? 0 }),
+    [dados],
+  );
+  const resumoVista = useMemo(() => {
+    const disputas = daVista.reduce((s, e) => s + e.disputas.length, 0);
+    const lics = new Set(daVista.flatMap((e) => e.disputas.map((d) => d.lic))).size;
+    return { empresas: daVista.length, disputas, licitacoes: lics };
+  }, [daVista]);
+  // período e andamento da leitura da lista escolhida (a Zona da Mata já tinha sido toda procurada antes de Minas)
+  const metaVista: Dados | null =
+    dados && (vista === 'zm' ? { ...dados, ...(dados.zonaDaMata || {}), abrangencia: 'Zona da Mata', buscaFeita: undefined } : dados);
   const porCidade = useMemo(() => {
     const m: Record<string, number> = {};
     if (dados) for (const e of filtrarClientes(dados, { colocacoes, q, regiao }) as Empresa[]) m[e.cidade] = (m[e.cidade] || 0) + 1;
     return m;
   }, [dados, colocacoes, q, regiao]);
-  const porRegiao = useMemo(() => {
-    const m: Record<string, number> = {};
-    if (dados) for (const r of REGIOES) m[r.id] = filtrarClientes(dados, { cidade, colocacoes, q, regiao: r.id }).length;
-    return m;
-  }, [dados, cidade, colocacoes, q]);
+  const foraDaZm = useMemo(() => (dados ? filtrarClientes(dados, { cidade, colocacoes, q, regiao: 'fora' }).length : 0), [dados, cidade, colocacoes, q]);
 
   const excel = () => {
     if (!dados) return;
@@ -340,7 +368,7 @@ export default function PossiveisClientesTab() {
     const moeda = new Set(['Melhor lance', 'Valor da vencedora']);
     const numero = new Set(['Diferença (%)', 'Empresas no item']);
     const larga = new Set(['Empresa', 'Descrição do item', 'Órgão', 'Objeto', 'Atividade principal', 'Link no PNCP', 'Anotação']);
-    baixarXlsx(`possiveis-clientes-${new Date().toISOString().slice(0, 10)}.xlsx`, [
+    baixarXlsx(`possiveis-clientes-${vista === 'zm' ? 'zona-da-mata' : 'minas-gerais'}-${new Date().toISOString().slice(0, 10)}.xlsx`, [
       {
         nome: 'Possíveis clientes',
         colunas: titulos.map((t) => ({ titulo: t, largura: larga.has(t) ? 44 : 20, tipo: moeda.has(t) ? 'moeda' : numero.has(t) ? 'numero' : 'texto' })),
@@ -356,21 +384,47 @@ export default function PossiveisClientesTab() {
           Possíveis clientes
         </h2>
         <p className="mt-2 max-w-4xl text-base sm:text-lg text-slate-700 leading-relaxed">
-          Empresas de {dados ? listaCidades(dados.cidades) : 'cidades vizinhas'} que disputaram licitações em Minas Gerais e ficaram do 2º ao 5º lugar. Quem
-          chega perto já participa, mas perde: é para essas empresas que a assessoria em licitações faz diferença.
+          Empresas de {dados ? listaCidades(dados.cidades) : 'cidades vizinhas'} que disputaram licitações e ficaram do 2º ao 5º lugar. Quem chega perto já
+          participa, mas perde: é para essas empresas que a assessoria em licitações faz diferença.
         </p>
 
         <AvisoCarregando estado={estado} />
 
-        {estado === 'ok' && dados && (
+        {estado === 'ok' && dados && metaVista && (
           <>
-            <Periodo dados={dados} />
+            <div role="group" aria-label="Quais licitações" className="mt-5 grid sm:grid-cols-2 gap-3">
+              {VISTAS.map((v) => {
+                const ativo = vista === v.id;
+                const n = contaVista[v.id];
+                return (
+                  <button
+                    key={v.id}
+                    type="button"
+                    aria-pressed={ativo}
+                    onClick={() => {
+                      setVista(v.id);
+                      setMostrar(30);
+                    }}
+                    className={`text-left p-4 sm:p-5 rounded-2xl border-2 cursor-pointer ${
+                      ativo ? 'bg-[#0F2053] border-[#0F2053] text-white' : 'bg-white border-slate-300 text-[#0F2053] hover:border-[#0478CA]'
+                    }`}
+                  >
+                    <span className="block text-lg sm:text-xl font-bold font-display">{v.titulo}</span>
+                    <span className={`block mt-0.5 text-[15px] ${ativo ? 'text-white/90' : 'text-slate-700'}`}>
+                      {n} {n === 1 ? 'fornecedor' : 'fornecedores'} de {listaCidades(dados.cidades)}
+                      {v.id === 'mg' ? ' (a Zona da Mata incluída)' : ''}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <Periodo dados={metaVista} />
             <ul className="mt-5 grid grid-cols-2 lg:grid-cols-4 gap-3">
               {[
-                [dados.resumo.empresas, dados.resumo.empresas === 1 ? 'empresa' : 'empresas'],
-                [dados.resumo.disputas, 'itens disputados sem vencer'],
-                [dados.resumo.licitacoes, 'licitações com essas empresas'],
-                [dados.licitacoesLidas ?? 0, 'atas lidas no período'],
+                [resumoVista.empresas, resumoVista.empresas === 1 ? 'empresa' : 'empresas'],
+                [resumoVista.disputas, 'itens disputados sem vencer'],
+                [resumoVista.licitacoes, 'licitações com essas empresas'],
+                [metaVista.licitacoesLidas ?? 0, 'atas lidas no período'],
               ].map(([valor, rotulo]) => (
                 <li key={rotulo} className="p-4 rounded-2xl bg-white border border-slate-200">
                   <strong className="block text-2xl sm:text-3xl font-bold font-display text-[#0F2053] tabular-nums">{valor}</strong>
@@ -395,27 +449,20 @@ export default function PossiveisClientesTab() {
                   ))}
                 </div>
               </div>
-              <div>
-                <p id="rotulo-regiao" className="text-sm font-bold text-slate-700">
-                  Onde foi a licitação
-                </p>
-                <div role="group" aria-labelledby="rotulo-regiao" className="mt-2 flex flex-wrap gap-2">
-                  {REGIOES.map((r) => (
-                    <button
-                      key={r.id || 'mg'}
-                      type="button"
-                      aria-pressed={regiao === r.id}
-                      onClick={() => {
-                        setRegiao(r.id);
-                        setMostrar(30);
-                      }}
-                      className={chip(regiao === r.id)}
-                    >
-                      {r.rotulo} <span className="tabular-nums opacity-80">({porRegiao[r.id] || 0})</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
+              {vista === 'mg' && (
+                <label className="flex items-center gap-3 text-base text-slate-800 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={soFora}
+                    onChange={(ev) => {
+                      setSoFora(ev.target.checked);
+                      setMostrar(30);
+                    }}
+                    className="w-5 h-5 accent-[#0F2053]"
+                  />
+                  Só licitações fora da Zona da Mata <span className="tabular-nums text-slate-600">({foraDaZm})</span>
+                </label>
+              )}
               <div>
                 <p id="rotulo-funil" className="text-sm font-bold text-slate-700">
                   Prospecção
@@ -505,7 +552,7 @@ export default function PossiveisClientesTab() {
             )}
             <ul className="mt-4 space-y-3">
               {lista.slice(0, mostrar).map((e) => (
-                <CartaoEmpresa key={e.cnpj} e={e} completa={porCnpj.get(e.cnpj) || e} dados={dados} registro={registroDe(e.cnpj)} />
+                <CartaoEmpresa key={e.cnpj} e={e} completa={porCnpj.get(e.cnpj) || e} dados={dados} registro={registroDe(e.cnpj)} abrangencia={abrangencia} />
               ))}
             </ul>
             {lista.length > mostrar && (
@@ -518,7 +565,7 @@ export default function PossiveisClientesTab() {
               </button>
             )}
 
-            <NotaFonte dados={dados} />
+            <NotaFonte dados={metaVista} />
           </>
         )}
       </Container>

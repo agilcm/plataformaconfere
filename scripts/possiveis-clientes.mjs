@@ -434,7 +434,8 @@ function gravarListas(cache, desde, hoje) {
     // parte da busca no PNCP (Minas inteira, 12 meses) já feita
     buscaFeita: buscaFeita(cache, desde, hoje),
   };
-  const metaClientes = { ...comum, abrangencia: 'Minas Gerais', ...resumoDaLeitura(cache, hoje) };
+  // Possíveis clientes tem duas listas na tela (licitações da Zona da Mata e de Minas inteira): vai o andamento das duas
+  const metaClientes = { ...comum, abrangencia: 'Minas Gerais', ...resumoDaLeitura(cache, hoje), zonaDaMata: resumoDaLeitura(cache, hoje, naZonaDaMata) };
   // Campeões fica na Zona da Mata (Minas inteira deixaria a lista grande demais para abrir no celular)
   const metaCampeoes = { ...comum, abrangencia: 'Zona da Mata', ...resumoDaLeitura(cache, hoje, naZonaDaMata) };
   const cidadesMG = new Map(CIDADES_MG.map(([nome]) => [normCidade(nome), nome]));
@@ -599,7 +600,7 @@ async function main() {
   // aviso no Telegram: empresas das cidades escolhidas que acabaram de perder por pouco ou com o melhor preço
   try {
     cache.avisados ??= {};
-    const novas = oportunidades(cache, CIDADES_CLIENTES, { hoje, avisados: cache.avisados });
+    const novas = oportunidades(cache, CIDADES_CLIENTES, { hoje, avisados: cache.avisados, naZonaDaMata });
     if (novas.length) {
       await telegram(mensagemOportunidades(novas));
       for (const g of novas) cache.avisados[g.chave] = hoje;

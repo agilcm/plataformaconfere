@@ -119,11 +119,15 @@ export function leituras(a) {
   return out;
 }
 
+/** "da Zona da Mata (mineira)" ou "de Minas Gerais" */
+const deOnde = (abrangencia, mineira = false) => (abrangencia === 'Zona da Mata' ? `da Zona da Mata${mineira ? ' mineira' : ''}` : 'de Minas Gerais');
+
 /**
  * Blocos do PDF do diagnóstico.
  * @param {any} empresa  empresa da lista Possíveis clientes (todas as disputas, sem filtro)
  * @param {{ licitacoes: any[], desde?: string, ate?: string, atualizadoEm?: string, portal?: string }} dados
- * @param {{ data: string, contato: { whatsapp: string, email: string, site: string } }} o
+ * @param {{ data: string, contato: { whatsapp: string, email: string, site: string }, abrangencia?: string }} o
+ *   abrangencia: de onde são as licitações analisadas ("Zona da Mata" ou, sem nada, Minas Gerais)
  */
 export function blocosDiagnostico(empresa, dados, o) {
   const a = analisar(empresa, dados.licitacoes);
@@ -148,7 +152,7 @@ export function blocosDiagnostico(empresa, dados, o) {
     },
     {
       type: 'para',
-      text: `Analisamos as licitações de Minas Gerais ${periodo} em que a empresa participou e não venceu. Os números abaixo saem das atas das sessões, publicadas pelos próprios órgãos no Portal Nacional de Contratações Públicas (PNCP).`,
+      text: `Analisamos as licitações ${deOnde(o.abrangencia, true)} ${periodo} em que a empresa participou e não venceu. Os números abaixo saem das atas das sessões, publicadas pelos próprios órgãos no Portal Nacional de Contratações Públicas (PNCP).`,
     },
     { type: 'heading', text: 'Resumo' },
     {
@@ -217,7 +221,7 @@ export function blocosDiagnostico(empresa, dados, o) {
 }
 
 /** Mensagem curta para o primeiro contato (WhatsApp ou e-mail) */
-export function mensagemContato(empresa, dados) {
+export function mensagemContato(empresa, dados, o = {}) {
   const a = analisar(empresa, dados.licitacoes);
   const fatos = [];
   if (a.naoLevou) fatos.push(`em ${plural(a.naoLevou, 'item', 'itens')} ofereceu o melhor preço e não levou`);
@@ -226,7 +230,7 @@ export function mensagemContato(empresa, dados) {
   if (!fatos.length) fatos.push(`disputou ${plural(a.itens, 'item', 'itens')} sem vencer`);
   const lista = fatos.length > 1 ? `${fatos.slice(0, -1).join(', ')} e ${fatos.at(-1)}` : fatos[0];
   return (
-    `Olá! Sou da Ágil CM, de Astolfo Dutra. Analisamos as licitações públicas de Minas Gerais nos últimos 12 meses e vimos que a ${empresa.razao} ${lista}. ` +
+    `Olá! Sou da Ágil CM, de Astolfo Dutra. Analisamos as licitações públicas ${deOnde(o.abrangencia)} nos últimos 12 meses e vimos que a ${empresa.razao} ${lista}. ` +
     `Preparamos um diagnóstico gratuito mostrando onde dá para virar esse resultado. Posso te enviar?`
   );
 }

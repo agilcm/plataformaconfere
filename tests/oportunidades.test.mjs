@@ -110,6 +110,41 @@ test('mensagem: empresa, cidade, órgão, item, colocação, empate e link', () 
   assert.equal(mensagemOportunidades([]), '');
 });
 
+test('mensagem separada: licitações da Zona da Mata primeiro, depois o resto de Minas', () => {
+  const mg = JSON.parse(JSON.stringify(cache));
+  mg.compras['2/2026/5'] = {
+    orgao: 'Consórcio Intermunicipal de Saúde',
+    municipio: 'Lavras',
+    uf: 'MG',
+    data: '2026-11-05',
+    itens: [
+      {
+        n: '0001',
+        d: 'Luva',
+        v: 10,
+        c: [
+          ['33333333000133', 1, 10, 1, 'X'],
+          ['11111111000111', 2, 10.2, 1, 'BETA'],
+        ],
+      },
+    ],
+  };
+  const l = oportunidades(mg, CIDADES, { hoje: '2026-11-17', naZonaDaMata: (c) => c.municipio === 'Ubá' });
+  assert.deepEqual(
+    l.map((g) => [g.licitacao.municipio, g.licitacao.zm]),
+    [
+      ['Ubá', true],
+      ['Ubá', true],
+      ['Lavras', false],
+    ],
+  );
+  const t = mensagemOportunidades(l);
+  assert.ok(t.indexOf('Licitações na Zona da Mata') < t.indexOf('Licitações no resto de Minas Gerais'));
+  assert.ok(t.indexOf('Licitações no resto de Minas Gerais') < t.indexOf('Consórcio Intermunicipal de Saúde (Lavras)'), 'a cidade vai quando o órgão não diz');
+  assert.match(t, /Prefeitura de Ubá, 01\/11\/2026/, 'o órgão já diz a cidade');
+  assert.doesNotMatch(mensagemOportunidades(oportunidades(cache, CIDADES, { hoje: '2026-11-17' })), /Zona da Mata/, 'sem a marca, sem títulos');
+});
+
 test('distância: empate de preço e de desconto', () => {
   assert.deepEqual(distancia({ col: 2, melhor: 5, venc: 5 }), { valor: 0, texto: 'mesmo preço', empate: true });
   assert.equal(distancia({ col: 2, melhor: 20, venc: 20, desconto: true }).texto, 'mesmo desconto');
