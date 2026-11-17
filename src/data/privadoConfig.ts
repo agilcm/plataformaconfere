@@ -26,4 +26,4 @@ export const AGIL_CNPJ_RAIZ = '51.328.978';
  * Com ele preenchido, cada pessoa só digita a senha da equipe na aba MEUS EDITAIS. O endereço não é segredo:
  * sem a senha (que fica só no Apps Script) a planilha não abre.
  */
-export const MEUS_EDITAIS_URL = '';
+export const MEUS_EDITAIS_URL = 'https://script.google.com/macros/s/AKfycbwjDfEPiOChudvGyC5h_MLlQXv_xv-XbOEvvrFppgZHMnHAhDlyGsXVxMJO1Umhi7-gdQ/exec';
