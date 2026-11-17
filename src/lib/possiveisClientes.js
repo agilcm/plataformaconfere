@@ -93,6 +93,8 @@ export function montarClientes(cache, cidades, meta = {}) {
           venc: it.v,
           lances,
           participantes: it.c.length,
+          // valor total que a vencedora levou no item (segundo a ata)
+          ...(it.t != null ? { vt: it.t } : {}),
           ...(it.l ? { lote: true } : {}),
           ...(ehDesconto(it) ? { desconto: true } : {}),
         });

@@ -302,7 +302,7 @@ test('lista: só empresas das cidades escolhidas que ficaram do 2º ao 5º lugar
   assert.equal(d.licitacoes[0].id, '18000000000100/2026/7');
   assert.ok(!JSON.stringify(d).includes('05604031607'), 'o CPF do MEI não sai');
   const disputa = d.empresas[1].disputas[0];
-  assert.deepEqual(disputa, { lic: 0, item: '0001', desc: 'AÇÚCAR CRISTAL', col: 3, melhor: 15.9, venc: 14, lances: 2, participantes: 6 });
+  assert.deepEqual(disputa, { lic: 0, item: '0001', desc: 'AÇÚCAR CRISTAL', col: 3, melhor: 15.9, venc: 14, lances: 2, participantes: 6, vt: 1400 });
   assert.equal(Math.round(diferenca(disputa) * 10) / 10, 13.6);
   assert.equal(diferenca({ melhor: 5, venc: null }), null);
 });

@@ -5,6 +5,9 @@ import { useMemo, useState } from 'react';
 import { Container, Icon } from '../components/ui.tsx';
 import { cnpjFormatado, diferenca, filtrarClientes, linhasPlanilha, textoColocacao } from '../lib/possiveisClientes.js';
 import { baixarXlsx } from '../lib/xlsx.js';
+import { blocosDiagnostico, mensagemContato } from '../lib/diagnostico.js';
+import { dateText, downloadPdf, slug } from '../lib/pdfReport.ts';
+import { COMPANY_PROFILE } from '../data/servicesData.ts';
 import {
   AvisoCarregando,
   campo,
@@ -32,6 +35,8 @@ interface Disputa {
   lote?: boolean;
   /** maior desconto: os valores são percentuais */
   desconto?: boolean;
+  /** valor total que a vencedora levou no item */
+  vt?: number;
 }
 interface Empresa {
   cnpj: string;
@@ -67,8 +72,42 @@ const FAIXAS: { id: string; rotulo: string; cols: number[] }[] = [
   { id: '0', rotulo: 'Melhor preço, não levou', cols: [0] },
 ];
 
-function CartaoEmpresa({ e, licitacoes }: { e: Empresa; licitacoes: Licitacao[] }) {
-  const [copiado, setCopiado] = useState(false);
+// contato da Ágil CM no diagnóstico
+const CONTATO = { whatsapp: COMPANY_PROFILE.phoneDisplay, email: COMPANY_PROFILE.email, site: 'www.agilcm.com.br/assessoria-licitacoes/' };
+const acao =
+  'inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-[15px] font-bold cursor-pointer disabled:opacity-60 disabled:cursor-wait';
+
+/**
+ * Um cartão por empresa. `e` traz as disputas do filtro atual; `completa`, todas (o diagnóstico usa todas).
+ */
+function CartaoEmpresa({ e, completa, dados }: { e: Empresa; completa: Empresa; dados: Dados }) {
+  const licitacoes = dados.licitacoes;
+  const [copiado, setCopiado] = useState('');
+  const [gerando, setGerando] = useState(false);
+  const avisar = (o: string) => {
+    setCopiado(o);
+    setTimeout(() => setCopiado(''), 2000);
+  };
+  const diagnostico = async () => {
+    setGerando(true);
+    try {
+      await downloadPdf(
+        `diagnostico-licitacoes-${slug(completa.razao)}.pdf`,
+        `Diagnóstico de licitações - ${completa.razao}`,
+        blocosDiagnostico(completa, dados, { data: dateText(), contato: CONTATO }) as Parameters<typeof downloadPdf>[2],
+      );
+    } finally {
+      setGerando(false);
+    }
+  };
+  const copiarMensagem = async () => {
+    try {
+      await navigator.clipboard.writeText(mensagemContato(completa, dados));
+      avisar('mensagem');
+    } catch {
+      /* sem área de transferência */
+    }
+  };
   const conta = (cols: number[]) => e.disputas.filter((d) => cols.includes(d.col)).length;
   const nLic = new Set(e.disputas.map((d) => d.lic)).size;
   const resumo = [
@@ -81,8 +120,7 @@ function CartaoEmpresa({ e, licitacoes }: { e: Empresa; licitacoes: Licitacao[] 
   const copiar = async () => {
     try {
       await navigator.clipboard.writeText(cnpjFormatado(e.cnpj));
-      setCopiado(true);
-      setTimeout(() => setCopiado(false), 1500);
+      avisar('cnpj');
     } catch {
       /* sem área de transferência */
     }
@@ -120,9 +158,6 @@ function CartaoEmpresa({ e, licitacoes }: { e: Empresa; licitacoes: Licitacao[] 
           </span>
         </summary>
         <div className="px-4 sm:px-5 pb-5">
-          <button type="button" onClick={copiar} className="mb-3 text-sm font-bold text-[#0369B3] underline underline-offset-4 cursor-pointer">
-            {copiado ? 'CNPJ copiado' : 'Copiar o CNPJ'}
-          </button>
           <ul className="space-y-2.5">
             {e.disputas.map((d, i) => {
               const lic = licitacoes[d.lic];
@@ -155,6 +190,23 @@ function CartaoEmpresa({ e, licitacoes }: { e: Empresa; licitacoes: Licitacao[] 
           </ul>
         </div>
       </details>
+      <div className="px-4 sm:px-5 pb-4 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
+        <button type="button" onClick={diagnostico} disabled={gerando} className={`${acao} bg-[#0F2053] hover:bg-[#13306f] text-white`}>
+          <Icon name="doc" className="w-5 h-5" />
+          {gerando ? 'Gerando o diagnóstico…' : 'Gerar diagnóstico (PDF)'}
+          <span className="sr-only"> de {e.razao}</span>
+        </button>
+        <button type="button" onClick={copiarMensagem} className={`${acao} border-2 border-slate-200 bg-white text-[#0F2053] hover:border-[#0478CA]`}>
+          {copiado === 'mensagem' ? 'Mensagem copiada' : 'Copiar mensagem para o WhatsApp'}
+          <span className="sr-only"> para {e.razao}</span>
+        </button>
+        <button type="button" onClick={copiar} className="px-2 py-2.5 text-sm font-bold text-[#0369B3] underline underline-offset-4 cursor-pointer">
+          {copiado === 'cnpj' ? 'CNPJ copiado' : 'Copiar o CNPJ'}
+        </button>
+        <span role="status" className="sr-only">
+          {copiado === 'mensagem' ? 'Mensagem copiada' : copiado === 'cnpj' ? 'CNPJ copiado' : ''}
+        </span>
+      </div>
     </li>
   );
 }
@@ -169,6 +221,7 @@ export default function PossiveisClientesTab() {
   const colocacoes = useMemo(() => FAIXAS.filter((f) => faixas.includes(f.id)).flatMap((f) => f.cols), [faixas]);
   const lista = useMemo(() => (dados ? (filtrarClientes(dados, { cidade, colocacoes, q }) as Empresa[]) : []), [dados, cidade, colocacoes, q]);
   const itens = lista.reduce((s, e) => s + e.disputas.length, 0);
+  const porCnpj = useMemo(() => new Map((dados?.empresas || []).map((x) => [x.cnpj, x])), [dados]);
   const porCidade = useMemo(() => {
     const m: Record<string, number> = {};
     if (dados) for (const e of filtrarClientes(dados, { colocacoes, q }) as Empresa[]) m[e.cidade] = (m[e.cidade] || 0) + 1;
@@ -302,7 +355,7 @@ export default function PossiveisClientesTab() {
             )}
             <ul className="mt-4 space-y-3">
               {lista.slice(0, mostrar).map((e) => (
-                <CartaoEmpresa key={e.cnpj} e={e} licitacoes={dados.licitacoes} />
+                <CartaoEmpresa key={e.cnpj} e={e} completa={porCnpj.get(e.cnpj) || e} dados={dados} />
               ))}
             </ul>
             {lista.length > mostrar && (
