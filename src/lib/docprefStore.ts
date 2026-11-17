@@ -5,7 +5,7 @@ import { useSyncExternalStore } from 'react';
 import { ANTIGO, carimbar, limparRemovidos, mesclarDocPref, paraRegistros, resumoRegistro } from './docprefSinc.js';
 
 /** App da Web da planilha do órgão (https://script.google.com/macros/s/…/exec). Preenchido aqui, cada fiscal só digita a senha. */
-export const DOCPREF_URL = '';
+export const DOCPREF_URL = 'https://script.google.com/macros/s/AKfycbz6UPiTLDHgN_VSbnRuCi0sb9H4Pcyfhojz0tykiq_nCNA-QRLDMvo1NGNDMbgxr8Y/exec';
 
 export interface Prestadora {
   id: string;

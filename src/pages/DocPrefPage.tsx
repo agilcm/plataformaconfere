@@ -1757,16 +1757,18 @@ function PainelPlanilha() {
               {erro}
             </p>
           )}
-          <details className="sm:col-span-3 text-sm text-slate-600">
-            <summary className="cursor-pointer font-bold text-[#0369B3]">Como criar a planilha do órgão (uma vez só)</summary>
-            <ol className="mt-2 space-y-1 list-decimal pl-5">
-              <li>Crie uma planilha Google vazia na conta do órgão, por exemplo “DocPref - Prefeitura de …”.</li>
-              <li>Em Extensões → Apps Script, apague o que estiver lá e cole o código do arquivo docpref.gs (a equipe da Ágil CM envia).</li>
-              <li>Na linha da senha, troque “TROQUE-ESTA-SENHA” por uma senha só dos fiscais e salve.</li>
-              <li>Implantar → Nova implantação → App da Web → Executar como “Eu” → Quem pode acessar “Qualquer pessoa” → Implantar e autorize.</li>
-              <li>Copie o endereço que termina em /exec e cole acima, com a senha. Cada fiscal faz a conexão uma vez no navegador dele.</li>
-            </ol>
-          </details>
+          {!DOCPREF_URL && (
+            <details className="sm:col-span-3 text-sm text-slate-600">
+              <summary className="cursor-pointer font-bold text-[#0369B3]">Como criar a planilha do órgão (uma vez só)</summary>
+              <ol className="mt-2 space-y-1 list-decimal pl-5">
+                <li>Crie uma planilha Google vazia na conta do órgão, por exemplo “DocPref - Prefeitura de …”.</li>
+                <li>Em Extensões → Apps Script, apague o que estiver lá e cole o código do arquivo docpref.gs (a equipe da Ágil CM envia).</li>
+                <li>Na linha da senha, troque “TROQUE-ESTA-SENHA” por uma senha só dos fiscais e salve.</li>
+                <li>Implantar → Nova implantação → App da Web → Executar como “Eu” → Quem pode acessar “Qualquer pessoa” → Implantar e autorize.</li>
+                <li>Copie o endereço que termina em /exec e cole acima, com a senha. Cada fiscal faz a conexão uma vez no navegador dele.</li>
+              </ol>
+            </details>
+          )}
         </form>
       )}
     </div>
