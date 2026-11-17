@@ -128,7 +128,8 @@ export function NotaFonte({ dados, campeoes = false }: { dados: MetaProspeccao; 
       <p>
         Licitações feitas no Compras.gov.br, na Licitar Digital e em outros portais não entram, porque eles não publicam a ata com os lances no PNCP. A cidade
         de cada empresa vem do cadastro do CNPJ na Receita Federal. Pessoas físicas (CPF) ficam de fora.
-        {campeoes && ' O valor ganho é o da ata da sessão; o homologado pelo órgão pode mudar depois de recursos.'}
+        {campeoes &&
+          ' O valor ganho é o da ata da sessão; o homologado pelo órgão pode mudar depois de recursos. Em registro de preços, o total é o da ata (quantidade estimada): o órgão pode comprar menos.'}
       </p>
       {dados.atualizadoEm && <p>Atualizada em {new Date(dados.atualizadoEm).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}.</p>}
     </div>
