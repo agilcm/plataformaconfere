@@ -411,7 +411,7 @@ export default function PossiveisClientesTab() {
                   >
                     <span className="block text-lg sm:text-xl font-bold font-display">{v.titulo}</span>
                     <span className={`block mt-0.5 text-[15px] ${ativo ? 'text-white/90' : 'text-slate-700'}`}>
-                      {n} {n === 1 ? 'fornecedor' : 'fornecedores'} de {listaCidades(dados.cidades)}
+                      {n} {n === 1 ? 'fornecedor' : 'fornecedores'} das {dados.cidades.length} cidades
                       {v.id === 'mg' ? ' (a Zona da Mata incluída)' : ''}
                     </span>
                   </button>

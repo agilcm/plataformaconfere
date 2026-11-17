@@ -4,19 +4,7 @@ import { useMemo, useState } from 'react';
 import { Container, Icon } from '../components/ui.tsx';
 import { cnpjFormatado, filtrarCampeoes, linhasPlanilhaCampeoes } from '../lib/possiveisClientes.js';
 import { baixarXlsx } from '../lib/xlsx.js';
-import {
-  AvisoCarregando,
-  brl,
-  campo,
-  chip,
-  LinhaLicitacao,
-  listaCidades,
-  valorLance,
-  NotaFonte,
-  Periodo,
-  useProspeccao,
-  type MetaProspeccao,
-} from './prospeccaoUi.tsx';
+import { AvisoCarregando, brl, campo, chip, LinhaLicitacao, valorLance, NotaFonte, Periodo, useProspeccao, type MetaProspeccao } from './prospeccaoUi.tsx';
 
 interface Vitoria {
   lic: number;
@@ -176,7 +164,7 @@ export default function CampeoesTab() {
                 [String(dados.resumo.empresas), dados.resumo.empresas === 1 ? 'empresa vencedora' : 'empresas vencedoras'],
                 [String(dados.resumo.itens), 'itens ganhos'],
                 [String(dados.resumo.licitacoes), 'licitações'],
-                [String(nAlvo), `de ${listaCidades(dados.cidades)}`],
+                [String(nAlvo), `das ${dados.cidades.length} cidades escolhidas`],
               ].map(([valor, rotulo]) => (
                 <li key={rotulo} className="p-4 rounded-2xl bg-white border border-slate-200">
                   <strong className="block text-2xl sm:text-3xl font-bold font-display text-[#0F2053] tabular-nums">{valor}</strong>

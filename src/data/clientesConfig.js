@@ -8,6 +8,10 @@ export const CIDADES_CLIENTES = [
   { nome: 'Dona Euzébia', uf: 'MG' },
   { nome: 'Leopoldina', uf: 'MG' },
   { nome: 'Rodeiro', uf: 'MG' },
+  { nome: 'Ubá', uf: 'MG' },
+  { nome: 'Muriaé', uf: 'MG' },
+  { nome: 'Visconde do Rio Branco', uf: 'MG' },
+  { nome: 'Além Paraíba', uf: 'MG' },
 ];
 
 /** Quantos meses para trás as licitações são lidas */
