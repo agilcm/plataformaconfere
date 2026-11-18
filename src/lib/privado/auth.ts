@@ -25,6 +25,17 @@ export async function conferirLogin(email: string, senha: string): Promise<boole
   return ok;
 }
 
+/**
+ * Senha esquecida: gera, no navegador, o código de um login novo (sal e PBKDF2 de "email\nsenha"), para quem cuida do
+ * site trocar em src/data/privadoConfig.ts (LOGIN). O código não revela a senha, e a senha não sai do navegador.
+ */
+export async function codigoNovoLogin(email: string, senha: string): Promise<string> {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(`${email.trim().toLowerCase()}\n${senha}`), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations: LOGIN.iteracoes }, base, 256);
+  return `NOVO-LOGIN:${hex(salt.buffer)}:${hex(bits)}`;
+}
+
 export function sessaoAtiva(): boolean {
   try {
     return sessionStorage.getItem(CHAVE) === LOGIN.hash.slice(0, 16);

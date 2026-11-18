@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import Header from '../components/Header.tsx';
 import { Container, Icon } from '../components/ui.tsx';
 import { dateText, downloadPdf } from '../lib/pdfReport.ts';
-import { conferirLogin, sair, sessaoAtiva } from '../lib/privado/auth.ts';
+import { codigoNovoLogin, conferirLogin, sair, sessaoAtiva } from '../lib/privado/auth.ts';
 import { ROUTES } from '../lib/routes.ts';
 
 /** Leitura da pasta "Licitacoes - Agil" feita pelo GitHub (scripts/privado-dados.mjs), publicada com o site */
@@ -103,11 +103,93 @@ export default function PrivadoPage() {
   );
 }
 
+const campoLogin =
+  'mt-1 w-full px-4 py-3 rounded-xl border border-slate-300 text-base focus:outline-none focus:border-[#0478CA] focus:ring-2 focus:ring-[#0478CA]/20';
+
+/** Senha esquecida: gera o código do login novo para quem cuida do site trocar (a senha não sai do navegador) */
+function NovaSenha({ emailInicial, onVoltar }: { emailInicial: string; onVoltar: () => void }) {
+  const [email, setEmail] = useState(emailInicial);
+  const [senha, setSenha] = useState('');
+  const [repetir, setRepetir] = useState('');
+  const [erro, setErro] = useState('');
+  const [codigo, setCodigo] = useState('');
+  const [copiado, setCopiado] = useState(false);
+  const gerar = async (e: FormEvent) => {
+    e.preventDefault();
+    setErro('');
+    if (senha.length < 10) return setErro('Use uma senha com pelo menos 10 caracteres.');
+    if (senha !== repetir) return setErro('As duas senhas não são iguais.');
+    setCodigo(await codigoNovoLogin(email, senha));
+  };
+  const copiar = async () => {
+    try {
+      await navigator.clipboard.writeText(codigo);
+      setCopiado(true);
+    } catch {
+      /* sem área de transferência: dá para selecionar o texto */
+    }
+  };
+  return (
+    <div className="max-w-md mx-auto p-6 sm:p-8 rounded-2xl bg-white border border-slate-200 shadow-sm">
+      <p className="inline-flex items-center gap-2 text-sm font-bold text-[#0369B3]">
+        <Icon name="shield" className="w-5 h-5" /> Área restrita
+      </p>
+      <h1 className="mt-2 text-2xl sm:text-3xl font-bold font-display text-[#0F2053]">Criar nova senha</h1>
+      {!codigo ? (
+        <form onSubmit={gerar}>
+          <p className="mt-2 text-[15px] text-slate-600">
+            Escolha o e-mail e a senha nova. Esta tela gera um código para trocar a senha no site; a senha não sai do seu computador.
+          </p>
+          <label className="block mt-6">
+            <span className="text-sm font-semibold text-slate-700">E-mail</span>
+            <input type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} className={campoLogin} />
+          </label>
+          <label className="block mt-4">
+            <span className="text-sm font-semibold text-slate-700">Senha nova (pelo menos 10 caracteres)</span>
+            <input type="password" autoComplete="new-password" required value={senha} onChange={(e) => setSenha(e.target.value)} className={campoLogin} />
+          </label>
+          <label className="block mt-4">
+            <span className="text-sm font-semibold text-slate-700">Repita a senha nova</span>
+            <input type="password" autoComplete="new-password" required value={repetir} onChange={(e) => setRepetir(e.target.value)} className={campoLogin} />
+          </label>
+          {erro && (
+            <p role="alert" className="mt-4 text-[15px] font-semibold text-red-700">
+              {erro}
+            </p>
+          )}
+          <button type="submit" className={`${botao} mt-6 w-full py-3 bg-[#0478CA] hover:bg-[#03609F] text-white`}>
+            Gerar o código
+          </button>
+        </form>
+      ) : (
+        <div>
+          <ol className="mt-3 space-y-2 list-decimal pl-5 text-[15px] text-slate-700 leading-relaxed">
+            <li>Copie o código abaixo e mande para quem cuida do site. Ele não revela a senha.</li>
+            <li>Guarde a senha nova num lugar seguro. Use a mesma no segredo PRIVADO_SENHA do GitHub (é ela que abre a lista Possíveis clientes).</li>
+            <li>Quando o site for atualizado, entre com o e-mail e a senha nova.</li>
+          </ol>
+          <label className="block mt-4">
+            <span className="text-sm font-semibold text-slate-700">Código do login novo</span>
+            <textarea readOnly value={codigo} rows={4} onFocus={(e) => e.target.select()} className={`${campoLogin} font-mono text-sm break-all`} />
+          </label>
+          <button type="button" onClick={copiar} className={`${botao} mt-4 w-full py-3 bg-[#0F2053] hover:bg-[#13306f] text-white`}>
+            {copiado ? 'Código copiado' : 'Copiar o código'}
+          </button>
+        </div>
+      )}
+      <button type="button" onClick={onVoltar} className="mt-4 text-[15px] font-bold text-[#0369B3] underline underline-offset-4 cursor-pointer">
+        Voltar para o login
+      </button>
+    </div>
+  );
+}
+
 function Login({ onEntrar }: { onEntrar: () => void }) {
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
   const [erro, setErro] = useState('');
   const [conferindo, setConferindo] = useState(false);
+  const [esqueci, setEsqueci] = useState(false);
 
   const enviar = async (e: FormEvent) => {
     e.preventDefault();
@@ -119,6 +201,7 @@ function Login({ onEntrar }: { onEntrar: () => void }) {
     else setErro('E-mail ou senha incorretos.');
   };
 
+  if (esqueci) return <NovaSenha emailInicial={email} onVoltar={() => setEsqueci(false)} />;
   return (
     <form onSubmit={enviar} className="max-w-md mx-auto p-6 sm:p-8 rounded-2xl bg-white border border-slate-200 shadow-sm">
       <p className="inline-flex items-center gap-2 text-sm font-bold text-[#0369B3]">
@@ -155,6 +238,9 @@ function Login({ onEntrar }: { onEntrar: () => void }) {
       )}
       <button type="submit" disabled={conferindo} className={`${botao} mt-6 w-full py-3 bg-[#0478CA] hover:bg-[#03609F] text-white`}>
         {conferindo ? 'Conferindo…' : 'Entrar'}
+      </button>
+      <button type="button" onClick={() => setEsqueci(true)} className="mt-4 text-[15px] font-bold text-[#0369B3] underline underline-offset-4 cursor-pointer">
+        Esqueci a senha: criar uma nova
       </button>
     </form>
   );
