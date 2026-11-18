@@ -68,7 +68,7 @@ export default function ContactSection({ defaultService }: ContactSectionProps) 
           id="titulo-contato"
           eyebrow="Fale com a gente"
           title="Peça seu orçamento ou agende uma conversa"
-          lead="Respondemos em horário comercial, de segunda a sexta, das 8h às 18h."
+          lead="Respondemos em horário comercial: de segunda a sexta, das 8h às 18h, e aos sábados, das 8h às 12h."
         />
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">

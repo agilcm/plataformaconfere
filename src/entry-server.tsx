@@ -264,7 +264,7 @@ Municípios: ${ATUACAO.municipios.map((m) => `${m.nome} - ${m.uf}`).join(', ')}.
 Lista completa, com os órgãos e o objeto de cada processo: ${URL_ONDE}
 
 ## Horário de atendimento
-Segunda a sexta, das 8h às 18h.
+Segunda a sexta, das 8h às 18h. Sábado, das 8h às 12h.
 
 ## Contato
 - Endereço: ${COMPANY_PROFILE.street} - ${COMPANY_PROFILE.district}, ${COMPANY_PROFILE.cityShort} - MG, ${COMPANY_PROFILE.postalCode}

@@ -242,7 +242,7 @@ test('diagnóstico por CNPJ: partes pelo começo do CNPJ, formato enxuto e de vo
   assert.equal(DIGITOS_PARTE, 3);
   const x = expandirDiagnostico(partes.get('111'), '11111111000111');
   assert.equal(x.empresa.razao, 'BETA LIMPEZA LTDA');
-  assert.equal(x.empresa.cidade, 'Cataguases');
+  assert.equal(x.empresa.cidade, '', 'a cidade não vai para o arquivo público');
   assert.deepEqual(x.licitacoes, [{ id: 'X/2026/1', orgao: 'Prefeitura de Lavras', municipio: 'Lavras', uf: 'MG', data: '2026-10-01' }]);
   assert.deepEqual(x.empresa.disputas[0], {
     lic: 0,
@@ -257,4 +257,18 @@ test('diagnóstico por CNPJ: partes pelo começo do CNPJ, formato enxuto e de vo
     lote: true,
   });
   assert.equal(expandirDiagnostico(partes.get('111'), '11111111000199'), null);
+});
+
+test('cofre da lista: abre com a senha do Privado e falha com outra', async () => {
+  const { chaveDaSenha, chaveDoTexto, chaveParaTexto, cifrar, decifrar } = await import('../src/lib/cofre.js');
+  const chave = await chaveDaSenha('senha-de-teste');
+  const texto = new TextEncoder().encode('{"empresas":[]}');
+  const arquivo = await cifrar(texto, chave);
+  assert.deepEqual([...arquivo.subarray(0, 4)], [0x41, 0x47, 0x43, 0x31], 'começa com AGC1');
+  assert.ok(!Buffer.from(arquivo).toString('latin1').includes('empresas'), 'o conteúdo não aparece no arquivo');
+  assert.equal(new TextDecoder().decode(await decifrar(arquivo, chave)), '{"empresas":[]}');
+  const deNovo = await chaveDoTexto(await chaveParaTexto(chave));
+  assert.equal(new TextDecoder().decode(await decifrar(arquivo, deNovo)), '{"empresas":[]}', 'a chave guardada na sessão abre igual');
+  await assert.rejects(decifrar(arquivo, await chaveDaSenha('outra')));
+  await assert.rejects(decifrar(new Uint8Array([1, 2, 3]), chave), /formato desconhecido/);
 });

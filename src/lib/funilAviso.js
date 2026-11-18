@@ -51,7 +51,7 @@ export function retornosDoFunil(registros, hoje) {
 
 /**
  * As empresas mais quentes da lista que ainda não estão no funil (sugestão de quem ligar hoje).
- * @param {{ empresas: any[], licitacoes: any[] } | null} clientes  prospeccao/clientes.json do site
+ * @param {{ empresas: any[], licitacoes: any[] } | null} clientes  a lista Possíveis clientes do site (prospeccao/clientes.bin, decifrada)
  * @param {Set<string>} noFunil
  */
 export function quentesSemContato(clientes, noFunil, hoje, max = 3) {

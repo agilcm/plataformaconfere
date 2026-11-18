@@ -1,8 +1,11 @@
 // Porta de entrada da área Privado. Confere o login no navegador comparando o hash (PBKDF2), sem guardar a senha.
 // Atenção: num site estático isto só esconde a tela; a proteção dos documentos é o login Google com acesso à pasta.
 import { LOGIN } from '../../data/privadoConfig.ts';
+import { chaveDaSenha, chaveParaTexto } from '../cofre.js';
 
 const CHAVE = 'agilcm:privado:sessao';
+/** Chave da lista Possíveis clientes (cifrada com a senha do Privado), guardada só enquanto a aba do navegador estiver aberta */
+export const CHAVE_PROSPECCAO = 'agilcm:prospeccao:chave';
 const hex = (b: ArrayBuffer) => [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, '0')).join('');
 const deHex = (h: string) => new Uint8Array(h.match(/../g)!.map((x) => parseInt(x, 16)));
 
@@ -13,6 +16,8 @@ export async function conferirLogin(email: string, senha: string): Promise<boole
   if (ok) {
     try {
       sessionStorage.setItem(CHAVE, LOGIN.hash.slice(0, 16));
+      // quem entra no Privado também abre a lista Possíveis clientes (Licitações) sem digitar a senha de novo
+      sessionStorage.setItem(CHAVE_PROSPECCAO, await chaveParaTexto(await chaveDaSenha(senha)));
     } catch {
       /* sem armazenamento: vale só enquanto a página estiver aberta */
     }
@@ -31,6 +36,7 @@ export function sessaoAtiva(): boolean {
 export function sair() {
   try {
     sessionStorage.removeItem(CHAVE);
+    sessionStorage.removeItem(CHAVE_PROSPECCAO);
   } catch {
     /* nada a limpar */
   }

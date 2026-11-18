@@ -23,7 +23,7 @@ const ABAS: { id: Aba; passo: string; label: string; desc: string; icon: string 
   { id: 'raiox', passo: 'Analisar', label: 'Raio-X', desc: 'Qualquer edital pelo link do PNCP', icon: 'doc' },
   { id: 'contratos', passo: 'Pesquisar preços', label: 'Contratos', desc: 'Quem comprou, o quê e por quanto', icon: 'receipt' },
   { id: 'meus', passo: 'Acompanhar', label: 'Meus editais', desc: 'Salvos, etapas e prazos na agenda', icon: 'star' },
-  { id: 'clientes', passo: 'Prospectar', label: 'Possíveis clientes', desc: 'Empresas da região do 2º ao 5º lugar', icon: 'users' },
+  { id: 'clientes', passo: 'Prospectar', label: 'Possíveis clientes', desc: 'Só para a equipe (senha do Privado)', icon: 'users' },
   { id: 'campeoes', passo: 'Quem vence', label: 'Campeões', desc: 'Quem ganhou e levou cada item', icon: 'star' },
 ];
 const ENCERRADAS = new Set(['ganhamos', 'perdemos', 'desistimos']);

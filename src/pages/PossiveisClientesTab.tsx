@@ -1,6 +1,7 @@
 // Aba "Possíveis clientes" das Licitações (aberta a todos): empresas das cidades vizinhas que disputaram licitações de
 // Minas Gerais e ficaram do 2º ao 5º lugar (ou ofertaram o melhor preço e não levaram), com a licitação, o item e a
-// colocação. Os dados vêm de prospeccao/clientes.json, gerado por scripts/possiveis-clientes.mjs a partir das atas do PNCP.
+// colocação. Só para a equipe: os dados vêm de prospeccao/clientes.bin, cifrado com a senha do Privado (src/lib/cofre.js),
+// gerado por scripts/possiveis-clientes.mjs a partir das atas do PNCP.
 import { useMemo, useState } from 'react';
 import { Container, Icon } from '../components/ui.tsx';
 import { cnpjFormatado, diferenca, filtrarClientes, linhasPlanilha, textoColocacao } from '../lib/possiveisClientes.js';
@@ -9,18 +10,19 @@ import { blocosDiagnostico, mensagemContato, mensagemEdital, notaOportunidade, o
 import { editaisParaEmpresa, indiceEditais } from '../lib/editaisParaEmpresa.js';
 import { buscarContato, linkWhatsApp } from '../lib/contatoCnpj.js';
 import { listaDe, listaPronta } from '../lib/listasEditais.ts';
+import { ROUTES } from '../lib/routes.ts';
 import { dateText, downloadPdf, slug } from '../lib/pdfReport.ts';
 import { COMPANY_PROFILE } from '../data/servicesData.ts';
 import { atualizarFunil, ETAPAS_FUNIL, PREFIXO_FUNIL, useFunil, type EtapaFunil, type MeuEdital } from '../lib/meusEditais.ts';
 import {
-  AvisoCarregando,
   campo,
   chip,
   LinhaLicitacao,
   listaCidades,
   NotaFonte,
   Periodo,
-  useProspeccao,
+  useClientesCifrados,
+  type EstadoCofre,
   valorLance,
   type Licitacao,
   type MetaProspeccao,
@@ -494,8 +496,70 @@ function CartaoEmpresa({
   );
 }
 
+/** Tela de senha: a lista é só da equipe (cifrada com a senha do Privado) */
+function Cadeado({ estado, desbloquear }: { estado: EstadoCofre; desbloquear: (senha: string) => Promise<void> }) {
+  const [senha, setSenha] = useState('');
+  const abrindo = estado === 'abrindo';
+  return (
+    <div className="mt-6 max-w-xl p-5 sm:p-6 rounded-2xl bg-white border border-slate-200">
+      <h3 className="flex items-center gap-2 text-xl font-bold font-display text-[#0F2053]">
+        <Icon name="shield" className="w-6 h-6" />
+        Área da equipe da Ágil CM
+      </h3>
+      <p className="mt-2 text-[16px] text-slate-700 leading-relaxed">
+        A lista de possíveis clientes é só da equipe. Digite a senha do Privado para abrir (quem já entrou no Privado nesta aba do navegador abre direto).
+      </p>
+      <form
+        onSubmit={(ev) => {
+          ev.preventDefault();
+          if (senha) desbloquear(senha);
+        }}
+        className="mt-4 flex flex-col sm:flex-row gap-3 sm:items-end"
+      >
+        <label className="flex-1 block">
+          <span className="text-sm font-bold text-slate-700">Senha do Privado</span>
+          <input
+            type="password"
+            autoComplete="current-password"
+            value={senha}
+            onChange={(ev) => setSenha(ev.target.value)}
+            aria-invalid={estado === 'senha'}
+            aria-describedby={estado === 'senha' ? 'cadeado-erro' : undefined}
+            className={`mt-1 ${campo}`}
+          />
+        </label>
+        <button
+          type="submit"
+          disabled={abrindo || !senha}
+          className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-[#0F2053] hover:bg-[#13306f] text-white text-base font-bold cursor-pointer disabled:opacity-60 disabled:cursor-wait"
+        >
+          {abrindo ? 'Abrindo…' : 'Abrir a lista'}
+        </button>
+      </form>
+      <div role="status" className="mt-3 text-[15px]">
+        {estado === 'senha' && (
+          <p id="cadeado-erro" className="text-red-700 font-semibold">
+            Senha errada. Use a mesma senha do Privado.
+          </p>
+        )}
+        {estado === 'sem' && (
+          <p className="text-amber-900">A lista ainda não foi publicada com a senha. Tente de novo depois da próxima atualização do site.</p>
+        )}
+        {estado === 'erro' && <p className="text-amber-900">Não consegui abrir a lista agora. Tente de novo em alguns instantes.</p>}
+      </div>
+      <p className="mt-4 pt-4 border-t border-slate-100 text-[15px] text-slate-700">
+        É de uma empresa e quer saber onde perdeu licitações?{' '}
+        <a href={ROUTES.diagnostico} className="font-bold text-[#0369B3] underline underline-offset-4">
+          Faça o diagnóstico grátis pelo CNPJ
+        </a>
+        .
+      </p>
+    </div>
+  );
+}
+
 export default function PossiveisClientesTab() {
-  const { dados, estado } = useProspeccao<Dados>('clientes');
+  const { dados, estado, desbloquear, trancar } = useClientesCifrados<Dados>();
   const [cidade, setCidade] = useState('');
   const [vista, setVista] = useState<Vista>('zm');
   const [soFora, setSoFora] = useState(false);
@@ -625,7 +689,15 @@ export default function PossiveisClientesTab() {
           participa, mas perde: é para essas empresas que a assessoria em licitações faz diferença.
         </p>
 
-        <AvisoCarregando estado={estado} />
+        {estado !== 'ok' && <Cadeado estado={estado} desbloquear={desbloquear} />}
+        {estado === 'ok' && (
+          <p className="mt-2 text-sm text-slate-600">
+            Lista só da equipe, aberta com a senha do Privado.{' '}
+            <button type="button" onClick={trancar} className="font-bold text-[#0369B3] underline underline-offset-4 cursor-pointer">
+              Fechar a lista
+            </button>
+          </p>
+        )}
 
         {estado === 'ok' && dados && metaVista && (
           <>

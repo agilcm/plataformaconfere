@@ -4,9 +4,12 @@
 // Configuração no GitHub (Settings → Secrets and variables → Actions → Secrets):
 //   TELEGRAM_BOT_TOKEN e TELEGRAM_CHAT_ID   os mesmos do alerta de editais (PROSPECCAO_TELEGRAM_CHAT_ID para outra conversa)
 //   MEUS_EDITAIS_SENHA                      a senha da equipe (SENHA) definida no Apps Script da planilha de Meus editais
+//   PRIVADO_SENHA                           a senha do Privado: abre a lista cifrada de Possíveis clientes (sem ela, vai só o funil)
 // O endereço da planilha é o de src/data/privadoConfig.ts (ou MEUS_EDITAIS_URL, se quiser outro).
 // `--teste` manda a mensagem mesmo sem nada para hoje.
 import { MEUS_EDITAIS_URL } from '../src/data/privadoConfig.ts';
+import zlib from 'node:zlib';
+import { chaveDaSenha, decifrar } from '../src/lib/cofre.js';
 import { mensagemRetornos, quentesSemContato, retornosDoFunil } from '../src/lib/funilAviso.js';
 import { telegram } from './telegram.mjs';
 
@@ -29,12 +32,18 @@ if (!j?.ok)
     j?.erro === 'senha' ? 'A planilha da equipe recusou a senha (MEUS_EDITAIS_SENHA)' : `A planilha da equipe não respondeu como esperado (${r.status})`,
   );
 
+// a lista Possíveis clientes do site vai cifrada com a senha do Privado
 let clientes = null;
 try {
-  const rc = await fetch(`${SITE}/prospeccao/clientes.json?t=${Date.now()}`);
-  if (rc.ok) clientes = await rc.json();
-} catch {
-  /* sem a lista, vai só o funil */
+  if (process.env.PRIVADO_SENHA) {
+    const rc = await fetch(`${SITE}/prospeccao/clientes.bin?t=${Date.now()}`);
+    if (rc.ok) {
+      const bytes = await decifrar(new Uint8Array(await rc.arrayBuffer()), await chaveDaSenha(process.env.PRIVADO_SENHA));
+      clientes = JSON.parse(zlib.gunzipSync(bytes).toString('utf8'));
+    }
+  }
+} catch (e) {
+  console.log(`Lista Possíveis clientes não aberta (${e.message}): vai só o funil.`);
 }
 
 const retornos = retornosDoFunil(j.editais, hoje);

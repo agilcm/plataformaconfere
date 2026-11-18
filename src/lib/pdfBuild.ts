@@ -162,7 +162,7 @@ function drawFooter(c: Ctx, pageNo: number, total: number) {
     p.drawText(clean(it), { x, y: yRow, size: s, font: i === 0 ? c.fb : c.f, color: WHITE });
     x += c.f.widthOfTextAtSize(clean(it), s) + (i === 0 ? 6 : 0);
   });
-  p.drawText(clean(`${COMPANY_PROFILE.city} · Atendimento de segunda a sexta, das 8h às 18h`), {
+  p.drawText(clean(`${COMPANY_PROFILE.city} · Atendimento de segunda a sexta, das 8h às 18h, e sábado, das 8h às 12h`), {
     x: M - 14,
     y: FOOTER_H - 56,
     size: 7.5,

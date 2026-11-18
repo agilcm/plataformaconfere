@@ -12,7 +12,8 @@
 //   2) baixa a ata de cada uma (documento público do PNCP), lê os lances e calcula a colocação por item, começando
 //      pelas licitações mais perto das cidades escolhidas;
 //   3) consulta a cidade de cada CNPJ no cadastro público da Receita (BrasilAPI, minhareceita.org e publica.cnpj.ws);
-//   e no fim grava public/prospeccao/clientes.json e public/prospeccao/campeoes.json.
+//   e no fim grava public/prospeccao/clientes.bin (cifrado com a senha do Privado: segredo PRIVADO_SENHA),
+//   public/prospeccao/campeoes.json e as partes do diagnóstico por CNPJ (public/prospeccao/cnpj/).
 // Compras.gov.br, Licitar Digital e outros portais não anexam a ata no PNCP: essas licitações ficam de fora.
 // CPF não entra (pessoa física fica de fora) e nomes de MEI saem sem os números do CPF.
 //
@@ -28,6 +29,7 @@ import { MAX_COLOCACAO, montarCampeoes, montarClientes, montarDiagnosticos, nome
 import { fetchJson, fixText, fonteDe } from '../src/lib/pncp.js';
 import { linhasDoPdf } from '../src/lib/privado/pdfTexto.js';
 import { mensagemOportunidades, oportunidades } from '../src/lib/oportunidades.js';
+import { chaveDaSenha, cifrar } from '../src/lib/cofre.js';
 import { telegram } from './telegram.mjs';
 
 const VERSAO = 3; // 2: atas com julgamento por lote; 3: itens com um só participante e valor total ganho
@@ -424,8 +426,8 @@ function resumoDaLeitura(cache, hoje, filtro = () => true) {
   return { licitacoesNoPeriodo: noPeriodo || lidas, licitacoesLidas: lidas, aindaNaFila: naFila, aguardandoAta };
 }
 
-/** Grava as duas listas (com o nome de cada cidade de Minas com acento: a Receita escreve sem) */
-function gravarListas(cache, desde, hoje) {
+/** Grava as listas (com o nome de cada cidade de Minas com acento: a Receita escreve sem) */
+async function gravarListas(cache, desde, hoje) {
   const comum = {
     atualizadoEm: new Date().toISOString(),
     desde,
@@ -449,10 +451,16 @@ function gravarListas(cache, desde, hoje) {
   const soZm = { ...cache, compras: Object.fromEntries(Object.entries(cache.compras).filter(([, c]) => naZonaDaMata(c))) };
   const campeoes = montarCampeoes(soZm, CIDADES_CLIENTES, metaCampeoes, { nomeCidade });
   fs.mkdirSync(SAIDA, { recursive: true });
-  fs.writeFileSync(`${SAIDA}/clientes.json`, JSON.stringify(saida));
+  // Possíveis clientes é só da equipe: vai cifrado com a senha do Privado. Sem o segredo, a lista não é publicada.
+  fs.rmSync(`${SAIDA}/clientes.json`, { force: true });
+  fs.rmSync(`${SAIDA}/clientes.bin`, { force: true });
+  if (process.env.PRIVADO_SENHA) {
+    const chave = await chaveDaSenha(process.env.PRIVADO_SENHA);
+    fs.writeFileSync(`${SAIDA}/clientes.bin`, await cifrar(zlib.gzipSync(JSON.stringify(saida)), chave));
+  } else console.log('::warning::Possíveis clientes não publicado: falta o segredo PRIVADO_SENHA (a senha do Privado) no GitHub.');
   fs.writeFileSync(`${SAIDA}/campeoes.json`, JSON.stringify(campeoes));
   // diagnóstico por CNPJ (página /diagnostico-licitacoes/): uma parte por começo de CNPJ, de qualquer cidade
-  const partes = montarDiagnosticos(cache, { nomeCidade });
+  const partes = montarDiagnosticos(cache);
   const pastaCnpj = `${SAIDA}/cnpj`;
   fs.rmSync(pastaCnpj, { recursive: true, force: true });
   fs.mkdirSync(pastaCnpj, { recursive: true });
@@ -510,7 +518,7 @@ async function main() {
   for (const k of Object.keys(cache.tentouEm)) if (!cache.achadas[k] || cache.compras[k]) delete cache.tentouEm[k];
   if (SO_MONTAR) {
     // publicação do site: só remonta as listas com o que a leitura (workflow Prospecção) já guardou
-    gravarListas(cache, desde, hoje);
+    await gravarListas(cache, desde, hoje);
     return;
   }
 
@@ -639,7 +647,7 @@ async function main() {
   salvar();
 
   // saída
-  const { saida, campeoes } = gravarListas(cache, desde, hoje);
+  const { saida, campeoes } = await gravarListas(cache, desde, hoje);
   const comAta = Object.values(cache.compras).filter((c) => c.itens);
   console.log(
     `Lidas agora: ${lidas} atas (${falhas} falhas); no total ${comAta.length} com ata. CNPJs consultados agora: ${consultados}; sem cidade ainda: ${filaCnpj.length}. ` +

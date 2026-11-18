@@ -339,16 +339,15 @@ export const DIGITOS_PARTE = 3;
  * Diagnóstico por CNPJ (página pública /diagnostico-licitacoes/): todas as empresas, de qualquer cidade, que ficaram do
  * 2º ao 5º lugar ou ofertaram o melhor preço e não levaram. Vai dividido em partes pelos primeiros dígitos do CNPJ (a
  * página baixa só a parte do CNPJ digitado) e em formato enxuto (listas no lugar de objetos); `expandirDiagnostico`
- * devolve o formato de montarClientes. Cada parte leva as suas licitações.
+ * devolve o formato de montarClientes. Cada parte leva as suas licitações. Não vão a cidade, o porte nem a atividade da
+ * empresa: a página pede o CNPJ, e sem a cidade não dá para remontar a lista Possíveis clientes (que é só da equipe).
  *   parte = { l: [[id, órgão, município, UF, data]],
- *             e: { cnpj: [razão, fantasia, cidade, UF, porte, atividade, vitórias, [[lic, item, descrição, colocação,
+ *             e: { cnpj: [razão, vitórias, [[lic, item, descrição, colocação,
  *                  melhor lance, valor da vencedora, lances, participantes, total da vencedora, marcas (1 lote, 2 desconto)]]] } }
  * @param {{ compras: Record<string, any>, cnpj: Record<string, any> }} cache
- * @param {{ nomeCidade?: (municipio: string, uf: string) => string }} [o]
  * @returns {Map<string, { l: any[][], e: Record<string, any[]> }>}
  */
-export function montarDiagnosticos(cache, o = {}) {
-  const nomeCidade = o.nomeCidade || tituloCidade;
+export function montarDiagnosticos(cache) {
   // a descrição do item vai encurtada (o PDF mostra até 64 letras): é a maior parte do tamanho dos arquivos
   const desc = (t) => {
     const x = String(t || '').replace(/…$/, '');
@@ -367,12 +366,11 @@ export function montarDiagnosticos(cache, o = {}) {
         if (!/^\d{14}$/.test(cnpj) || col > MAX_COLOCACAO) continue;
         const p = parte(cnpj);
         if (!p.e[cnpj]) {
-          const cad = cache.cnpj?.[cnpj] || {};
-          p.e[cnpj] = [nomeSemCpf(cad.r || nomeAta), nomeSemCpf(cad.f), cad.m ? nomeCidade(cad.m, cad.u) : '', cad.u || '', cad.p || '', cad.a || '', 0, []];
+          p.e[cnpj] = [nomeSemCpf(cache.cnpj?.[cnpj]?.r || nomeAta), 0, []];
         }
         const e = p.e[cnpj];
         if (col === 1) {
-          if (it.v != null) e[6]++;
+          if (it.v != null) e[1]++;
           continue;
         }
         if (!p.iLic.has(id)) {
@@ -380,14 +378,14 @@ export function montarDiagnosticos(cache, o = {}) {
           // o diagnóstico só usa o órgão, a cidade e a data (e o id para o link do PNCP)
           p.l.push([id, c.orgao, c.municipio, c.uf, c.data]);
         }
-        e[7].push([p.iLic.get(id), it.n, desc(it.d), col, melhor, it.v, lances, it.c.length, it.t ?? null, marcas]);
+        e[2].push([p.iLic.get(id), it.n, desc(it.d), col, melhor, it.v, lances, it.c.length, it.t ?? null, marcas]);
       }
     }
   }
   const out = new Map();
   for (const [k, p] of [...partes.entries()].sort()) {
     // só quem tem disputa sem vencer (quem só venceu não precisa de diagnóstico)
-    const e = Object.fromEntries(Object.entries(p.e).filter(([, x]) => x[7].length));
+    const e = Object.fromEntries(Object.entries(p.e).filter(([, x]) => x[2].length));
     if (Object.keys(e).length) out.set(k, { l: p.l, e });
   }
   return out;
@@ -400,7 +398,7 @@ export function montarDiagnosticos(cache, o = {}) {
 export function expandirDiagnostico(parte, cnpj) {
   const x = parte?.e?.[cnpj];
   if (!x) return null;
-  const usadas = [...new Set(x[7].map((d) => d[0]))];
+  const usadas = [...new Set(x[2].map((d) => d[0]))];
   const novo = new Map(usadas.map((i, j) => [i, j]));
   const licitacoes = usadas.map((i) => {
     const [id, orgao, municipio, uf, data] = parte.l[i];
@@ -409,14 +407,14 @@ export function expandirDiagnostico(parte, cnpj) {
   const empresa = {
     cnpj,
     razao: x[0],
-    fantasia: x[1],
-    cidade: x[2],
-    uf: x[3],
-    porte: x[4],
-    atividade: x[5],
+    fantasia: '',
+    cidade: '',
+    uf: '',
+    porte: '',
+    atividade: '',
     situacao: '',
-    vitorias: x[6],
-    disputas: x[7].map(([lic, item, desc, col, melhor, venc, lances, participantes, vt, marcas]) => ({
+    vitorias: x[1],
+    disputas: x[2].map(([lic, item, desc, col, melhor, venc, lances, participantes, vt, marcas]) => ({
       lic: novo.get(lic),
       item,
       desc,

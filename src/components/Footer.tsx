@@ -75,7 +75,7 @@ export default function Footer({ page = 'home' }: { page?: 'home' | 'licitacoes'
                 <br />
                 {COMPANY_PROFILE.cityShort} - MG, {COMPANY_PROFILE.postalCode}
               </span>
-              <span className="block">Seg a sex, 8h às 18h</span>
+              <span className="block">Seg a sex, 8h às 18h · sáb, 8h às 12h</span>
             </address>
           </div>
         </div>

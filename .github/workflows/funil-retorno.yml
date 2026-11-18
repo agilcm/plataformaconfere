@@ -5,6 +5,7 @@ name: Lembrete da prospecção
 # Segredos (Settings → Secrets and variables → Actions → Secrets):
 #   TELEGRAM_BOT_TOKEN e TELEGRAM_CHAT_ID (ou PROSPECCAO_TELEGRAM_CHAT_ID)   os mesmos do alerta de editais
 #   MEUS_EDITAIS_SENHA                                                      a senha da equipe definida no Apps Script
+#   PRIVADO_SENHA                                                           a senha do Privado (abre a lista Possíveis clientes)
 on:
   schedule:
     - cron: '23 10 * * 1-5' # 7h23 em Brasília, de segunda a sexta
@@ -35,5 +36,7 @@ jobs:
         run: node scripts/funil-retorno.mjs ${{ inputs.teste && '--teste' || '' }}
         env:
           MEUS_EDITAIS_SENHA: ${{ secrets.MEUS_EDITAIS_SENHA }}
+          # para abrir a lista cifrada de Possíveis clientes (as mais quentes sem contato)
+          PRIVADO_SENHA: ${{ secrets.PRIVADO_SENHA }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.PROSPECCAO_TELEGRAM_CHAT_ID || secrets.TELEGRAM_CHAT_ID }}

@@ -1,6 +1,8 @@
 // Peças comuns das abas "Possíveis clientes" e "Campeões" (Licitações): carregar a lista publicada, estilos e a nota
 // sobre de onde vêm os dados.
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { chaveDaSenha, chaveDoTexto, chaveParaTexto, decifrar } from '../lib/cofre.js';
+import { CHAVE_PROSPECCAO } from '../lib/privado/auth.ts';
 
 export const campo =
   'w-full px-4 py-3 rounded-xl border border-slate-300 text-base focus:outline-none focus:border-[#0478CA] focus:ring-2 focus:ring-[#0478CA]/20';
@@ -67,6 +69,90 @@ export function useProspeccao<T extends { empresas: unknown[] }>(arquivo: 'clien
     };
   }, [arquivo]);
   return { dados, estado };
+}
+
+/** Estado da lista cifrada: sem a chave ('bloqueado'), senha errada ('senha'), aberta ('ok') ou ainda não publicada ('sem') */
+export type EstadoCofre = 'bloqueado' | 'abrindo' | 'senha' | 'ok' | 'sem' | 'erro';
+
+/**
+ * A lista Possíveis clientes, que vai cifrada com a senha do Privado (prospeccao/clientes.bin; src/lib/cofre.js).
+ * Quem já entrou no Privado nesta aba do navegador abre direto; os outros digitam a senha.
+ */
+export function useClientesCifrados<T extends { empresas: unknown[] }>() {
+  const [dados, setDados] = useState<T | null>(null);
+  const [estado, setEstado] = useState<EstadoCofre>('abrindo');
+  const abrir = useCallback(async (chave: CryptoKey): Promise<boolean> => {
+    setEstado('abrindo');
+    let bytes: Uint8Array;
+    try {
+      const r = await fetch(`${import.meta.env.BASE_URL}prospeccao/clientes.bin?t=${Date.now()}`, { cache: 'no-store' });
+      if (!r.ok) {
+        setEstado(r.status === 404 ? 'sem' : 'erro');
+        return false;
+      }
+      bytes = new Uint8Array(await r.arrayBuffer());
+    } catch {
+      setEstado('erro');
+      return false;
+    }
+    let aberto: Uint8Array;
+    try {
+      aberto = await decifrar(bytes, chave);
+    } catch {
+      setEstado('senha');
+      return false;
+    }
+    try {
+      const texto = await new Response(new Blob([aberto as BlobPart]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+      setDados(JSON.parse(texto));
+      setEstado('ok');
+      return true;
+    } catch {
+      setEstado('erro');
+      return false;
+    }
+  }, []);
+  useEffect(() => {
+    let guardada = '';
+    try {
+      guardada = sessionStorage.getItem(CHAVE_PROSPECCAO) || '';
+    } catch {
+      /* sem armazenamento */
+    }
+    if (!guardada) {
+      setEstado('bloqueado');
+      return;
+    }
+    chaveDoTexto(guardada)
+      .then((chave) => abrir(chave))
+      .then((ok) => {
+        if (!ok) setEstado((e) => (e === 'senha' ? 'bloqueado' : e));
+      })
+      .catch(() => setEstado('bloqueado'));
+  }, [abrir]);
+  const desbloquear = useCallback(
+    async (senha: string) => {
+      const chave = await chaveDaSenha(senha);
+      if (await abrir(chave)) {
+        try {
+          sessionStorage.setItem(CHAVE_PROSPECCAO, await chaveParaTexto(chave));
+        } catch {
+          /* vale só enquanto a página estiver aberta */
+        }
+      }
+    },
+    [abrir],
+  );
+  const trancar = useCallback(() => {
+    try {
+      sessionStorage.removeItem(CHAVE_PROSPECCAO);
+    } catch {
+      /* nada a limpar */
+    }
+    setDados(null);
+    setEstado('bloqueado');
+  }, []);
+  return { dados, estado, desbloquear, trancar };
 }
 
 export function AvisoCarregando({ estado }: { estado: 'carregando' | 'ok' | 'sem' }) {
