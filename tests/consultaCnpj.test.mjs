@@ -192,3 +192,68 @@ test('planilha e mensagem: quem já disputa recebe o diagnóstico; quem nunca di
     /prefeituras e órgãos públicos de Ubá e região compram o ano inteiro por licitação, e a CONSTRUFORTE MATERIAIS LTDA pode vender/,
   );
 });
+
+test('vários CNPJs: acha no texto colado, separa os de número errado e limita a 100', async () => {
+  const { cnpjsDoTexto } = await import('../src/lib/consultaCnpj.js');
+  const r = cnpjsDoTexto('27.750.870/0001-34; 27750870000134\n00.000.000/0001-91 e 11.222.333/0001-99, telefone 32 99999-0000');
+  assert.deepEqual(r, { validos: ['27750870000134', '00000000000191'], invalidos: ['11222333000199'], sobraram: 0 });
+  assert.equal(cnpjsDoTexto('27750870000134 00000000000191', 1).sobraram, 1);
+});
+
+test('ficha da Receita: o formato da BrasilAPI vira a ficha da tela, sem os sócios', async () => {
+  const { cadastroDaReceita, linhasPlanilhaReceita, textoCadastro } = await import('../src/lib/consultaCnpj.js');
+  const d = {
+    cnpj: '27750870000134',
+    razao_social: 'PAPELARIA LEOPOLDINA LTDA',
+    nome_fantasia: 'PAPELARIA LEOPOLDINA',
+    descricao_situacao_cadastral: 'ATIVA',
+    data_situacao_cadastral: '2017-05-17',
+    data_inicio_atividade: '2017-05-17',
+    natureza_juridica: '206-2 - Sociedade Empresária Limitada',
+    porte: 'MICRO EMPRESA',
+    opcao_pelo_simples: true,
+    opcao_pelo_mei: false,
+    capital_social: 30000,
+    cnae_fiscal: 4761003,
+    cnae_fiscal_descricao: 'Comércio varejista de artigos de papelaria',
+    cnaes_secundarios: [
+      { codigo: 4751201, descricao: 'Equipamentos de informática' },
+      { codigo: 0, descricao: '' },
+    ],
+    descricao_tipo_de_logradouro: 'RUA',
+    logradouro: 'JOSE SILVA',
+    numero: '235',
+    complemento: '',
+    bairro: 'CENTRO',
+    cep: '36700000',
+    municipio: 'LEOPOLDINA',
+    uf: 'MG',
+    ddd_telefone_1: '3234494338',
+    ddd_telefone_2: '',
+    email: 'Contato@Papelaria.COM',
+    qsa: [{ nome_socio: 'FULANO' }],
+  };
+  const c = cadastroDaReceita(d);
+  assert.equal(c.situacao, 'Ativa');
+  assert.equal(c.natureza, 'Sociedade Empresária Limitada');
+  assert.equal(c.porte, 'Microempresa');
+  assert.deepEqual(c.cnae, { codigo: '4761003', descricao: 'Comércio varejista de artigos de papelaria' });
+  assert.equal(c.cnaes.length, 1, 'a secundária "0" (sem atividade) fica de fora');
+  assert.equal(c.endereco, 'RUA JOSE SILVA, 235');
+  assert.equal(c.cidade, 'Leopoldina');
+  assert.equal(c.email, 'contato@papelaria.com');
+  assert.ok(!JSON.stringify(c).includes('FULANO'), 'os sócios não entram');
+  assert.equal(cadastroDaReceita({ ...d, opcao_pelo_mei: true }).porte, 'MEI');
+  const t = textoCadastro(c);
+  assert.match(t, /^PAPELARIA LEOPOLDINA LTDA\nNome fantasia: PAPELARIA LEOPOLDINA\nCNPJ: 27\.750\.870\/0001-34\nSituação: Ativa desde 17\/05\/2017/);
+  assert.match(t, /Endereço: RUA JOSE SILVA, 235, CENTRO, Leopoldina - MG, CEP 36700-000\nTelefone: \(32\) 3449-4338\nE-mail: contato@papelaria\.com$/);
+  const l = linhasPlanilhaReceita([
+    { cnpj: c.cnpj, c },
+    { cnpj: '00000000000191', erro: 'CNPJ não encontrado no cadastro da Receita.' },
+  ]);
+  assert.equal(l[0].Situação, 'Ativa');
+  assert.equal(l[0]['Simples Nacional'], 'Sim');
+  assert.equal(l[0]['Capital social'], 'R$ 30.000,00');
+  assert.equal(l[1].Situação, 'CNPJ não encontrado no cadastro da Receita.');
+  assert.equal(l[1].Empresa, '');
+});

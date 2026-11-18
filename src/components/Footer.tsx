@@ -51,6 +51,11 @@ export default function Footer({ page = 'home' }: { page?: 'home' | 'licitacoes'
                   Diagnóstico de licitações grátis
                 </a>
               </li>
+              <li>
+                <a href={ROUTES.consultaCnpj} className="hover:text-white">
+                  Consulta CNPJ
+                </a>
+              </li>
               {NAV_LINKS.map((l) => (
                 <li key={l.href}>
                   <a href={base + l.href} className="hover:text-white">

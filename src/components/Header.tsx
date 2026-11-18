@@ -16,7 +16,7 @@ export const LICITACOES_PAGE = ROUTES.licitacoes;
 
 interface HeaderProps {
   /** Página atual: na página de licitações os links apontam para a home (/#secao) */
-  page?: 'home' | 'licitacoes' | 'servico' | 'privado' | 'dados' | 'docpref';
+  page?: 'home' | 'licitacoes' | 'servico' | 'privado' | 'dados' | 'docpref' | 'cnpj';
 }
 
 export default function Header({ page = 'home' }: HeaderProps) {
@@ -40,9 +40,7 @@ export default function Header({ page = 'home' }: HeaderProps) {
 
   return (
     <header
-      className={`sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-slate-200 transition-shadow ${
-        scrolled ? 'shadow-md shadow-slate-900/5' : ''
-      }`}
+      className={`sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-slate-200 transition-shadow ${scrolled ? 'shadow-md shadow-slate-900/5' : ''}`}
     >
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between gap-2 sm:gap-3 h-[72px]">
@@ -50,52 +48,57 @@ export default function Header({ page = 'home' }: HeaderProps) {
             <BrandLogo size="md" theme="light" className="[&>img:last-child]:hidden sm:[&>img:last-child]:block" />
           </a>
 
-
-
           <div className="hidden sm:flex items-center gap-2 ml-auto xl:ml-0">
-          <a
-            href={LICITACOES_PAGE}
-            aria-current={page === 'licitacoes' ? 'page' : undefined}
-            className={`inline-flex items-center gap-2 px-4 py-2.5 text-sm font-extrabold tracking-wide rounded-xl border-2 transition-colors whitespace-nowrap ${
-              page === 'licitacoes'
-                ? 'bg-[#0F2053] border-[#0F2053] text-white'
-                : 'border-[#0F2053] text-[#0F2053] hover:bg-[#0F2053] hover:text-white'
-            }`}
-          >
-            <span className="relative flex w-2 h-2">
-              <span className="absolute inline-flex h-full w-full rounded-full bg-[#0478CA] opacity-75 animate-ping" />
-              <span className="relative inline-flex w-2 h-2 rounded-full bg-[#0478CA]" />
-            </span>
-            LICITAÇÕES
-          </a>
-          <a
-            href={ROUTES.docpref}
-            aria-current={page === 'docpref' ? 'page' : undefined}
-            className={`inline-flex items-center px-4 py-2.5 text-sm font-extrabold tracking-wide rounded-xl border-2 transition-colors whitespace-nowrap ${
-              page === 'docpref' ? 'bg-[#0F2053] border-[#0F2053] text-white' : 'border-[#0F2053] text-[#0F2053] hover:bg-[#0F2053] hover:text-white'
-            }`}
-          >
-            DocPref
-          </a>
-          <a
-            href={ROUTES.privado}
-            aria-current={page === 'privado' ? 'page' : undefined}
-            className={`inline-flex items-center px-4 py-2.5 text-sm font-extrabold tracking-wide rounded-xl border-2 transition-colors whitespace-nowrap ${
-              page === 'privado' ? 'bg-[#0478CA] border-[#0478CA] text-white' : 'border-[#0478CA] text-[#0369B3] hover:bg-[#0478CA] hover:text-white'
-            }`}
-          >
-            Privado
-          </a>
-          <a
-            href={whatsappLink('Olá! Vim pelo site da Ágil CM e gostaria de atendimento.')}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-bold text-white bg-[#0E7A3F] hover:bg-[#0B6535] rounded-xl transition-colors whitespace-nowrap"
-          >
-            <WhatsAppIcon className="w-4 h-4" />
-            <span className="hidden 2xl:inline">{COMPANY_PROFILE.phoneDisplay}</span>
-            <span className="2xl:hidden">WhatsApp</span>
-          </a>
+            <a
+              href={LICITACOES_PAGE}
+              aria-current={page === 'licitacoes' ? 'page' : undefined}
+              className={`inline-flex items-center gap-2 px-4 py-2.5 text-sm font-extrabold tracking-wide rounded-xl border-2 transition-colors whitespace-nowrap ${
+                page === 'licitacoes' ? 'bg-[#0F2053] border-[#0F2053] text-white' : 'border-[#0F2053] text-[#0F2053] hover:bg-[#0F2053] hover:text-white'
+              }`}
+            >
+              <span className="relative flex w-2 h-2">
+                <span className="absolute inline-flex h-full w-full rounded-full bg-[#0478CA] opacity-75 animate-ping" />
+                <span className="relative inline-flex w-2 h-2 rounded-full bg-[#0478CA]" />
+              </span>
+              LICITAÇÕES
+            </a>
+            <a
+              href={ROUTES.docpref}
+              aria-current={page === 'docpref' ? 'page' : undefined}
+              className={`inline-flex items-center px-4 py-2.5 text-sm font-extrabold tracking-wide rounded-xl border-2 transition-colors whitespace-nowrap ${
+                page === 'docpref' ? 'bg-[#0F2053] border-[#0F2053] text-white' : 'border-[#0F2053] text-[#0F2053] hover:bg-[#0F2053] hover:text-white'
+              }`}
+            >
+              DocPref
+            </a>
+            <a
+              href={ROUTES.consultaCnpj}
+              aria-current={page === 'cnpj' ? 'page' : undefined}
+              className={`hidden lg:inline-flex items-center px-4 py-2.5 text-sm font-extrabold tracking-wide rounded-xl border-2 transition-colors whitespace-nowrap ${
+                page === 'cnpj' ? 'bg-[#0F2053] border-[#0F2053] text-white' : 'border-[#0F2053] text-[#0F2053] hover:bg-[#0F2053] hover:text-white'
+              }`}
+            >
+              Consulta CNPJ
+            </a>
+            <a
+              href={ROUTES.privado}
+              aria-current={page === 'privado' ? 'page' : undefined}
+              className={`inline-flex items-center px-4 py-2.5 text-sm font-extrabold tracking-wide rounded-xl border-2 transition-colors whitespace-nowrap ${
+                page === 'privado' ? 'bg-[#0478CA] border-[#0478CA] text-white' : 'border-[#0478CA] text-[#0369B3] hover:bg-[#0478CA] hover:text-white'
+              }`}
+            >
+              Privado
+            </a>
+            <a
+              href={whatsappLink('Olá! Vim pelo site da Ágil CM e gostaria de atendimento.')}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-bold text-white bg-[#0E7A3F] hover:bg-[#0B6535] rounded-xl transition-colors whitespace-nowrap"
+            >
+              <WhatsAppIcon className="w-4 h-4" />
+              <span className="hidden 2xl:inline">{COMPANY_PROFILE.phoneDisplay}</span>
+              <span className="2xl:hidden">WhatsApp</span>
+            </a>
           </div>
 
           <a
@@ -105,7 +108,10 @@ export default function Header({ page = 'home' }: HeaderProps) {
             <span className="w-1.5 h-1.5 rounded-full bg-[#7cc4ff]" aria-hidden="true" />
             LICITAÇÕES
           </a>
-          <a href={ROUTES.docpref} className="hidden min-[390px]:inline-flex sm:hidden items-center px-2 py-2 text-xs font-bold text-[#0F2053] border border-[#0F2053] rounded-lg">
+          <a
+            href={ROUTES.docpref}
+            className="hidden min-[390px]:inline-flex sm:hidden items-center px-2 py-2 text-xs font-bold text-[#0F2053] border border-[#0F2053] rounded-lg"
+          >
             DocPref
           </a>
           <a href={ROUTES.privado} className="sm:hidden inline-flex items-center px-2 py-2 text-xs font-bold text-[#0369B3] border border-[#0478CA] rounded-lg">
@@ -129,13 +135,16 @@ export default function Header({ page = 'home' }: HeaderProps) {
           </button>
         </div>
 
-          <nav aria-label="Navegação principal" className="hidden xl:flex items-center justify-center gap-5 py-3 border-t border-slate-100 text-[14px] font-semibold text-slate-700">
-            {NAV_LINKS.map((l) => (
-              <a key={l.href} href={base + l.href} className="hover:text-[#0369B3] transition-colors whitespace-nowrap">
-                {l.label}
-              </a>
-            ))}
-          </nav>
+        <nav
+          aria-label="Navegação principal"
+          className="hidden xl:flex items-center justify-center gap-5 py-3 border-t border-slate-100 text-[14px] font-semibold text-slate-700"
+        >
+          {NAV_LINKS.map((l) => (
+            <a key={l.href} href={base + l.href} className="hover:text-[#0369B3] transition-colors whitespace-nowrap">
+              {l.label}
+            </a>
+          ))}
+        </nav>
 
         {open && (
           <nav id="menu-mobile" aria-label="Menu" className="xl:hidden border-t border-slate-200 py-3 pb-5 flex flex-col">
@@ -145,10 +154,22 @@ export default function Header({ page = 'home' }: HeaderProps) {
             >
               LICITAÇÕES · editais abertos em MG
             </a>
-            <a href={ROUTES.docpref} className="mb-2 inline-flex items-center justify-center px-4 py-3 text-base font-bold text-[#0F2053] border-2 border-[#0F2053] rounded-xl">
+            <a
+              href={ROUTES.docpref}
+              className="mb-2 inline-flex items-center justify-center px-4 py-3 text-base font-bold text-[#0F2053] border-2 border-[#0F2053] rounded-xl"
+            >
               DocPref · documentos das prestadoras
             </a>
-            <a href={ROUTES.privado} className="mb-2 inline-flex items-center justify-center px-4 py-3 text-base font-bold text-[#0369B3] border-2 border-[#0478CA] rounded-xl">
+            <a
+              href={ROUTES.consultaCnpj}
+              className="mb-2 inline-flex items-center justify-center px-4 py-3 text-base font-bold text-[#0F2053] border-2 border-[#0F2053] rounded-xl"
+            >
+              Consulta CNPJ · empresas e cadastro
+            </a>
+            <a
+              href={ROUTES.privado}
+              className="mb-2 inline-flex items-center justify-center px-4 py-3 text-base font-bold text-[#0369B3] border-2 border-[#0478CA] rounded-xl"
+            >
               Privado
             </a>
             {NAV_LINKS.map((l) => (

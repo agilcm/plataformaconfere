@@ -22,7 +22,7 @@ const contadorVisitas = (): Plugin => ({
   name: 'contador-visitas',
   transformIndexHtml(html, ctx) {
     const token = (process.env.CF_WEB_ANALYTICS_TOKEN || '').trim();
-    if (!/^[a-f0-9]{32}$/i.test(token) || /privado|dados|eleicao|docpref|bancodoc/.test(ctx.path)) return html;
+    if (!/^[a-f0-9]{32}$/i.test(token) || /privado|dados|eleicao|docpref|bancodoc|consulta-cnpj/.test(ctx.path)) return html;
     return html.replace(
       '</body>',
       `  <script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "${token}"}'></script>\n  </body>`,
@@ -51,6 +51,7 @@ export default defineConfig(() => {
           servico: path.resolve(import.meta.dirname, 'servico/index.html'),
           ondeAtuamos: path.resolve(import.meta.dirname, 'onde-atuamos/index.html'),
           diagnostico: path.resolve(import.meta.dirname, 'diagnostico-licitacoes/index.html'),
+          consultaCnpj: path.resolve(import.meta.dirname, 'consulta-cnpj/index.html'),
         },
       },
     },

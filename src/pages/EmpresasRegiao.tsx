@@ -1,13 +1,13 @@
-// Aba "Consulta CNPJ" das Licitações (só da equipe): o cadastro da Receita das empresas ativas das cidades escolhidas,
+// Consulta CNPJ → "Empresas da região" (só da equipe): o cadastro da Receita das empresas ativas das cidades escolhidas,
 // tirado do cnpj.db (scripts/cadastro-cnpj.mjs) e cifrado com a senha do Privado (prospeccao/cadastro.bin). Busca por
 // CNPJ, nome ou ramo; filtros de cidade, porte, contato e licitações; telefone com WhatsApp, e-mail, endereço, o que a
-// empresa já disputou nas atas lidas, planilha Excel e o funil de prospecção. CNPJ de fora das cidades: consulta na
-// Receita na hora (BrasilAPI ou minhareceita.org).
+// empresa já disputou nas atas lidas, planilha Excel e o funil de prospecção. CNPJ de fora das cidades: vai para
+// "Consultar um CNPJ" (Receita na hora).
 import { useMemo, useState, type FormEvent } from 'react';
 import { Container, Icon } from '../components/ui.tsx';
 import { cnpjFormatado, cnpjValido } from '../lib/possiveisClientes.js';
 import { filtrarCadastro, linhasPlanilhaCadastro, mensagemCadastro, ordemCadastro, porteDe, textoBusca } from '../lib/consultaCnpj.js';
-import { consultarReceita, linkWhatsApp, telefonesDe } from '../lib/contatoCnpj.js';
+import { linkWhatsApp, telefonesDe } from '../lib/contatoCnpj.js';
 import { atualizarFunil, ETAPAS_FUNIL, PREFIXO_FUNIL, useFunil, type EtapaFunil, type MeuEdital } from '../lib/meusEditais.ts';
 import { baixarXlsx } from '../lib/xlsx.js';
 import { ROUTES } from '../lib/routes.ts';
@@ -158,74 +158,7 @@ function Cartao({ e, cnae, registro, ramos }: { e: Empresa; cnae: Record<string,
   );
 }
 
-/** CNPJ de fora das cidades do cadastro: consulta na Receita na hora */
-function ConsultaReceita({ cnpj }: { cnpj: string }) {
-  const [estado, setEstado] = useState<{ fase: 'nada' | 'buscando' | 'ok' | 'erro'; d?: Record<string, any>; erro?: string }>({ fase: 'nada' });
-  const consultar = async () => {
-    setEstado({ fase: 'buscando' });
-    try {
-      setEstado({ fase: 'ok', d: await consultarReceita(cnpj) });
-    } catch (err) {
-      setEstado({ fase: 'erro', erro: (err as Error).message });
-    }
-  };
-  const d = estado.d;
-  return (
-    <div className="mt-4 p-4 sm:p-5 rounded-2xl bg-white border border-slate-200 text-[15px] text-slate-800">
-      <p>
-        O CNPJ {cnpjFormatado(cnpj)} não é de uma empresa ativa das cidades do cadastro.{' '}
-        {estado.fase !== 'ok' && (
-          <button
-            type="button"
-            onClick={consultar}
-            disabled={estado.fase === 'buscando'}
-            className="font-bold text-[#0369B3] underline underline-offset-4 cursor-pointer"
-          >
-            {estado.fase === 'buscando' ? 'Consultando a Receita…' : 'Consultar na Receita agora'}
-          </button>
-        )}
-      </p>
-      {estado.fase === 'erro' && (
-        <p role="alert" className="mt-2 text-amber-900">
-          {estado.erro}
-        </p>
-      )}
-      {d && (
-        <dl className="mt-3 grid grid-cols-1 sm:grid-cols-[12rem_1fr] gap-x-4 gap-y-1">
-          {[
-            ['Razão social', d.razao_social],
-            ['Nome fantasia', d.nome_fantasia],
-            ['Situação', d.descricao_situacao_cadastral],
-            ['Cidade', [d.municipio, d.uf].filter(Boolean).join(' - ')],
-            ['Atividade principal', d.cnae_fiscal_descricao],
-            ['Porte', d.opcao_pelo_mei ? 'MEI' : d.porte],
-            ['Aberta em', dataBR(d.data_inicio_atividade)],
-            [
-              'Telefone',
-              telefonesDe(d)
-                .map((t) => t.texto)
-                .join(', '),
-            ],
-            ['E-mail', String(d.email || '').toLowerCase()],
-            [
-              'Endereço',
-              [[d.descricao_tipo_de_logradouro, d.logradouro].filter(Boolean).join(' '), d.numero, d.complemento, d.bairro].filter(Boolean).join(', '),
-            ],
-          ]
-            .filter(([, v]) => v)
-            .map(([k, v]) => (
-              <div key={k as string} className="contents">
-                <dt className="font-bold text-slate-700">{k}</dt>
-                <dd>{v}</dd>
-              </div>
-            ))}
-        </dl>
-      )}
-    </div>
-  );
-}
-
-export default function ConsultaCnpjTab() {
+export default function EmpresasRegiao({ onConsultar }: { onConsultar: (cnpj: string) => void }) {
   const { dados, estado, desbloquear, trancar } = useClientesCifrados<Cadastro>('cadastro');
   const funil = useFunil();
   const [q, setQ] = useState('');
@@ -274,17 +207,17 @@ export default function ConsultaCnpjTab() {
   };
 
   return (
-    <section aria-labelledby="titulo-cnpj" className="bg-[#F4F7FB] py-8 sm:py-10">
+    <section aria-labelledby="titulo-regiao" className="bg-[#F4F7FB] py-8 sm:py-10">
       <Container>
-        <h2 id="titulo-cnpj" className="text-2xl sm:text-3xl font-bold font-display text-[#0F2053] tracking-tight">
-          Consulta CNPJ
+        <h2 id="titulo-regiao" className="text-2xl sm:text-3xl font-bold font-display text-[#0F2053] tracking-tight">
+          Empresas da região
         </h2>
         <p className="mt-2 max-w-4xl text-base sm:text-lg text-slate-700 leading-relaxed">
           O cadastro da Receita das empresas ativas das cidades da região, com telefone, e-mail, endereço, ramo e o que cada uma já disputou em licitações.
           Serve para achar clientes novos, inclusive quem ainda não vende para prefeituras.
         </p>
 
-        {estado !== 'ok' && <Cadeado estado={estado} desbloquear={desbloquear} oQue="O cadastro da Consulta CNPJ" />}
+        {estado !== 'ok' && <Cadeado estado={estado} desbloquear={desbloquear} oQue="O cadastro das empresas da região" />}
         {estado === 'ok' && dados && (
           <>
             <p className="mt-2 text-sm text-slate-600">
@@ -393,7 +326,14 @@ export default function ConsultaCnpjTab() {
               com esses filtros. Primeiro as que já disputaram licitação.
               {lista.length > 20000 ? ' A planilha leva as primeiras 20 mil.' : ''}
             </p>
-            {cnpjDeFora && <ConsultaReceita key={digitos} cnpj={digitos} />}
+            {cnpjDeFora && (
+              <p className="mt-4 p-4 rounded-2xl bg-white border border-slate-200 text-[15px] text-slate-800">
+                O CNPJ {cnpjFormatado(digitos)} não é de uma empresa ativa das cidades da região.{' '}
+                <button type="button" onClick={() => onConsultar(digitos)} className="font-bold text-[#0369B3] underline underline-offset-4 cursor-pointer">
+                  Consultar na Receita
+                </button>
+              </p>
+            )}
             <ul className="mt-4 space-y-3">
               {lista.slice(0, mostrar).map((e) => (
                 <Cartao key={e.cnpj} e={e} cnae={dados.cnae} registro={funil[PREFIXO_FUNIL + e.cnpj]} ramos={e.cnaes?.length || 0} />
