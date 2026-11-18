@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { chaveDaSenha, chaveDoTexto, chaveParaTexto, decifrar } from '../lib/cofre.js';
 import { CHAVE_PROSPECCAO } from '../lib/privado/auth.ts';
+import { ROUTES } from '../lib/routes.ts';
+import { Icon } from '../components/ui.tsx';
 
 export const campo =
   'w-full px-4 py-3 rounded-xl border border-slate-300 text-base focus:outline-none focus:border-[#0478CA] focus:ring-2 focus:ring-[#0478CA]/20';
@@ -75,43 +77,47 @@ export function useProspeccao<T extends { empresas: unknown[] }>(arquivo: 'clien
 export type EstadoCofre = 'bloqueado' | 'abrindo' | 'senha' | 'ok' | 'sem' | 'erro';
 
 /**
- * A lista Possíveis clientes, que vai cifrada com a senha do Privado (prospeccao/clientes.bin; src/lib/cofre.js).
+ * Uma lista só da equipe, cifrada com a senha do Privado (src/lib/cofre.js): Possíveis clientes
+ * (prospeccao/clientes.bin) ou o cadastro da Consulta CNPJ (prospeccao/cadastro.bin).
  * Quem já entrou no Privado nesta aba do navegador abre direto; os outros digitam a senha.
  */
-export function useClientesCifrados<T extends { empresas: unknown[] }>() {
+export function useClientesCifrados<T extends { empresas: unknown[] }>(arquivo: 'clientes' | 'cadastro' = 'clientes') {
   const [dados, setDados] = useState<T | null>(null);
   const [estado, setEstado] = useState<EstadoCofre>('abrindo');
-  const abrir = useCallback(async (chave: CryptoKey): Promise<boolean> => {
-    setEstado('abrindo');
-    let bytes: Uint8Array;
-    try {
-      const r = await fetch(`${import.meta.env.BASE_URL}prospeccao/clientes.bin?t=${Date.now()}`, { cache: 'no-store' });
-      if (!r.ok) {
-        setEstado(r.status === 404 ? 'sem' : 'erro');
+  const abrir = useCallback(
+    async (chave: CryptoKey): Promise<boolean> => {
+      setEstado('abrindo');
+      let bytes: Uint8Array;
+      try {
+        const r = await fetch(`${import.meta.env.BASE_URL}prospeccao/${arquivo}.bin?t=${Date.now()}`, { cache: 'no-store' });
+        if (!r.ok) {
+          setEstado(r.status === 404 ? 'sem' : 'erro');
+          return false;
+        }
+        bytes = new Uint8Array(await r.arrayBuffer());
+      } catch {
+        setEstado('erro');
         return false;
       }
-      bytes = new Uint8Array(await r.arrayBuffer());
-    } catch {
-      setEstado('erro');
-      return false;
-    }
-    let aberto: Uint8Array;
-    try {
-      aberto = await decifrar(bytes, chave);
-    } catch {
-      setEstado('senha');
-      return false;
-    }
-    try {
-      const texto = await new Response(new Blob([aberto as BlobPart]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
-      setDados(JSON.parse(texto));
-      setEstado('ok');
-      return true;
-    } catch {
-      setEstado('erro');
-      return false;
-    }
-  }, []);
+      let aberto: Uint8Array;
+      try {
+        aberto = await decifrar(bytes, chave);
+      } catch {
+        setEstado('senha');
+        return false;
+      }
+      try {
+        const texto = await new Response(new Blob([aberto as BlobPart]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+        setDados(JSON.parse(texto));
+        setEstado('ok');
+        return true;
+      } catch {
+        setEstado('erro');
+        return false;
+      }
+    },
+    [arquivo],
+  );
   useEffect(() => {
     let guardada = '';
     try {
@@ -153,6 +159,76 @@ export function useClientesCifrados<T extends { empresas: unknown[] }>() {
     setEstado('bloqueado');
   }, []);
   return { dados, estado, desbloquear, trancar };
+}
+
+/** Tela de senha das listas só da equipe (cifradas com a senha do Privado) */
+export function Cadeado({
+  estado,
+  desbloquear,
+  oQue = 'A lista de possíveis clientes',
+}: {
+  estado: EstadoCofre;
+  desbloquear: (senha: string) => Promise<void>;
+  oQue?: string;
+}) {
+  const [senha, setSenha] = useState('');
+  const abrindo = estado === 'abrindo';
+  return (
+    <div className="mt-6 max-w-xl p-5 sm:p-6 rounded-2xl bg-white border border-slate-200">
+      <h3 className="flex items-center gap-2 text-xl font-bold font-display text-[#0F2053]">
+        <Icon name="shield" className="w-6 h-6" />
+        Área da equipe da Ágil CM
+      </h3>
+      <p className="mt-2 text-[16px] text-slate-700 leading-relaxed">
+        {oQue} é só da equipe. Digite a senha do Privado para abrir (quem já entrou no Privado nesta aba do navegador abre direto).
+      </p>
+      <form
+        onSubmit={(ev) => {
+          ev.preventDefault();
+          if (senha) desbloquear(senha);
+        }}
+        className="mt-4 flex flex-col sm:flex-row gap-3 sm:items-end"
+      >
+        <label className="flex-1 block">
+          <span className="text-sm font-bold text-slate-700">Senha do Privado</span>
+          <input
+            type="password"
+            autoComplete="current-password"
+            value={senha}
+            onChange={(ev) => setSenha(ev.target.value)}
+            aria-invalid={estado === 'senha'}
+            aria-describedby={estado === 'senha' ? 'cadeado-erro' : undefined}
+            className={`mt-1 ${campo}`}
+          />
+        </label>
+        <button
+          type="submit"
+          disabled={abrindo || !senha}
+          className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-[#0F2053] hover:bg-[#13306f] text-white text-base font-bold cursor-pointer disabled:opacity-60 disabled:cursor-wait"
+        >
+          {abrindo ? 'Abrindo…' : 'Abrir a lista'}
+        </button>
+      </form>
+      <div role="status" className="mt-3 text-[15px]">
+        {estado === 'senha' && (
+          <p id="cadeado-erro" className="text-red-700 font-semibold">
+            Senha errada. Use a mesma senha do Privado.
+          </p>
+        )}
+        {estado === 'sem' && (
+          <p className="text-amber-900">A lista ainda não foi publicada com a senha. Tente de novo depois da próxima atualização do site.</p>
+        )}
+        {estado === 'erro' && <p className="text-amber-900">Não consegui abrir a lista agora. Tente de novo em alguns instantes.</p>}
+      </div>
+      <p className="mt-4 pt-4 border-t border-slate-100 text-[15px] text-slate-700">
+        É de uma empresa e quer saber onde perdeu licitações?{' '}
+        <a href={ROUTES.diagnostico} className="font-bold text-[#0369B3] underline underline-offset-4">
+          Faça o diagnóstico grátis pelo CNPJ
+        </a>
+        .
+      </p>
+    </div>
+  );
 }
 
 export function AvisoCarregando({ estado }: { estado: 'carregando' | 'ok' | 'sem' }) {

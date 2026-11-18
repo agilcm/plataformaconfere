@@ -102,6 +102,18 @@ jobs:
           CLIENTES_SO_MONTAR: '1'
           # Possíveis clientes vai cifrado com a senha do Privado (sem o segredo, a lista não é publicada)
           PRIVADO_SENHA: ${{ secrets.PRIVADO_SENHA }}
+      - name: Recuperar o cadastro de CNPJ das cidades (Consulta CNPJ)
+        # extraído do cnpj.db do Drive pelo workflow Cadastro CNPJ (cadastro-cnpj.yml)
+        uses: actions/cache/restore@v4
+        with:
+          path: cadastro-cnpj.json.gz
+          key: cadastro-cnpj-${{ github.run_id }}
+          restore-keys: cadastro-cnpj-
+      - name: Montar a Consulta CNPJ (cifrada com a senha do Privado)
+        continue-on-error: true
+        run: node scripts/cadastro-cnpj.mjs --publicar
+        env:
+          PRIVADO_SENHA: ${{ secrets.PRIVADO_SENHA }}
       - run: npm test
       - run: npm run lint
       - name: Compilar para o endereço do Pages

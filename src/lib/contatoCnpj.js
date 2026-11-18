@@ -54,11 +54,20 @@ export function contatoDe(d) {
 export const linkWhatsApp = (numero, texto = '') => `https://wa.me/55${numero}${texto ? `?text=${encodeURIComponent(texto)}` : ''}`;
 
 /**
- * Consulta o cadastro do CNPJ agora.
+ * Consulta o cadastro do CNPJ agora e devolve só o contato.
  * @param {string} cnpj  só os 14 dígitos
  * @returns {Promise<ReturnType<typeof contatoDe>>}
  */
 export async function buscarContato(cnpj, fetchImpl = fetch) {
+  return contatoDe(await consultarReceita(cnpj, fetchImpl));
+}
+
+/**
+ * O cadastro completo do CNPJ na Receita, como a BrasilAPI (ou o minhareceita.org) devolve.
+ * @param {string} cnpj  só os 14 dígitos
+ * @returns {Promise<Record<string, any>>}
+ */
+export async function consultarReceita(cnpj, fetchImpl = fetch) {
   let ultimoErro = 'O cadastro da Receita não respondeu agora. Tente de novo em alguns minutos.';
   for (const base of FONTES) {
     try {
@@ -68,7 +77,7 @@ export async function buscarContato(cnpj, fetchImpl = fetch) {
         continue;
       }
       if (!r.ok) continue;
-      return contatoDe(await r.json());
+      return await r.json();
     } catch {
       /* tenta a outra fonte */
     }

@@ -1,0 +1,48 @@
+name: Cadastro CNPJ (Consulta CNPJ)
+
+# Lê o cnpj.db (cadastro de CNPJ da Receita, ~28 GB) direto do Google Drive, sem baixar inteiro, e guarda só as empresas
+# ativas das cidades escolhidas (src/data/clientesConfig.js) para a aba Consulta CNPJ das Licitações
+# (scripts/cadastro-cnpj.mjs). O resultado fica no cache do Actions; a publicação do site junta o histórico em
+# licitações e publica cifrado com a senha do Privado. Leva uns 20 a 30 minutos.
+# Para usar um arquivo novo (a Receita atualiza todo mês): suba o cnpj.db novo no Drive, compartilhe por link e rode
+# este workflow informando o id do arquivo (o trecho entre /d/ e /view no link).
+on:
+  workflow_dispatch:
+    inputs:
+      arquivo:
+        description: 'Id do cnpj.db no Google Drive (vazio = o de sempre)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+  actions: write # para disparar a publicação do site no fim
+
+concurrency:
+  group: cadastro-cnpj
+  cancel-in-progress: false
+
+jobs:
+  extrair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Ler o cnpj.db do Drive e separar as cidades escolhidas
+        run: node scripts/cadastro-cnpj.mjs
+        env:
+          CNPJ_DB_ID: ${{ inputs.arquivo }}
+      - name: Guardar o cadastro
+        uses: actions/cache/save@v4
+        with:
+          path: cadastro-cnpj.json.gz
+          key: cadastro-cnpj-${{ github.run_id }}
+      - name: Publicar o site com o cadastro novo
+        run: gh workflow run pages.yml --ref main
+        env:
+          GH_TOKEN: ${{ github.token }}

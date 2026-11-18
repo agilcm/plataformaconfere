@@ -10,10 +10,11 @@ import MeusEditaisTab from './MeusEditaisTab.tsx';
 import RaioXTab from './RaioXTab.tsx';
 import PossiveisClientesTab from './PossiveisClientesTab.tsx';
 import CampeoesTab from './CampeoesTab.tsx';
+import ConsultaCnpjTab from './ConsultaCnpjTab.tsx';
 import { useMeusEditais } from '../lib/meusEditais.ts';
 import { diasPara } from '../lib/filtrosEditais.js';
 
-type Aba = 'editais' | 'contratos' | 'agil' | 'raiox' | 'meus' | 'clientes' | 'campeoes';
+type Aba = 'editais' | 'contratos' | 'agil' | 'raiox' | 'meus' | 'clientes' | 'campeoes' | 'cnpj';
 
 // As abas seguem a ordem do trabalho numa licitação: encontrar o edital, filtrar pelo ramo, analisar,
 // pesquisar o preço que as prefeituras já pagaram e acompanhar os prazos do que foi salvo.
@@ -25,6 +26,7 @@ const ABAS: { id: Aba; passo: string; label: string; desc: string; icon: string 
   { id: 'meus', passo: 'Acompanhar', label: 'Meus editais', desc: 'Salvos, etapas e prazos na agenda', icon: 'star' },
   { id: 'clientes', passo: 'Prospectar', label: 'Possíveis clientes', desc: 'Só para a equipe (senha do Privado)', icon: 'users' },
   { id: 'campeoes', passo: 'Quem vence', label: 'Campeões', desc: 'Quem ganhou e levou cada item', icon: 'star' },
+  { id: 'cnpj', passo: 'Consultar', label: 'Consulta CNPJ', desc: 'Cadastro das empresas da região (equipe)', icon: 'search' },
 ];
 const ENCERRADAS = new Set(['ganhamos', 'perdemos', 'desistimos']);
 
@@ -57,6 +59,7 @@ const HASH_ABA: Record<string, Aba> = {
   '#meus-editais': 'meus',
   '#possiveis-clientes': 'clientes',
   '#campeoes': 'campeoes',
+  '#consulta-cnpj': 'cnpj',
 };
 const ABA_HASH: Record<Aba, string> = {
   editais: '',
@@ -66,6 +69,7 @@ const ABA_HASH: Record<Aba, string> = {
   meus: '#meus-editais',
   clientes: '#possiveis-clientes',
   campeoes: '#campeoes',
+  cnpj: '#consulta-cnpj',
 };
 
 export default function LicitacoesPage() {
@@ -140,7 +144,7 @@ export default function LicitacoesPage() {
             </a>
 
             {/* Abas */}
-            <div role="tablist" aria-label="O que você quer ver" className="mt-10 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 sm:gap-3">
+            <div role="tablist" aria-label="O que você quer ver" className="mt-10 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 sm:gap-3">
               {ABAS.map((t, i) => (
                 <button
                   key={t.id}
@@ -205,7 +209,9 @@ export default function LicitacoesPage() {
         )}
 
         <div id="painel" role="tabpanel" aria-labelledby={`aba-${aba}`}>
-          {aba === 'clientes' ? (
+          {aba === 'cnpj' ? (
+            <ConsultaCnpjTab />
+          ) : aba === 'clientes' ? (
             <PossiveisClientesTab />
           ) : aba === 'campeoes' ? (
             <CampeoesTab />
