@@ -78,10 +78,11 @@ export type EstadoCofre = 'bloqueado' | 'abrindo' | 'senha' | 'ok' | 'sem' | 'er
 
 /**
  * Uma lista só da equipe, cifrada com a senha do Privado (src/lib/cofre.js): Possíveis clientes
- * (prospeccao/clientes.bin) ou o cadastro da Consulta CNPJ (prospeccao/cadastro.bin).
+ * (prospeccao/clientes.bin), o cadastro da Consulta CNPJ (prospeccao/cadastro.bin) ou o CNPJ problemático
+ * (prospeccao/problematicos.bin).
  * Quem já entrou no Privado nesta aba do navegador abre direto; os outros digitam a senha.
  */
-export function useClientesCifrados<T extends { empresas: unknown[] }>(arquivo: 'clientes' | 'cadastro' = 'clientes') {
+export function useClientesCifrados<T extends { empresas: unknown[] }>(arquivo: 'clientes' | 'cadastro' | 'problematicos' = 'clientes') {
   const [dados, setDados] = useState<T | null>(null);
   const [estado, setEstado] = useState<EstadoCofre>('abrindo');
   const abrir = useCallback(

@@ -2,8 +2,9 @@
 //   Consultar um CNPJ   qualquer empresa do Brasil: o cadastro da Receita na hora (BrasilAPI ou minhareceita.org) e o
 //                       histórico em licitações nas atas lidas (as partes públicas do diagnóstico por CNPJ);
 //   Vários CNPJs        uma lista colada, conferida de uma vez, com planilha Excel;
-//   Empresas da região  as empresas ativas das cidades escolhidas, tiradas do cnpj.db (só da equipe, com senha).
-// Sócios (pessoas físicas) não aparecem.
+//   Empresas da região  as empresas ativas das cidades escolhidas, tiradas do cnpj.db (só da equipe, com senha);
+//   CNPJ problemático   inaptas e excluídas do Simples e do MEI da região, com sócios e o motivo provável (só da equipe).
+// Sócios (pessoas físicas) só aparecem no CNPJ problemático, que é cifrado com a senha do Privado.
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import Header from '../components/Header.tsx';
 import Footer from '../components/Footer.tsx';
@@ -17,13 +18,15 @@ import { atualizarFunil, ETAPAS_FUNIL, PREFIXO_FUNIL, useFunil, type EtapaFunil 
 import { baixarXlsx } from '../lib/xlsx.js';
 import { campo, dataBR } from './prospeccaoUi.tsx';
 import EmpresasRegiao from './EmpresasRegiao.tsx';
+import CnpjProblematico from './CnpjProblematico.tsx';
 
 type Cadastro = ReturnType<typeof cadastroDaReceita>;
-type Parte = 'um' | 'varios' | 'regiao';
+type Parte = 'um' | 'varios' | 'regiao' | 'problematico';
 const PARTES: { id: Parte; titulo: string; desc: string; icon: string }[] = [
   { id: 'um', titulo: 'Consultar um CNPJ', desc: 'Qualquer empresa do Brasil', icon: 'search' },
   { id: 'varios', titulo: 'Vários CNPJs', desc: 'Uma lista de uma vez, em Excel', icon: 'sheet' },
   { id: 'regiao', titulo: 'Empresas da região', desc: 'Busca por ramo e cidade (equipe)', icon: 'users' },
+  { id: 'problematico', titulo: 'CNPJ problemático', desc: 'Inaptas e fora do Simples/MEI (equipe)', icon: 'alert' },
 ];
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const mascara = (v: string) =>
@@ -508,10 +511,10 @@ export default function ConsultaCnpjPage() {
             <p className="mt-6 text-sm font-bold text-[#9fd3ff]">Cadastro de empresas da Receita Federal</p>
             <h1 className="mt-2 text-3xl sm:text-5xl font-bold font-display tracking-tight leading-tight">Consulta CNPJ</h1>
             <p className="mt-4 max-w-3xl text-lg sm:text-xl text-white/90 leading-relaxed">
-              A ficha de qualquer empresa do Brasil, uma lista de CNPJs de uma vez e as empresas da região por ramo e cidade, com telefone, e-mail e o que cada
-              uma já disputou em licitações.
+              A ficha de qualquer empresa do Brasil, uma lista de CNPJs de uma vez, as empresas da região por ramo e cidade e as que estão com o CNPJ
+              problemático, com telefone, e-mail e o que cada uma já disputou em licitações.
             </p>
-            <div role="tablist" aria-label="O que você quer consultar" className="mt-8 grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
+            <div role="tablist" aria-label="O que você quer consultar" className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
               {PARTES.map((p) => (
                 <button
                   key={p.id}
@@ -539,6 +542,8 @@ export default function ConsultaCnpjPage() {
         <div id="painel-cnpj" role="tabpanel" aria-labelledby={`parte-${parte}`}>
           {parte === 'regiao' ? (
             <EmpresasRegiao onConsultar={consultarUm} />
+          ) : parte === 'problematico' ? (
+            <CnpjProblematico onConsultar={consultarUm} />
           ) : (
             <section className="bg-[#F4F7FB] py-8 sm:py-10">
               <Container>{parte === 'um' ? <UmCnpj key={cnpjInicial} inicial={cnpjInicial} /> : <VariosCnpj />}</Container>

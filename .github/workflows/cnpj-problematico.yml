@@ -1,0 +1,51 @@
+name: CNPJ problemático (Consulta CNPJ)
+
+# Lê os Dados Abertos do CNPJ direto do servidor da Receita (arquivos.receitafederal.gov.br) e separa as empresas das
+# cidades escolhidas (src/data/problematicosConfig.js) com o CNPJ inapto ou excluídas do Simples ou do MEI, com sócios,
+# contato e o motivo provável (scripts/cnpj-problematico.mjs). A lista sai cifrada com a senha do Privado (segredo
+# PRIVADO_SENHA) e fica no cache do Actions; a publicação do site só a copia para a aba "CNPJ problemático".
+# A Receita publica uma base nova por mês: roda sozinho no dia 22 e pega a mais recente completa. Leva de 30 a 90 minutos,
+# conforme a velocidade do servidor da Receita.
+on:
+  schedule:
+    - cron: '17 9 22 * *'
+  workflow_dispatch:
+    inputs:
+      base:
+        description: 'Base da Receita no formato AAAA-MM (vazio = a mais recente completa)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+  actions: write # para disparar a publicação do site no fim
+
+concurrency:
+  group: cnpj-problematico
+  cancel-in-progress: false
+
+jobs:
+  extrair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Ler a base do CNPJ da Receita e separar os CNPJs problemáticos
+        run: node scripts/cnpj-problematico.mjs
+        env:
+          CNPJ_BASE: ${{ inputs.base }}
+          PRIVADO_SENHA: ${{ secrets.PRIVADO_SENHA }}
+      - name: Guardar a lista (cifrada)
+        uses: actions/cache/save@v4
+        with:
+          path: cnpj-problematico.bin
+          key: cnpj-problematico-${{ github.run_id }}
+      - name: Publicar o site com a lista nova
+        run: gh workflow run pages.yml --ref main
+        env:
+          GH_TOKEN: ${{ github.token }}

@@ -114,6 +114,18 @@ jobs:
         run: node scripts/cadastro-cnpj.mjs --publicar
         env:
           PRIVADO_SENHA: ${{ secrets.PRIVADO_SENHA }}
+      - name: Recuperar a lista CNPJ problemático (Consulta CNPJ)
+        # extraída da base da Receita, já cifrada, pelo workflow CNPJ problemático (cnpj-problematico.yml)
+        uses: actions/cache/restore@v4
+        with:
+          path: cnpj-problematico.bin
+          key: cnpj-problematico-${{ github.run_id }}
+          restore-keys: cnpj-problematico-
+      - name: Publicar o CNPJ problemático (cifrado com a senha do Privado)
+        continue-on-error: true
+        run: node scripts/cnpj-problematico.mjs --publicar
+        env:
+          PRIVADO_SENHA: ${{ secrets.PRIVADO_SENHA }}
       - run: npm test
       - run: npm run lint
       - name: Compilar para o endereço do Pages
