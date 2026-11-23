@@ -797,6 +797,34 @@ export default function JornadaHora() {
                 );
               })}
             </tbody>
+            {/* total da semana, de segunda a domingo, e quanto sobra (ou passa) do limite da regra escolhida */}
+            <tfoot>
+              <tr className={`border-t-2 ${totalModelo > REGIMES[regime].semanal ? 'border-red-300 bg-red-50' : 'border-[#0F2053]/20 bg-[#F4F7FB]'}`}>
+                <th scope="row" className="p-2 text-left font-bold text-[#0F2053] whitespace-nowrap">
+                  Total da semana
+                </th>
+                <td colSpan={5} className="p-2 text-slate-700">
+                  {7 - folgasModelo} {7 - folgasModelo === 1 ? 'dia de trabalho' : 'dias de trabalho'} e {folgasModelo}{' '}
+                  {folgasModelo === 1 ? 'folga' : 'folgas'} ·{' '}
+                  {totalModelo > REGIMES[regime].semanal ? (
+                    <strong className="text-red-700">
+                      passa {horas(totalModelo - REGIMES[regime].semanal)} do limite de {regime}h
+                    </strong>
+                  ) : totalModelo === REGIMES[regime].semanal ? (
+                    <strong className="text-[#0E7A3F]">exatamente o limite de {regime}h</strong>
+                  ) : (
+                    <strong className="text-[#0E7A3F]">
+                      sobram {horas(REGIMES[regime].semanal - totalModelo)} até o limite de {regime}h
+                    </strong>
+                  )}
+                </td>
+                <td
+                  className={`p-2 text-right tabular-nums text-base font-extrabold ${totalModelo > REGIMES[regime].semanal ? 'text-red-700' : 'text-[#0F2053]'}`}
+                >
+                  {horas(totalModelo)}
+                </td>
+              </tr>
+            </tfoot>
           </table>
         </div>
         <p className="mt-2 text-xs text-slate-500">
