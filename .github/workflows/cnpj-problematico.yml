@@ -1,6 +1,8 @@
 name: CNPJ problemático (Consulta CNPJ)
 
-# Lê os Dados Abertos do CNPJ direto do servidor da Receita (arquivos.receitafederal.gov.br) e separa as empresas das
+# Lê os Dados Abertos do CNPJ direto do servidor da Receita (arquivos.receitafederal.gov.br) ou, se ele não responder
+# (o servidor da Receita não aceita conexões do GitHub), do cnpj.db do Google Drive (o mesmo do workflow Cadastro CNPJ;
+# a Receita atualiza a base todo mês: suba o novo e troque o id padrão em scripts/cadastro-cnpj.mjs), e separa as empresas das
 # cidades escolhidas (src/data/problematicosConfig.js) com o CNPJ inapto ou excluídas do Simples ou do MEI, com sócios,
 # contato e o motivo provável (scripts/cnpj-problematico.mjs). A lista sai cifrada com a senha do Privado (segredo
 # PRIVADO_SENHA) e fica no cache do Actions; a publicação do site só a copia para a aba "CNPJ problemático".
@@ -13,13 +15,22 @@ on:
     branches: [main]
     paths:
       - scripts/cnpj-problematico.mjs
+      - scripts/cadastro-cnpj.mjs
       - src/lib/cnpjProblematico.js
       - src/data/problematicosConfig.js
       - .github/workflows/cnpj-problematico.yml
   workflow_dispatch:
     inputs:
       base:
-        description: 'Base da Receita no formato AAAA-MM (vazio = a mais recente completa)'
+        description: 'Base da Receita no formato AAAA-MM (vazio = a mais recente completa; só para o servidor da Receita)'
+        required: false
+        default: ''
+      fonte:
+        description: 'De onde ler: auto (Receita e, se não responder, o cnpj.db do Drive), receita ou drive'
+        required: false
+        default: 'auto'
+      arquivo:
+        description: 'Id do cnpj.db no Google Drive (vazio = o de sempre)'
         required: false
         default: ''
 
@@ -46,6 +57,8 @@ jobs:
         run: node scripts/cnpj-problematico.mjs
         env:
           CNPJ_BASE: ${{ inputs.base }}
+          CNPJ_FONTE: ${{ inputs.fonte || 'auto' }}
+          CNPJ_DB_ID: ${{ inputs.arquivo }}
           PRIVADO_SENHA: ${{ secrets.PRIVADO_SENHA }}
       - name: Guardar a lista (cifrada)
         uses: actions/cache/save@v4

@@ -20,9 +20,11 @@ import { lerTabela, linhasDaPagina, PAGINA, tamanhoDaPagina } from '../src/lib/s
 import { nomeSemCpf } from '../src/lib/possiveisClientes.js';
 
 /** cnpj.db no Drive de Allan, compartilhado por link (dados abertos da Receita Federal) */
-const ARQUIVO_PADRAO = '1tIJNbYa3PEoORTYI2K2A5y5CJqt8r0na';
+export const ARQUIVO_PADRAO = '1tIJNbYa3PEoORTYI2K2A5y5CJqt8r0na';
 const ID = process.env.CNPJ_DB_ID || ARQUIVO_PADRAO;
-const URL_ARQ = `https://drive.usercontent.google.com/download?id=${ID}&export=download&confirm=t`;
+/** Endereço de download de um arquivo do Drive compartilhado por link */
+export const urlDoArquivo = (id) => `https://drive.usercontent.google.com/download?id=${id}&export=download&confirm=t`;
+const URL_ARQ = urlDoArquivo(ID);
 const SAIDA = process.env.CADASTRO_SAIDA || 'cadastro-cnpj.json.gz';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const semAcento = (s) =>
@@ -38,10 +40,10 @@ const semAcento = (s) =>
 // ---------------------------------------------------------------- leitura pelo Drive
 
 /** Um trecho do arquivo (bytes de..até, inclusive) */
-async function trecho(de, ate) {
+export async function trecho(de, ate, url = URL_ARQ) {
   for (let t = 0; ; t++) {
     try {
-      const r = await fetch(URL_ARQ, { headers: { Range: `bytes=${de}-${ate}` }, signal: AbortSignal.timeout(120e3) });
+      const r = await fetch(url, { headers: { Range: `bytes=${de}-${ate}` }, signal: AbortSignal.timeout(120e3) });
       if (r.status !== 206 && r.status !== 200) throw new Error(`Drive respondeu ${r.status}`);
       return new Uint8Array(await r.arrayBuffer());
     } catch (e) {
@@ -55,14 +57,14 @@ async function trecho(de, ate) {
  * Lê as páginas [de, ate) em sequência e entrega cada uma a `cada(numero, bytes)`. Se a conexão cair, continua de onde
  * parou (pedido com Range a partir da página seguinte).
  */
-async function varrer(T, de, ate, cada, rotulo) {
+export async function varrer(T, de, ate, cada, rotulo, url = URL_ARQ) {
   let proxima = de;
   let tentativas = 0;
   const t0 = Date.now();
   let avisoEm = Date.now();
   while (proxima < ate) {
     try {
-      const r = await fetch(URL_ARQ, { headers: { Range: `bytes=${(proxima - 1) * T}-${(ate - 1) * T - 1}` } });
+      const r = await fetch(url, { headers: { Range: `bytes=${(proxima - 1) * T}-${(ate - 1) * T - 1}` } });
       if (r.status !== 206) throw new Error(`Drive respondeu ${r.status}`);
       const leitor = r.body.getReader();
       let resto = new Uint8Array(0);
@@ -111,7 +113,7 @@ export function tabelaDaLinha(v) {
   if (n === 2) return 'dicionario';
   return '';
 }
-const ORDEM = { empresas: 0, estabelecimento: 1, socios: 2, simples: 3, indice: 4 };
+export const ORDEM = { empresas: 0, estabelecimento: 1, socios: 2, simples: 3, indice: 4 };
 
 /** Colunas de uma tabela, pelo CREATE TABLE */
 export function colunas(sql) {
@@ -235,7 +237,8 @@ async function extrair() {
   await varrer(
     T,
     Math.max(101, inicioEst - MARGEM),
-    inicioIdx + 1,
+    // a sondagem para até 64 páginas antes de onde os índices começam: lê um pouco além para não perder o fim do Simples
+    Math.min(total + 1, inicioIdx + 129),
     (n, b) => {
       const r = linhasDaPagina(b);
       grandes += r.grandes;

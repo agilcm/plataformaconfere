@@ -81,6 +81,7 @@ interface Registro {
 interface Dados {
   geradoEm: string;
   base: string;
+  fonte?: string;
   anos: string[];
   cidades: string[];
   cnae: Record<string, string>;
@@ -428,7 +429,8 @@ export default function CnpjProblematico({ onConsultar }: { onConsultar: (cnpj: 
           <>
             <p className="mt-2 text-sm text-slate-600">
               {dados.empresas.length.toLocaleString('pt-BR')} estabelecimentos de {dados.cidades.join(', ')}. Base da Receita de{' '}
-              {dados.base.split('-').reverse().join('/')}, lida em {dataBR(dados.geradoEm)}.{' '}
+              {dados.base.split('-').reverse().join('/')}
+              {dados.fonte ? ` (${dados.fonte})` : ''}, lida em {dataBR(dados.geradoEm)}.{' '}
               <button type="button" onClick={trancar} className="font-bold text-[#0369B3] underline underline-offset-4 cursor-pointer">
                 Fechar
               </button>

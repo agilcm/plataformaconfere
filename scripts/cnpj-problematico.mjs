@@ -2,15 +2,17 @@
 // com o CNPJ inapto ou excluídas do Simples ou do MEI no ano da base ou no anterior, com sócios, telefone, e-mail e o
 // motivo provável (regras em src/lib/cnpjProblematico.js). Fonte: Dados Abertos do CNPJ da Receita Federal, lidos direto
 // do servidor da Receita (arquivos.receitafederal.gov.br), sem guardar os arquivos inteiros: cada zip é lido em sequência
-// e só ficam as linhas das cidades.
+// e só ficam as linhas das cidades. Se o servidor da Receita não responder (ele não aceita conexões do GitHub), lê a
+// mesma base no cnpj.db do Google Drive, o do workflow Cadastro CNPJ.
 //
 //   node scripts/cnpj-problematico.mjs              extrai e grava cnpj-problematico.bin (guardado no cache do Actions)
 //   node scripts/cnpj-problematico.mjs --publicar   copia o arquivo para public/prospeccao/problematicos.bin
 //
 // O arquivo sai cifrado com a senha do Privado (segredo PRIVADO_SENHA) já na extração: o repositório é público e a lista
 // tem nomes e contatos, então nada vai em texto aberto para o cache nem para o log (que só mostra contagens).
-// Variáveis: PRIVADO_SENHA (obrigatória), CNPJ_BASE (AAAA-MM; vazio = a mais recente completa), CNPJ_LOCAL (pasta com os
-// zips já baixados, para testar sem a internet), CNPJ_PROBLEMATICO_SAIDA.
+// Variáveis: PRIVADO_SENHA (obrigatória), CNPJ_FONTE (auto, receita ou drive), CNPJ_BASE (AAAA-MM; vazio = a mais recente
+// completa), CNPJ_LOCAL (pasta com os zips já baixados, para testar sem a internet), CNPJ_DB_ID (id do cnpj.db no Drive),
+// CNPJ_DB_URL (endereço do cnpj.db, para testar), CNPJ_PROBLEMATICO_SAIDA.
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -20,6 +22,8 @@ import zlib from 'node:zlib';
 import { ANOS_EXCLUSAO_ANTES, CIDADES_PROBLEMATICOS } from '../src/data/problematicosConfig.js';
 import { casosDe, classeDe, dataIso, individual, prioridadeDe, telefone, titularCpf } from '../src/lib/cnpjProblematico.js';
 import { chaveDaSenha, cifrar, decifrar } from '../src/lib/cofre.js';
+import { lerTabela, linhasDaPagina, PAGINA, tamanhoDaPagina } from '../src/lib/sqliteFolhas.js';
+import { ARQUIVO_PADRAO, ORDEM, tabelaDaLinha, trecho, urlDoArquivo, varrer } from './cadastro-cnpj.mjs';
 
 /** Pasta pública dos Dados Abertos do CNPJ (compartilhamento do Nextcloud da Receita; o "usuário" é o código do link) */
 const DAV = 'https://arquivos.receitafederal.gov.br/public.php/webdav/Dados/Cadastros/CNPJ/';
@@ -217,16 +221,37 @@ export const socioDe = (c) => ({
   ...(c[8]?.trim() ? { rep: c[8].trim(), repQual: c[9] } : {}),
 });
 
-async function extrair() {
-  if (!process.env.PRIVADO_SENHA) throw new Error('Falta o segredo PRIVADO_SENHA: a lista só é gravada cifrada.');
-  const chave = await chaveDaSenha(process.env.PRIVADO_SENHA);
+const anosDa = (base) => {
+  const ano = Number(base.slice(0, 4));
+  return Array.from({ length: ANOS_EXCLUSAO_ANTES + 1 }, (_, i) => String(ano - ANOS_EXCLUSAO_ANTES + i));
+};
+const temCaso = (anos, simples) => (e) => casosDe(e, simples.get(e.basico) || null, '', anos).length > 0;
+const juntarSocio = (socios, c) => socios.set(c[0], [...(socios.get(c[0]) || []), socioDe(c)]);
+
+/**
+ * Códigos das cidades na tabela de municípios da Receita, como "UF;código" (sem zeros à esquerda) → nome da cidade.
+ * A tabela não tem UF: o filtro usa UF + código, e nomes iguais de outros estados não entram.
+ */
+function codigosDasCidades(municipios) {
+  const porNome = new Map();
+  for (const [cod, nome] of municipios) porNome.set(chaveCidade(nome), [...(porNome.get(chaveCidade(nome)) || []), cod]);
+  const cidadeDoCodigo = new Map();
+  for (const c of CIDADES_PROBLEMATICOS) {
+    const cods = porNome.get(chaveCidade(c.nome));
+    if (!cods) throw new Error(`Cidade não achada na tabela de municípios da Receita: ${c.nome}`);
+    for (const cod of cods) cidadeDoCodigo.set(`${c.uf};${cod.replace(/^0+/, '')}`, c.nome);
+  }
+  console.log(`Cidades: ${CIDADES_PROBLEMATICOS.length} (${cidadeDoCodigo.size} códigos na Receita).`);
+  return cidadeDoCodigo;
+}
+
+/** Fonte 1: os zips dos Dados Abertos, direto do servidor da Receita */
+async function daReceita() {
   const base = await escolherBase();
-  const anoBase = Number(base.slice(0, 4));
-  const anos = Array.from({ length: ANOS_EXCLUSAO_ANTES + 1 }, (_, i) => String(anoBase - ANOS_EXCLUSAO_ANTES + i));
-  console.log(`Base do CNPJ: ${base}. Exclusões de ${anos.join(' e ')}.`);
+  const anos = anosDa(base);
+  console.log(`Fonte: servidor da Receita, base ${base}. Exclusões de ${anos.join(' e ')}.`);
   const pasta = fs.mkdtempSync(path.join(os.tmpdir(), 'cnpj-problematico-'));
   try {
-    // 1. tabelas de códigos
     const tab = {};
     await emParalelo(
       ['Municipios', 'Motivos', 'Qualificacoes', 'Naturezas', 'Cnaes'].map((n) => async () => {
@@ -235,21 +260,13 @@ async function extrair() {
       }),
       5,
     );
-
-    // 2. códigos das cidades (a tabela da Receita não tem UF: o filtro usa UF + código, e nomes iguais de outros estados não entram)
-    const porNome = new Map();
-    for (const [cod, nome] of tab.Municipios) porNome.set(chaveCidade(nome), [...(porNome.get(chaveCidade(nome)) || []), cod]);
-    const cidadeDoCodigo = new Map();
-    for (const c of CIDADES_PROBLEMATICOS) {
-      const cods = porNome.get(chaveCidade(c.nome));
-      if (!cods) throw new Error(`Cidade não achada na tabela de municípios da Receita: ${c.nome}`);
-      for (const cod of cods) cidadeDoCodigo.set(`${c.uf};${cod}`, c.nome);
-    }
-    const padrao = [...cidadeDoCodigo.keys()].map((k) => k.split(';')).map(([uf, cod]) => `"${uf}";"${cod}";`);
+    const cidadeDoCodigo = codigosDasCidades(tab.Municipios);
+    const padrao = [...tab.Municipios.keys()]
+      .map((cod) => CIDADES_PROBLEMATICOS.filter((c) => cidadeDoCodigo.has(`${c.uf};${cod.replace(/^0+/, '')}`)).map((c) => `"${c.uf}";"${cod}";`))
+      .flat();
     fs.writeFileSync(path.join(pasta, 'cidades.grep'), padrao.join('\n') + '\n');
-    console.log(`Cidades: ${CIDADES_PROBLEMATICOS.length} (${cidadeDoCodigo.size} códigos na Receita).`);
 
-    // 3. estabelecimentos das cidades (os 10 arquivos ao mesmo tempo)
+    // estabelecimentos das cidades (os 10 arquivos ao mesmo tempo)
     await emParalelo(
       PARTES.map(
         (i) => () =>
@@ -264,23 +281,22 @@ async function extrair() {
     const ests = [];
     for (const i of PARTES)
       for await (const c of linhas(path.join(pasta, `est${i}.csv`))) {
-        const cidade = c.length >= 30 && cidadeDoCodigo.get(`${c[19]};${c[20]}`);
+        const cidade = c.length >= 30 && cidadeDoCodigo.get(`${c[19]};${c[20].replace(/^0+/, '')}`);
         if (cidade) ests.push({ basico: c[0], ...estabelecimentoDe(c, tab.Motivos, cidade) });
       }
     const basicosCidades = new Set(ests.map((e) => e.basico));
     console.log(`Estabelecimentos nas cidades: ${ests.length} (${basicosCidades.size} empresas).`);
 
-    // 4. Simples e MEI dessas empresas
+    // Simples e MEI dessas empresas
     gravarBasicos(pasta, basicosCidades);
     await extrairPara(`${fonte(base, 'Simples')} | ${filtroBasicos(pasta)}`, path.join(pasta, 'simples.csv'), 'Simples');
     const simples = new Map();
     for await (const c of linhas(path.join(pasta, 'simples.csv'))) if (c.length >= 7) simples.set(c[0], simplesDe(c));
     console.log(`Com registro no Simples/MEI: ${simples.size}.`);
 
-    // 5. quem tem algum caso; só dessas empresas se buscam o nome empresarial e os sócios
-    const escolhidos = ests.filter((e) => casosDe(e, simples.get(e.basico) || null, '', anos).length);
-    const basicos = new Set(escolhidos.map((e) => e.basico));
-    gravarBasicos(pasta, basicos);
+    // só das empresas com algum caso se buscam o nome empresarial e os sócios
+    const escolhidos = ests.filter(temCaso(anos, simples));
+    gravarBasicos(pasta, new Set(escolhidos.map((e) => e.basico)));
     await emParalelo(
       PARTES.flatMap((i) => [`Socios${i}`, `Empresas${i}`]).map(
         (n) => () => extrairPara(`${fonte(base, n)} | ${filtroBasicos(pasta)}`, path.join(pasta, `${n}.csv`), n),
@@ -291,64 +307,212 @@ async function extrair() {
     const socios = new Map();
     for (const i of PARTES) {
       for await (const c of linhas(path.join(pasta, `Empresas${i}.csv`))) if (c.length >= 7) empresas.set(c[0], c);
-      for await (const c of linhas(path.join(pasta, `Socios${i}.csv`))) if (c.length >= 11) socios.set(c[0], [...(socios.get(c[0]) || []), socioDe(c)]);
+      for await (const c of linhas(path.join(pasta, `Socios${i}.csv`))) if (c.length >= 11) juntarSocio(socios, c);
     }
-
-    // 6. registros
-    const usados = { cnae: new Set(), natureza: new Set(), qual: new Set() };
-    const lista = escolhidos.map(({ basico, ...e }) => {
-      const emp = empresas.get(basico) || [];
-      const natureza = emp[2] || '';
-      const natNome = tab.Naturezas.get(natureza) || '';
-      const s = simples.get(basico) || null;
-      const casos = casosDe(e, s, natNome, anos);
-      const soc = (socios.get(basico) || []).sort((a, b) => (a.entrada || '9999').localeCompare(b.entrada || '9999') || a.nome.localeCompare(b.nome));
-      const r = {
-        ...e,
-        razao: (emp[1] || '').trim(),
-        natureza,
-        qualResp: emp[3] || '',
-        capital: capitalDe(emp[4]),
-        porte: emp[5] || '',
-        simples: s,
-        socios: soc,
-        titularCpf: individual(natNome) ? titularCpf(emp[1]) : '',
-        casos,
-        classe: classeDe(casos),
-      };
-      r.prioridade = prioridadeDe(r);
-      [r.cnae, ...r.cnaes].forEach((x) => usados.cnae.add(x));
-      usados.natureza.add(natureza);
-      [r.qualResp, ...soc.flatMap((x) => [x.qual, x.repQual])].filter(Boolean).forEach((x) => usados.qual.add(x));
-      return r;
-    });
-    const so = (m, chaves) => Object.fromEntries([...chaves].filter((k) => m.has(k)).map((k) => [k, m.get(k)]));
-    const dados = {
-      geradoEm: new Date().toISOString(),
+    return {
       base,
+      fonte: 'Servidor da Receita Federal',
       anos,
-      cidades: CIDADES_PROBLEMATICOS.map((c) => c.nome),
-      cnae: so(tab.Cnaes, usados.cnae),
-      natureza: so(tab.Naturezas, usados.natureza),
-      qualificacao: so(tab.Qualificacoes, usados.qual),
-      empresas: lista,
+      escolhidos,
+      simples,
+      empresas,
+      socios,
+      cnae: tab.Cnaes,
+      natureza: tab.Naturezas,
+      qualificacao: tab.Qualificacoes,
     };
-    const conta = (f) => lista.filter(f).length;
-    console.log(
-      `CNPJ problemático: ${lista.length} estabelecimentos — ${conta((r) => r.classe === 'problema')} problema, ${conta((r) => r.classe === 'crescimento')} crescimento, ` +
-        `${conta((r) => r.classe === 'verificar')} verificar; prioridade alta ${conta((r) => r.prioridade === 'alta')}; inaptas ${conta((r) => r.casos.some((c) => c.tipo === 'inapta'))}; ` +
-        anos
-          .map(
-            (a) =>
-              `Simples ${a}: ${conta((r) => r.casos.some((c) => c.tipo === 'simples' && c.data.startsWith(a)))}, MEI ${a}: ${conta((r) => r.casos.some((c) => c.tipo === 'mei' && c.data.startsWith(a)))}`,
-          )
-          .join('; '),
-    );
-    fs.writeFileSync(SAIDA, await cifrar(zlib.gzipSync(JSON.stringify(dados)), chave));
-    console.log(`Gravado ${SAIDA} (cifrado, ${Math.round(fs.statSync(SAIDA).size / 1024)} KB).`);
   } finally {
     fs.rmSync(pasta, { recursive: true, force: true });
   }
+}
+
+/**
+ * Fonte 2: o cnpj.db (a mesma base em SQLite, ~28 GB) no Google Drive, o mesmo do workflow Cadastro CNPJ, lido em
+ * sequência pelo link, sem baixar inteiro. O GitHub não alcança o servidor da Receita; o Drive, sim.
+ * O arquivo tem, nesta ordem: empresas, estabelecimentos, sócios, Simples e índices; as colunas seguem os CSVs da Receita.
+ * 1ª passada: estabelecimentos das cidades, os sócios e o Simples deles; 2ª passada: as empresas com algum caso.
+ */
+async function doDrive() {
+  const url = process.env.CNPJ_DB_URL || urlDoArquivo(process.env.CNPJ_DB_ID || ARQUIVO_PADRAO);
+  const inicio = await trecho(0, 1024 * 1024 - 1, url);
+  const T = tamanhoDaPagina(inicio);
+  const cacheP = new Map();
+  const pagina = async (n) => {
+    if (n * T <= inicio.length) return inicio.subarray((n - 1) * T, n * T);
+    if (!cacheP.has(n)) cacheP.set(n, await trecho((n - 1) * T, n * T - 1, url));
+    return cacheP.get(n);
+  };
+  const mestre = (await lerTabela(pagina, 1)).map((l) => ({ tipo: l.valores[0], nome: l.valores[1], raiz: l.valores[3] }));
+  const raiz = (nome) => {
+    const t = mestre.find((m) => m.tipo === 'table' && m.nome === nome);
+    if (!t) throw new Error(`O cnpj.db não tem a tabela ${nome}`);
+    return t.raiz;
+  };
+  for (const t of ['estabelecimento', 'empresas', 'simples', 'socios_original']) raiz(t);
+  const dic = async (nome) => new Map((await lerTabela(pagina, raiz(nome))).map((l) => [String(l.valores[0]).trim(), String(l.valores[1] || '').trim()]));
+  const municipios = await dic('municipio');
+  const motivos = await dic('motivo');
+  const cnae = await dic('cnae');
+  const natureza = await dic('natureza_juridica');
+  const qualificacao = await dic('qualificacao_socio');
+  const cidadeDoCodigo = codigosDasCidades(municipios);
+
+  // onde começa cada parte: sondagem (busca binária) pela ordem empresas < estabelecimentos < sócios < Simples < índices
+  const tamArq = Number((await fetch(url, { headers: { Range: 'bytes=0-0' } })).headers.get('content-range')?.split('/')[1]);
+  const total = Math.floor(tamArq / T);
+  const ordemDa = async (n) => {
+    for (let k = 0; k < 40 && n + k <= total; k++) {
+      const b = await pagina(n + k);
+      if (b[0] === PAGINA.INDICE_FOLHA || b[0] === PAGINA.INDICE_INTERNA) return ORDEM.indice;
+      const r = linhasDaPagina(b);
+      const t = r.linhas.length ? tabelaDaLinha(r.linhas[0].valores) : '';
+      if (t in ORDEM) return ORDEM[t];
+    }
+    return ORDEM.indice;
+  };
+  const primeiraCom = async (ordem, de, ate) => {
+    while (ate - de > 64) {
+      const meio = Math.floor((de + ate) / 2);
+      if ((await ordemDa(meio)) >= ordem) ate = meio;
+      else de = meio;
+    }
+    return de;
+  };
+  const inicioEst = await primeiraCom(ORDEM.estabelecimento, 101, total);
+  const inicioIdx = await primeiraCom(ORDEM.indice, inicioEst, total);
+  const MARGEM = 4096; // 16 MB antes de cada parte, por segurança (cada página é reconhecida de novo na leitura)
+  // a sondagem para até 64 páginas antes de onde os índices começam: lê um pouco além para não perder o fim do Simples
+  const fimDados = Math.min(total + 1, inicioIdx + 129);
+  const texto = (v) => {
+    const c = v.map((x) => (x == null ? '' : String(x)));
+    while (c.length < 30) c.push('');
+    return c;
+  };
+
+  const ests = [];
+  const basicosCidades = new Set();
+  const socios = new Map();
+  const simples = new Map();
+  let ultimaData = '';
+  await varrer(
+    T,
+    Math.max(101, inicioEst - MARGEM),
+    fimDados,
+    (n, b) => {
+      for (const { valores: v } of linhasDaPagina(b).linhas) {
+        const t = tabelaDaLinha(v);
+        if (t === 'estabelecimento') {
+          const c = texto(v);
+          const cidade = cidadeDoCodigo.get(`${c[19].trim()};${c[20].trim().replace(/^0+/, '')}`);
+          if (!cidade) continue;
+          ests.push({ basico: c[0], ...estabelecimentoDe(c, motivos, cidade) });
+          basicosCidades.add(c[0]);
+          for (const d of [c[6], c[10]]) if (/^\d{8}$/.test(d) && d > ultimaData) ultimaData = d;
+        } else if (t === 'socios') {
+          if (basicosCidades.has(String(v[0]))) juntarSocio(socios, texto(v));
+        } else if (t === 'simples') {
+          if (basicosCidades.has(String(v[0]))) simples.set(String(v[0]), simplesDe(texto(v)));
+        }
+      }
+    },
+    'estabelecimentos, sócios e Simples',
+    url,
+  );
+  const hoje = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const ref = ultimaData && ultimaData <= hoje ? ultimaData : hoje;
+  const base = `${ref.slice(0, 4)}-${ref.slice(4, 6)}`;
+  const anos = anosDa(base);
+  console.log(`Fonte: cnpj.db do Google Drive (base de ${base}, pela data mais recente do cadastro). Exclusões de ${anos.join(' e ')}.`);
+  console.log(`Estabelecimentos nas cidades: ${ests.length} (${basicosCidades.size} empresas); Simples/MEI: ${simples.size}.`);
+
+  const escolhidos = ests.filter(temCaso(anos, simples));
+  const basicos = new Set(escolhidos.map((e) => e.basico));
+  const empresas = new Map();
+  await varrer(
+    T,
+    2,
+    inicioEst + MARGEM,
+    (n, b) => {
+      for (const { valores: v } of linhasDaPagina(b).linhas)
+        if (tabelaDaLinha(v) === 'empresas' && basicos.has(String(v[0]))) empresas.set(String(v[0]), texto(v));
+    },
+    'empresas',
+    url,
+  );
+  for (const b of basicosCidades) if (!basicos.has(b)) socios.delete(b);
+  return { base, fonte: 'cnpj.db do Google Drive', anos, escolhidos, simples, empresas, socios, cnae, natureza, qualificacao };
+}
+
+/** Os registros da lista, a partir do que cada fonte leu */
+function montar({ base, fonte: origem, anos, escolhidos, simples, empresas, socios, cnae, natureza, qualificacao }) {
+  const usados = { cnae: new Set(), natureza: new Set(), qual: new Set() };
+  const lista = escolhidos.map(({ basico, ...e }) => {
+    const emp = empresas.get(basico) || [];
+    const nat = emp[2] || '';
+    const natNome = natureza.get(nat) || '';
+    const s = simples.get(basico) || null;
+    const casos = casosDe(e, s, natNome, anos);
+    const soc = (socios.get(basico) || []).sort((a, b) => (a.entrada || '9999').localeCompare(b.entrada || '9999') || a.nome.localeCompare(b.nome));
+    const r = {
+      ...e,
+      razao: (emp[1] || '').trim(),
+      natureza: nat,
+      qualResp: emp[3] || '',
+      capital: capitalDe(emp[4]),
+      porte: emp[5] || '',
+      simples: s,
+      socios: soc,
+      titularCpf: individual(natNome) ? titularCpf(emp[1]) : '',
+      casos,
+      classe: classeDe(casos),
+    };
+    r.prioridade = prioridadeDe(r);
+    [r.cnae, ...r.cnaes].forEach((x) => usados.cnae.add(x));
+    usados.natureza.add(nat);
+    [r.qualResp, ...soc.flatMap((x) => [x.qual, x.repQual])].filter(Boolean).forEach((x) => usados.qual.add(x));
+    return r;
+  });
+  const so = (m, chaves) => Object.fromEntries([...chaves].filter((k) => m.has(k)).map((k) => [k, m.get(k)]));
+  const conta = (f) => lista.filter(f).length;
+  console.log(
+    `CNPJ problemático: ${lista.length} estabelecimentos — ${conta((r) => r.classe === 'problema')} problema, ${conta((r) => r.classe === 'crescimento')} crescimento, ` +
+      `${conta((r) => r.classe === 'verificar')} verificar; prioridade alta ${conta((r) => r.prioridade === 'alta')}; inaptas ${conta((r) => r.casos.some((c) => c.tipo === 'inapta'))}; ` +
+      anos
+        .map(
+          (a) =>
+            `Simples ${a}: ${conta((r) => r.casos.some((c) => c.tipo === 'simples' && c.data.startsWith(a)))}, MEI ${a}: ${conta((r) => r.casos.some((c) => c.tipo === 'mei' && c.data.startsWith(a)))}`,
+        )
+        .join('; '),
+  );
+  return {
+    geradoEm: new Date().toISOString(),
+    base,
+    fonte: origem,
+    anos,
+    cidades: CIDADES_PROBLEMATICOS.map((c) => c.nome),
+    cnae: so(cnae, usados.cnae),
+    natureza: so(natureza, usados.natureza),
+    qualificacao: so(qualificacao, usados.qual),
+    empresas: lista,
+  };
+}
+
+async function extrair() {
+  if (!process.env.PRIVADO_SENHA) throw new Error('Falta o segredo PRIVADO_SENHA: a lista só é gravada cifrada.');
+  const chave = await chaveDaSenha(process.env.PRIVADO_SENHA);
+  const qual = process.env.CNPJ_FONTE || 'auto'; // auto | receita | drive
+  let lido = null;
+  if (qual !== 'drive')
+    try {
+      lido = await daReceita();
+    } catch (e) {
+      if (qual === 'receita') throw e;
+      console.log(`Servidor da Receita fora do alcance (${e.cause?.code || e.message}); lendo o cnpj.db do Google Drive.`);
+    }
+  if (!lido) lido = await doDrive();
+  const dados = montar(lido);
+  fs.writeFileSync(SAIDA, await cifrar(zlib.gzipSync(JSON.stringify(dados)), chave));
+  console.log(`Gravado ${SAIDA} (cifrado, ${Math.round(fs.statSync(SAIDA).size / 1024)} KB).`);
 }
 
 /** Publicação do site: confere que o arquivo abre com a senha atual e o põe em public/prospeccao */
