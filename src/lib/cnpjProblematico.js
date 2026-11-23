@@ -308,3 +308,80 @@ export function linhasPlanilhaProblematicos(dados, lista, NSOC = 4) {
     return linha;
   });
 }
+
+/**
+ * A planilha inteira, em abas: Leia-me, Resumo (por cidade), Contatos (todos), Inaptas e uma aba por ano para as
+ * exclusões do Simples e do MEI. Cada aba é { nome, linhas: objetos com as colunas }; as abas vazias saem.
+ * @param {{ base: string, anos: string[], cidades: string[], qualificacao?: object, natureza?: object, cnae?: object }} dados
+ * @param {any[]} lista  os estabelecimentos a exportar (o filtro da tela ou a lista toda)
+ * @param {(cnpj: string) => string} [etapa]  etapa do funil de prospecção de cada CNPJ
+ */
+export function abasPlanilhaProblematicos(dados, lista, etapa) {
+  const base = linhasPlanilhaProblematicos(dados, lista).map((l, i) => (etapa ? { ...l, 'Etapa da prospecção': etapa(lista[i].cnpj) } : l));
+  const caso = (tipo, ano) => (r) => r.casos.find((c) => c.tipo === tipo && (!ano || c.data.startsWith(ano)));
+  const aba = (nome, achar, rotuloData) => ({
+    nome,
+    linhas: lista
+      .map((r, i) => [achar(r), base[i]])
+      .filter(([c]) => c)
+      .map(([c, l]) => ({ [rotuloData]: dataBr(c.data), 'Tipo deste caso': CLASSES[c.classe], 'Motivo provável deste caso': c.motivo, ...l })),
+  });
+  const conta = (f) => lista.filter(f).length;
+  const cidades = [...new Set([...(dados.cidades || []), ...lista.map((r) => r.cidade)])].filter((c) => lista.some((r) => r.cidade === c));
+  const resumo = [...cidades, 'Total'].map((cid) => {
+    const daqui = (r) => cid === 'Total' || r.cidade === cid;
+    const linha = {
+      Cidade: cid,
+      Estabelecimentos: conta(daqui),
+      'Prioridade alta': conta((r) => daqui(r) && r.prioridade === 'alta'),
+      'Problema (ato administrativo)': conta((r) => daqui(r) && r.classe === 'problema'),
+      'Crescimento (faturamento)': conta((r) => daqui(r) && r.classe === 'crescimento'),
+      Inaptas: conta((r) => daqui(r) && caso('inapta')(r)),
+    };
+    for (const a of dados.anos) linha[`Excluídas do Simples ${a}`] = conta((r) => daqui(r) && caso('simples', a)(r));
+    for (const a of dados.anos) linha[`Excluídas do MEI ${a}`] = conta((r) => daqui(r) && caso('mei', a)(r));
+    linha['Com telefone'] = conta((r) => daqui(r) && (r.tel1 || r.tel2));
+    linha['Com e-mail'] = conta((r) => daqui(r) && r.email);
+    return linha;
+  });
+  const leiame = [
+    [
+      'O que é',
+      `Empresas de ${(dados.cidades || []).join(', ')} com o CNPJ inapto ou excluídas do Simples ou do MEI em ${(dados.anos || []).join(' ou ')}. Base da Receita de ${String(
+        dados.base || '',
+      )
+        .split('-')
+        .reverse()
+        .join('/')}.`,
+    ],
+    ['Contatos', 'Uma linha por estabelecimento, com todos os casos, ordenada por prioridade.'],
+    ['Inaptas / Excluídas', 'As mesmas empresas separadas por situação, com a data e o motivo provável daquele caso.'],
+    [
+      'Problema (ato administrativo)',
+      'CNPJ inapto; saída do MEI e do Simples na mesma data; exclusão do Simples com efeito em 1º de janeiro (exclusão anual de ofício por débitos); ou saída do MEI seguida de exclusão do Simples. Precisa de regularização.',
+    ],
+    [
+      'Crescimento (faturamento)',
+      'Saiu do MEI e continua no Simples como microempresa (faturamento acima do limite, entrada de sócio, filial ou atividade não permitida ao MEI). Precisa de contabilidade.',
+    ],
+    ['Verificar', 'Exclusão no meio do ano: pedido da empresa ou ato de ofício. Confirme na Consulta Optantes do Portal do Simples.'],
+    [
+      'Prioridade',
+      'Alta: problema e com telefone ou e-mail que não é de contador. Média: problema com e-mail de contador, ou crescimento sem contador. Baixa: o resto.',
+    ],
+    ['Motivo', 'A Receita não publica o motivo da exclusão na base aberta; ele é deduzido pelo que aconteceu com a empresa.'],
+    [
+      'Sócios',
+      'CPF mascarado como a Receita publica. Até 4 sócios em colunas; os demais em "Demais sócios". MEI e empresário individual não têm quadro de sócios: veja "Titular do MEI/empresário".',
+    ],
+    ['LGPD', 'Dados públicos da Receita, mas com nomes de pessoas: use só para oferecer o serviço e tire da lista quem pedir para não ser procurado.'],
+  ].map(([Item, Explicação]) => ({ Item, Explicação }));
+  return [
+    { nome: 'Leia-me', linhas: leiame },
+    { nome: 'Resumo', linhas: resumo },
+    { nome: 'Contatos', linhas: base },
+    aba('Inaptas', caso('inapta'), 'Inapta desde'),
+    ...(dados.anos || []).map((a) => aba(`Excluídas do Simples ${a}`, caso('simples', a), 'Data da exclusão')),
+    ...(dados.anos || []).map((a) => aba(`Excluídas do MEI ${a}`, caso('mei', a), 'Data da exclusão')),
+  ].filter((x) => x.linhas.length);
+}

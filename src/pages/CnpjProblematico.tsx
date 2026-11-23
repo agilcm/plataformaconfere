@@ -12,7 +12,7 @@ import {
   FAIXAS,
   filtrarProblematicos,
   individual,
-  linhasPlanilhaProblematicos,
+  abasPlanilhaProblematicos,
   mensagemProblematico,
   nomeTitular,
   ordemProblematicos,
@@ -382,36 +382,56 @@ export default function CnpjProblematico({ onConsultar }: { onConsultar: (cnpj: 
     filtrar(() => setBusca(q));
   };
 
-  const excel = () => {
-    if (!dados || !lista.length) return;
-    type Linha = Record<string, string | number | null>;
-    const linhas = (linhasPlanilhaProblematicos(dados, lista) as unknown as Linha[]).map((l): Linha => {
-      const r = funil[PREFIXO_FUNIL + String(l.CNPJ).replace(/\D/g, '')];
-      return { ...l, 'Etapa da prospecção': etapaDe(r)?.nome || 'Sem contato' };
-    });
-    const titulos = Object.keys(linhas[0]);
-    const larga = new Set([
-      'Motivo provável',
-      'Razão social',
-      'Nome fantasia',
-      'Atividade principal',
-      'Atividades secundárias',
-      'Endereço',
-      'E-mail',
-      'Demais sócios',
-    ]);
-    baixarXlsx(`cnpj-problematico-${new Date().toISOString().slice(0, 10)}.xlsx`, [
-      {
-        nome: 'CNPJ problemático',
-        colunas: titulos.map((t) => ({
-          titulo: t,
-          largura: larga.has(t) ? 48 : /nome/.test(t) ? 34 : 18,
-          tipo: t === 'Capital social' ? 'moeda' : t === 'Nº de sócios' ? 'numero' : 'texto',
-        })),
-        linhas: linhas.map((l) => titulos.map((t) => l[t] ?? '')),
-      },
-    ]);
+  const [exportando, setExportando] = useState('');
+  /** Baixa a planilha em abas (Leia-me, Resumo, Contatos, Inaptas, Simples e MEI por ano) dos estabelecimentos dados */
+  const exportar = (quais: Registro[], qual: 'filtro' | 'toda') => {
+    if (!dados || !quais.length || exportando) return;
+    setExportando(qual);
+    // deixa a tela mostrar "Gerando…" antes de montar a planilha (pode levar alguns segundos com a lista toda)
+    setTimeout(() => {
+      try {
+        type Linha = Record<string, string | number | null>;
+        const abas = abasPlanilhaProblematicos(dados, quais, (cnpj: string) => etapaDe(funil[PREFIXO_FUNIL + cnpj])?.nome || 'Sem contato') as unknown as {
+          nome: string;
+          linhas: Linha[];
+        }[];
+        const larga = new Set([
+          'Explicação',
+          'Motivo provável',
+          'Motivo provável deste caso',
+          'Situação encontrada',
+          'Razão social',
+          'Nome fantasia',
+          'Atividade principal',
+          'Atividades secundárias',
+          'Endereço',
+          'E-mail',
+          'Demais sócios',
+        ]);
+        const contagem = new Set(['Estabelecimentos', 'Nº de sócios']);
+        baixarXlsx(
+          `cnpj-problematico-${qual === 'toda' ? 'lista-toda' : 'filtro'}-${new Date().toISOString().slice(0, 10)}.xlsx`,
+          abas.map((a) => {
+            const titulos = Object.keys(a.linhas[0]);
+            const resumo = a.nome === 'Resumo';
+            return {
+              nome: a.nome,
+              colunas: titulos.map((t) => ({
+                titulo: t,
+                largura: t === 'Explicação' ? 110 : larga.has(t) ? 48 : /nome|Item|Cidade/.test(t) ? 30 : 18,
+                tipo: t === 'Capital social' ? 'moeda' : contagem.has(t) || (resumo && t !== 'Cidade') ? 'numero' : 'texto',
+              })),
+              linhas: a.linhas.map((l) => titulos.map((t) => l[t] ?? '')),
+            };
+          }),
+        );
+      } finally {
+        setExportando('');
+      }
+    }, 30);
   };
+  const botaoExcel =
+    'inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-base font-bold cursor-pointer disabled:opacity-50 disabled:cursor-wait';
 
   return (
     <section aria-labelledby="titulo-problematico" className="bg-[#F4F7FB] py-8 sm:py-10">
@@ -505,21 +525,52 @@ export default function CnpjProblematico({ onConsultar }: { onConsultar: (cnpj: 
                 </label>
                 <button
                   type="button"
-                  onClick={excel}
-                  disabled={!lista.length}
-                  className="ml-auto inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-[#0F2053] hover:bg-[#13306f] text-white text-base font-bold cursor-pointer disabled:opacity-50"
+                  onClick={() => exportar(lista, 'filtro')}
+                  disabled={!lista.length || !!exportando}
+                  className={`ml-auto ${botaoExcel} bg-[#0F2053] hover:bg-[#13306f] text-white`}
                 >
                   <Icon name="sheet" className="w-5 h-5" />
-                  Baixar em Excel
+                  {exportando === 'filtro' ? 'Gerando a planilha…' : 'Exportar em Excel'}
                 </button>
               </div>
             </div>
 
-            <p role="status" className="mt-5 text-base text-slate-800">
-              <strong className="text-[#0F2053]">
-                {lista.length.toLocaleString('pt-BR')} {lista.length === 1 ? 'estabelecimento' : 'estabelecimentos'}
-              </strong>{' '}
-              com esses filtros. Primeiro os de prioridade alta.
+            <div className="mt-5 flex flex-col lg:flex-row lg:items-center gap-3">
+              <p role="status" className="lg:flex-1 min-w-0 text-base text-slate-800">
+                <strong className="text-[#0F2053]">
+                  {lista.length.toLocaleString('pt-BR')} {lista.length === 1 ? 'estabelecimento' : 'estabelecimentos'}
+                </strong>{' '}
+                com esses filtros. Primeiro os de prioridade alta.
+              </p>
+              <div role="group" aria-label="Exportar em Excel" className="lg:shrink-0 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => exportar(lista, 'filtro')}
+                  disabled={!lista.length || !!exportando}
+                  className={`${botaoExcel} bg-emerald-700 hover:bg-emerald-800 text-white`}
+                >
+                  <Icon name="sheet" className="w-5 h-5" />
+                  {exportando === 'filtro'
+                    ? 'Gerando a planilha…'
+                    : lista.length === dados.empresas.length
+                      ? `Exportar os ${lista.length.toLocaleString('pt-BR')} em Excel`
+                      : `Exportar estes ${lista.length.toLocaleString('pt-BR')} em Excel`}
+                </button>
+                {lista.length !== dados.empresas.length && (
+                  <button
+                    type="button"
+                    onClick={() => exportar([...dados.empresas].sort(ordemProblematicos), 'toda')}
+                    disabled={!!exportando}
+                    className={`${botaoExcel} border-2 border-emerald-700 bg-white text-emerald-800 hover:bg-emerald-50`}
+                  >
+                    {exportando === 'toda' ? 'Gerando a planilha…' : `Exportar a lista toda (${dados.empresas.length.toLocaleString('pt-BR')})`}
+                  </button>
+                )}
+              </div>
+            </div>
+            <p className="mt-2 text-sm text-slate-600">
+              A planilha vem em abas: Leia-me, Resumo por cidade, Contatos (todos, com sócios, telefones, e-mail e a etapa da prospecção), Inaptas e as
+              excluídas do Simples e do MEI por ano.
             </p>
             <ul className="mt-4 space-y-3">
               {lista.slice(0, mostrar).map((r) => (

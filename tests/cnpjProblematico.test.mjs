@@ -8,6 +8,7 @@ import {
   classeDe,
   docMascarado,
   emailDeContador,
+  abasPlanilhaProblematicos,
   filtrarProblematicos,
   linhasPlanilhaProblematicos,
   mensagemProblematico,
@@ -224,4 +225,45 @@ test('mensagem e planilha', () => {
   assert.equal(l.CEP, '36770-000');
   const [sem] = linhasPlanilhaProblematicos({ qualificacao: {}, natureza: {}, cnae: {} }, [registro({ socios: [] })]);
   assert.equal(sem['Sócio 1 - nome'], '', 'colunas dos sócios existem mesmo sem sócios');
+});
+
+test('planilha em abas: leia-me, resumo, contatos e uma aba por situação e ano', () => {
+  const a = registro({});
+  const b = registro({
+    cnpj: '99999999000199',
+    razao: 'LOJA X',
+    cidade: 'Ubá',
+    situacao: '04',
+    dataSituacao: '2026-05-14',
+    motivoSituacao: 'OMISSAO DE DECLARACOES',
+  });
+  const c = registro({ cnpj: '88888888000188', razao: 'MERCADO Y', simples: simples('S', '', '', 'N', '', '2026-03-01') });
+  const dados = { base: '2026-11', anos: ['2025', '2026'], cidades: ['Cataguases', 'Ubá'], qualificacao: {}, natureza: {}, cnae: {} };
+  const abas = abasPlanilhaProblematicos(dados, [a, b, c], (cnpj) => (cnpj === a.cnpj ? 'Respondeu' : 'Sem contato'));
+  assert.deepEqual(
+    abas.map((x) => x.nome),
+    ['Leia-me', 'Resumo', 'Contatos', 'Inaptas', 'Excluídas do Simples 2025', 'Excluídas do MEI 2026'],
+    'abas vazias (Simples 2026, MEI 2025) saem',
+  );
+  const contatos = abas.find((x) => x.nome === 'Contatos').linhas;
+  assert.equal(contatos.length, 3);
+  assert.equal(contatos[0]['Etapa da prospecção'], 'Respondeu');
+  const inaptas = abas.find((x) => x.nome === 'Inaptas').linhas;
+  assert.equal(inaptas.length, 1);
+  assert.equal(inaptas[0]['Inapta desde'], '14/05/2026');
+  assert.match(inaptas[0]['Motivo provável deste caso'], /omissao de declaracoes/);
+  const simples25 = abas.find((x) => x.nome === 'Excluídas do Simples 2025').linhas;
+  assert.equal(simples25.length, 2, 'a inapta também foi excluída do Simples em 31/12/2025');
+  assert.equal(simples25[0]['Data da exclusão'], '31/12/2025');
+  const mei = abas.find((x) => x.nome === 'Excluídas do MEI 2026').linhas;
+  assert.equal(mei[0]['Tipo deste caso'], 'Crescimento (faturamento)');
+  const resumo = abas.find((x) => x.nome === 'Resumo').linhas;
+  assert.deepEqual(
+    resumo.map((l) => [l.Cidade, l.Estabelecimentos, l.Inaptas, l['Excluídas do MEI 2026']]),
+    [
+      ['Cataguases', 2, 0, 1],
+      ['Ubá', 1, 1, 0],
+      ['Total', 3, 1, 1],
+    ],
+  );
 });
