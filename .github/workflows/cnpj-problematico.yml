@@ -4,11 +4,18 @@ name: CNPJ problemático (Consulta CNPJ)
 # cidades escolhidas (src/data/problematicosConfig.js) com o CNPJ inapto ou excluídas do Simples ou do MEI, com sócios,
 # contato e o motivo provável (scripts/cnpj-problematico.mjs). A lista sai cifrada com a senha do Privado (segredo
 # PRIVADO_SENHA) e fica no cache do Actions; a publicação do site só a copia para a aba "CNPJ problemático".
-# A Receita publica uma base nova por mês: roda sozinho no dia 22 e pega a mais recente completa. Leva de 30 a 90 minutos,
-# conforme a velocidade do servidor da Receita.
+# A Receita publica uma base nova por mês: roda sozinho no dia 22 e pega a mais recente completa. Roda também quando
+# as regras, as cidades ou este workflow mudam no main. Leva de 30 a 90 minutos, conforme a velocidade da Receita.
 on:
   schedule:
     - cron: '17 9 22 * *'
+  push:
+    branches: [main]
+    paths:
+      - scripts/cnpj-problematico.mjs
+      - src/lib/cnpjProblematico.js
+      - src/data/problematicosConfig.js
+      - .github/workflows/cnpj-problematico.yml
   workflow_dispatch:
     inputs:
       base:
