@@ -3,7 +3,7 @@
 // src/lib/cnpjProblematico.js). A lista é montada pelo workflow "CNPJ problemático" (scripts/cnpj-problematico.mjs) e
 // publicada cifrada com a senha do Privado (prospeccao/problematicos.bin). Serve para oferecer a regularização.
 import { useMemo, useState, type FormEvent } from 'react';
-import { Container, Icon } from '../components/ui.tsx';
+import { Container, Icon, WhatsAppIcon } from '../components/ui.tsx';
 import { cnpjFormatado } from '../lib/possiveisClientes.js';
 import {
   CLASSES,
@@ -13,6 +13,7 @@ import {
   filtrarProblematicos,
   individual,
   abasPlanilhaProblematicos,
+  linkWhatsAppProblematico,
   mensagemProblematico,
   nomeTitular,
   ordemProblematicos,
@@ -20,10 +21,12 @@ import {
   PRIORIDADES,
   rotuloCaso,
   semCpf,
+  semFormatacao,
   SITUACOES,
+  telefonesWhatsApp,
   textoBuscaProblematico,
 } from '../lib/cnpjProblematico.js';
-import { linkWhatsApp, telefonesDe } from '../lib/contatoCnpj.js';
+import { linkWhatsApp } from '../lib/contatoCnpj.js';
 import { atualizarFunil, ETAPAS_FUNIL, PREFIXO_FUNIL, useFunil, type EtapaFunil, type MeuEdital } from '../lib/meusEditais.ts';
 import { baixarXlsx } from '../lib/xlsx.js';
 import { Cadeado, campo, chip, dataBR, useClientesCifrados } from './prospeccaoUi.tsx';
@@ -105,6 +108,23 @@ const acao =
 const moeda = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const etapaDe = (r?: MeuEdital) => (r ? ETAPAS_FUNIL.find((x) => x.id === r.etapa) : undefined);
 const paraFunil = (r: Registro) => ({ cnpj: r.cnpj, razao: semCpf(r.razao), cidade: r.cidade, uf: r.uf });
+/** Data daqui a n dias (retorno do funil) */
+const daquiA = (n: number) => new Date(Date.now() - 3 * 3600e3 + n * 86400e3).toISOString().slice(0, 10);
+/** Quem envia as mensagens: guardado neste navegador */
+const CHAVE_REMETENTE = 'agilcm:problematicos:remetente';
+const lerRemetente = () => {
+  try {
+    return localStorage.getItem(CHAVE_REMETENTE) || '';
+  } catch {
+    return '';
+  }
+};
+// filtro de envio (pelo funil de prospecção: quem tem registro já recebeu a mensagem)
+const ENVIOS = [
+  { id: 'falta', nome: 'Falta enviar' },
+  { id: 'enviado', nome: 'Já enviados' },
+] as const;
+type Envio = (typeof ENVIOS)[number]['id'];
 
 function Grupo<T extends string>({
   id,
@@ -139,10 +159,26 @@ function Grupo<T extends string>({
   );
 }
 
-function Cartao({ r, dados, registro, onConsultar }: { r: Registro; dados: Dados; registro?: MeuEdital; onConsultar: (cnpj: string) => void }) {
+function Cartao({
+  r,
+  dados,
+  registro,
+  onConsultar,
+  remetente,
+}: {
+  r: Registro;
+  dados: Dados;
+  registro?: MeuEdital;
+  onConsultar: (cnpj: string) => void;
+  remetente: string;
+}) {
   const [copiado, setCopiado] = useState(false);
-  const telefones = telefonesDe({ ddd_telefone_1: r.tel1, ddd_telefone_2: r.tel2 });
-  const msg = mensagemProblematico(r);
+  const telefones = telefonesWhatsApp(r);
+  const msg = mensagemProblematico(r, { remetente });
+  // ao abrir o WhatsApp (ou marcar "Já enviei"), a empresa entra no funil como "Mensagem enviada", com retorno em 3 dias
+  const marcarEnviado = () => {
+    if (!registro) atualizarFunil(paraFunil(r), { etapa: 'contato', retornarEm: daquiA(3) });
+  };
   const razao = semCpf(r.razao) || 'Empresa sem nome no cadastro';
   const contador = emailDeContador(r.email);
   const q = dados.qualificacao;
@@ -153,7 +189,6 @@ function Cartao({ r, dados, registro, onConsultar }: { r: Registro; dados: Dados
       await navigator.clipboard.writeText(msg);
       setCopiado(true);
       setTimeout(() => setCopiado(false), 2000);
-      if (!registro) atualizarFunil(paraFunil(r), { etapa: 'contato' });
     } catch {
       /* sem área de transferência */
     }
@@ -247,36 +282,70 @@ function Cartao({ r, dados, registro, onConsultar }: { r: Registro; dados: Dados
         )}
       </div>
 
-      <p className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[15px]">
-        {telefones.map((t) =>
-          t.celular ? (
+      <div className="mt-3 p-3 sm:p-4 rounded-xl border border-emerald-200 bg-emerald-50/50">
+        {telefones.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-2">
+            {telefones.map((t) => (
+              <a
+                key={t.numero}
+                href={linkWhatsApp(t.numero, msg)}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={marcarEnviado}
+                className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-[15px] font-bold ${
+                  t.celular ? 'bg-[#0E7A3F] hover:bg-[#0B6535] text-white' : 'border-2 border-[#0E7A3F] bg-white text-[#0E7A3F] hover:bg-emerald-50'
+                }`}
+              >
+                <WhatsAppIcon className="w-5 h-5" />
+                Enviar WhatsApp · {t.texto}
+                {!t.celular && ' (fixo)'}
+                <span className="sr-only"> (abre o WhatsApp com a mensagem pronta para {razao})</span>
+              </a>
+            ))}
+            {telefones.map((t) => (
+              <a key={`tel-${t.numero}`} href={`tel:+55${t.numero}`} className="px-1 text-[15px] font-bold text-[#0369B3] underline underline-offset-4">
+                Ligar {t.texto}
+              </a>
+            ))}
+          </div>
+        ) : (
+          <p className="text-[15px] text-slate-700">Sem telefone no cadastro da Receita.</p>
+        )}
+        {telefones.some((t) => !t.celular) && (
+          <p className="mt-1.5 text-sm text-slate-600">
+            Telefone fixo só abre a conversa se o número tiver WhatsApp (muitas empresas usam o WhatsApp Business no fixo).
+          </p>
+        )}
+        <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-2">
+          <label className="inline-flex items-center gap-2 text-[15px] font-bold text-[#0F2053] cursor-pointer">
+            <input
+              type="checkbox"
+              checked={!!registro}
+              disabled={!!registro && registro.etapa !== 'contato'}
+              onChange={(ev) => (ev.target.checked ? marcarEnviado() : atualizarFunil(paraFunil(r), { etapa: '' }))}
+              className="w-5 h-5 accent-[#0E7A3F]"
+            />
+            {registro ? `Já enviei (marcado em ${dataBR(registro.salvoEm)})` : 'Já enviei'}
+          </label>
+          {r.email && (
             <a
-              key={t.numero}
-              href={linkWhatsApp(t.numero, msg)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-bold text-emerald-800 underline underline-offset-4"
+              href={`mailto:${r.email}?subject=${encodeURIComponent(`Regularização do CNPJ ${cnpjFormatado(r.cnpj)}`)}&body=${encodeURIComponent(semFormatacao(msg))}`}
+              onClick={marcarEnviado}
+              className="font-bold text-[#0369B3] underline underline-offset-4 break-all"
             >
-              WhatsApp {t.texto}
-              <span className="sr-only"> (abre o WhatsApp com a mensagem pronta)</span>
+              Enviar e-mail · {r.email}
             </a>
-          ) : (
-            <a key={t.numero} href={`tel:+55${t.numero}`} className="font-bold text-[#0369B3] underline underline-offset-4">
-              Telefone {t.texto}
-            </a>
-          ),
-        )}
-        {r.email && (
-          <a
-            href={`mailto:${r.email}?subject=${encodeURIComponent(`Regularização do CNPJ ${cnpjFormatado(r.cnpj)}`)}&body=${encodeURIComponent(msg)}`}
-            className="font-bold text-[#0369B3] underline underline-offset-4 break-all"
-          >
-            {r.email}
-          </a>
-        )}
-        {contador && <span className="px-2 py-0.5 rounded-full text-sm font-bold bg-slate-100 text-slate-700">parece e-mail de contador</span>}
-        {!telefones.length && !r.email && <span className="text-slate-600">Sem telefone nem e-mail no cadastro da Receita.</span>}
-      </p>
+          )}
+          {contador && <span className="px-2 py-0.5 rounded-full text-sm font-bold bg-slate-100 text-slate-700">parece e-mail de contador</span>}
+        </div>
+        <details className="mt-2">
+          <summary className="cursor-pointer text-[15px] font-bold text-[#0369B3] underline underline-offset-4">Ver a mensagem</summary>
+          <p className="mt-2 p-3 rounded-lg bg-white border border-slate-200 text-[15px] text-slate-800 leading-relaxed whitespace-pre-wrap">
+            {semFormatacao(msg)}
+          </p>
+          <p className="mt-1 text-sm text-slate-600">No WhatsApp, o nome da empresa e a situação aparecem em negrito, e o último parágrafo em itálico.</p>
+        </details>
+      </div>
       {(r.endereco || r.bairro) && (
         <p className="mt-1 text-sm text-slate-600">
           {[r.endereco, r.bairro, r.cep && `CEP ${r.cep.replace(/^(\d{5})(\d{3})$/, '$1-$2')}`].filter(Boolean).join(' · ')}
@@ -337,10 +406,20 @@ export default function CnpjProblematico({ onConsultar }: { onConsultar: (cnpj: 
   const [telefone, setTelefone] = useState(false);
   const [email, setEmail] = useState(false);
   const [semContador, setSemContador] = useState(false);
+  const [envio, setEnvio] = useState<Envio | ''>('');
+  const [remetente, setRemetente] = useState(lerRemetente);
+  const mudarRemetente = (v: string) => {
+    setRemetente(v);
+    try {
+      localStorage.setItem(CHAVE_REMETENTE, v);
+    } catch {
+      /* sem armazenamento */
+    }
+  };
   const [mostrar, setMostrar] = useState(30);
 
   const indice = useMemo(() => new Map((dados?.empresas || []).map((r) => [r, textoBuscaProblematico(r, dados!.cnae)])), [dados]);
-  const lista = useMemo(
+  const filtrada = useMemo(
     () =>
       dados
         ? (filtrarProblematicos(dados, { q: busca, cidade, caso, classe, prioridade, telefone, email, semContador }, indice) as Registro[]).sort(
@@ -349,6 +428,9 @@ export default function CnpjProblematico({ onConsultar }: { onConsultar: (cnpj: 
         : [],
     [dados, busca, cidade, caso, classe, prioridade, telefone, email, semContador, indice],
   );
+  const enviado = (r: Registro) => !!funil[PREFIXO_FUNIL + r.cnpj];
+  const lista = envio ? filtrada.filter((r) => (envio === 'enviado' ? enviado(r) : !enviado(r))) : filtrada;
+  const nEnviados = filtrada.filter(enviado).length;
   const contagem = useMemo(() => {
     const c: Record<string, number> = {};
     for (const r of dados?.empresas || []) {
@@ -390,8 +472,24 @@ export default function CnpjProblematico({ onConsultar }: { onConsultar: (cnpj: 
     // deixa a tela mostrar "Gerando…" antes de montar a planilha (pode levar alguns segundos com a lista toda)
     setTimeout(() => {
       try {
-        type Linha = Record<string, string | number | null>;
-        const abas = abasPlanilhaProblematicos(dados, quais, (cnpj: string) => etapaDe(funil[PREFIXO_FUNIL + cnpj])?.nome || 'Sem contato') as unknown as {
+        type Linha = Record<string, string | number | null | { texto: string; link: string }>;
+        // a mensagem e o link do WhatsApp de cada empresa, e quando o envio foi marcado no site
+        const extra = (r: Registro) => {
+          const msg = mensagemProblematico(r, { remetente });
+          const link = linkWhatsAppProblematico(r, msg);
+          const reg = funil[PREFIXO_FUNIL + r.cnpj];
+          return {
+            'Enviado em': reg ? dataBR(reg.salvoEm) : '',
+            WhatsApp: link ? { texto: 'Abrir conversa', link } : '',
+            'Mensagem do WhatsApp': semFormatacao(msg),
+          };
+        };
+        const abas = abasPlanilhaProblematicos(
+          dados,
+          quais,
+          (cnpj: string) => etapaDe(funil[PREFIXO_FUNIL + cnpj])?.nome || 'Sem contato',
+          extra,
+        ) as unknown as {
           nome: string;
           linhas: Linha[];
         }[];
@@ -418,7 +516,7 @@ export default function CnpjProblematico({ onConsultar }: { onConsultar: (cnpj: 
               nome: a.nome,
               colunas: titulos.map((t) => ({
                 titulo: t,
-                largura: t === 'Explicação' ? 110 : larga.has(t) ? 48 : /nome|Item|Cidade/.test(t) ? 30 : 18,
+                largura: t === 'Explicação' ? 110 : t === 'Mensagem do WhatsApp' ? 70 : larga.has(t) ? 48 : /nome|Item|Cidade/.test(t) ? 30 : 18,
                 tipo: t === 'Capital social' ? 'moeda' : contagem.has(t) || (resumo && t !== 'Cidade') ? 'numero' : 'texto',
               })),
               linhas: a.linhas.map((l) => titulos.map((t) => l[t] ?? '')),
@@ -500,6 +598,19 @@ export default function CnpjProblematico({ onConsultar }: { onConsultar: (cnpj: 
                   mudar={(v) => filtrar(() => setPrioridade(v))}
                 />
               </div>
+              <div className="flex flex-col lg:flex-row gap-4 lg:items-end">
+                <Grupo
+                  id="rotulo-prob-envio"
+                  rotulo="Mensagem"
+                  valor={envio}
+                  opcoes={ENVIOS.map((x) => ({ id: x.id, nome: x.nome, n: x.id === 'enviado' ? nEnviados : filtrada.length - nEnviados }))}
+                  mudar={(v) => filtrar(() => setEnvio(v))}
+                />
+                <label className="block lg:w-80">
+                  <span className="text-sm font-bold text-slate-700">Seu nome na mensagem (opcional)</span>
+                  <input value={remetente} onChange={(ev) => mudarRemetente(ev.target.value)} placeholder="ex.: Allan" className={`mt-1 ${campo}`} />
+                </label>
+              </div>
               <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
                 <label className="flex items-center gap-2 text-base text-slate-800 cursor-pointer">
                   <input
@@ -540,7 +651,10 @@ export default function CnpjProblematico({ onConsultar }: { onConsultar: (cnpj: 
                 <strong className="text-[#0F2053]">
                   {lista.length.toLocaleString('pt-BR')} {lista.length === 1 ? 'estabelecimento' : 'estabelecimentos'}
                 </strong>{' '}
-                com esses filtros. Primeiro os de prioridade alta.
+                com esses filtros. Primeiro os de prioridade alta.{' '}
+                <span className="text-slate-600">
+                  Mensagem enviada a {nEnviados.toLocaleString('pt-BR')} de {filtrada.length.toLocaleString('pt-BR')}.
+                </span>
               </p>
               <div role="group" aria-label="Exportar em Excel" className="lg:shrink-0 flex flex-wrap gap-2">
                 <button
@@ -570,11 +684,11 @@ export default function CnpjProblematico({ onConsultar }: { onConsultar: (cnpj: 
             </div>
             <p className="mt-2 text-sm text-slate-600">
               A planilha vem em abas: Leia-me, Resumo por cidade, Contatos (todos, com sócios, telefones, e-mail e a etapa da prospecção), Inaptas e as
-              excluídas do Simples e do MEI por ano.
+              excluídas do Simples e do MEI por ano. Cada linha traz o link "Abrir conversa" do WhatsApp com a mensagem pronta e a data do envio marcada aqui.
             </p>
             <ul className="mt-4 space-y-3">
               {lista.slice(0, mostrar).map((r) => (
-                <Cartao key={r.cnpj} r={r} dados={dados} registro={funil[PREFIXO_FUNIL + r.cnpj]} onConsultar={onConsultar} />
+                <Cartao key={r.cnpj} r={r} dados={dados} registro={funil[PREFIXO_FUNIL + r.cnpj]} onConsultar={onConsultar} remetente={remetente} />
               ))}
             </ul>
             {lista.length > mostrar && (

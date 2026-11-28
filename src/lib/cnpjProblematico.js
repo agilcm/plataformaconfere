@@ -218,25 +218,75 @@ export function filtrarProblematicos(dados, f, indice) {
   });
 }
 
-/** Mensagem do WhatsApp/e-mail, conforme o caso mais grave */
-export function mensagemProblematico(r) {
-  const nome = (r.socios?.[0]?.nome || nomeTitular(r.razao) || '').split(' ')[0];
-  const ola = nome ? `Olá, ${nome[0]}${nome.slice(1).toLowerCase()}!` : 'Olá!';
-  const quem = `a ${semCpf(r.razao)} (CNPJ ${r.cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5')})`;
+// ---------------------------------------------------------------- mensagem e envio pelo WhatsApp
+
+/** Empresário individual ou MEI antigo: a razão social é o nome da pessoa, com o CPF no fim */
+const ehPessoa = (r) => !(r.socios || []).length && /\d{11}\s*$/.test(String(r.razao || ''));
+
+/** Primeiro nome de quem deve receber: o primeiro sócio pessoa física ou o titular do MEI; vazio se não houver */
+export function primeiroNome(r) {
+  const pessoa = (r.socios || []).find((x) => !x.pj)?.nome || (ehPessoa(r) ? nomeTitular(r.razao) : '');
+  const n = String(pessoa || '')
+    .trim()
+    .split(/\s+/)[0];
+  return n && n.length > 1 && !/\d/.test(n) ? n[0].toUpperCase() + n.slice(1).toLowerCase() : '';
+}
+
+/**
+ * Mensagem do WhatsApp (com *negrito* e _itálico_ do WhatsApp), conforme o caso mais grave. Termina pedindo para
+ * desconsiderar se o número não for da pessoa ou da empresa.
+ * @param {any} r  o estabelecimento
+ * @param {{ remetente?: string }} [o]  remetente: quem envia ("Allan"), para a apresentação
+ */
+export function mensagemProblematico(r, o = {}) {
+  const nome = primeiroNome(r);
+  const empresa = semCpf(r.razao);
+  const cnpj = r.cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
   const inapta = r.casos.find((c) => c.tipo === 'inapta');
   const simples = r.casos.find((c) => c.tipo === 'simples');
   const mei = r.casos.find((c) => c.tipo === 'mei');
   let fato;
-  if (inapta) fato = `está com o CNPJ inapto na Receita Federal${/omiss/i.test(inapta.motivo) ? ' por falta de declarações' : ''}`;
-  else if (simples && simples.data >= new Date().toISOString().slice(0, 10)) fato = `tem a exclusão do Simples Nacional marcada para ${dataBr(simples.data)}`;
-  else if (simples) fato = `foi excluída do Simples Nacional em ${dataBr(simples.data)}`;
-  else if (mei && mei.classe === 'crescimento') fato = `saiu do MEI em ${dataBr(mei.data)} e passou a ser microempresa no Simples`;
-  else fato = `foi desenquadrada do MEI em ${dataBr(mei?.data)}`;
-  const oferta =
-    mei && mei.classe === 'crescimento' && !inapta && !simples
-      ? 'Como microempresa, ela passa a ter obrigações mensais que o MEI não tinha. Cuidamos da contabilidade e das declarações para a empresa crescer sem multa.'
-      : 'Isso pode gerar multa, bloqueio de notas e impedir empréstimos e vendas para órgãos públicos. Fazemos a regularização completa: declarações em atraso, parcelamento de débitos e volta ao Simples.';
-  return `${ola} Vimos no cadastro público da Receita Federal que ${quem} ${fato}. ${oferta} Posso te explicar como funciona?`;
+  if (inapta) fato = `está com o *CNPJ inapto*${/omiss/i.test(inapta.motivo) ? ' por falta de declarações' : ''}`;
+  else if (simples && simples.data >= new Date().toISOString().slice(0, 10)) fato = `tem a *exclusão do Simples Nacional* marcada para ${dataBr(simples.data)}`;
+  else if (simples) fato = `foi *excluída do Simples Nacional* em ${dataBr(simples.data)}`;
+  else if (mei && mei.classe === 'crescimento') fato = `*saiu do MEI* em ${dataBr(mei.data)} e passou a ser microempresa no Simples`;
+  else fato = `foi *desenquadrada do MEI* em ${dataBr(mei?.data)}`;
+  const crescimento = mei && mei.classe === 'crescimento' && !inapta && !simples;
+  const oferta = crescimento
+    ? 'Como microempresa, ela passa a ter obrigações mensais que o MEI não tinha. Cuidamos da contabilidade e das declarações para a empresa crescer sem multa.'
+    : 'Isso pode gerar multa, bloqueio de notas fiscais e impedir empréstimos e vendas para órgãos públicos. Fazemos a regularização completa: declarações em atraso, parcelamento de débitos e volta ao Simples.';
+  const remetente = String(o.remetente || '').trim();
+  const quem = remetente ? `Aqui é ${remetente}, da *Ágil CM*` : 'Somos da *Ágil CM*';
+  const sujeito = ehPessoa(r) ? `a empresa *${empresa}*` : `a *${empresa}*`;
+  const engano = ehPessoa(r) ? (nome ? `de ${nome}` : `de ${empresa}`) : nome ? `de ${nome} ou da ${empresa}` : `da ${empresa}`;
+  return [
+    `Olá${nome ? `, ${nome}` : ''}, tudo bem?`,
+    '',
+    `${quem}, de Astolfo Dutra (MG). Numa consulta ao cadastro público da Receita Federal, vimos que ${sujeito} (CNPJ ${cnpj}) ${fato}.`,
+    '',
+    oferta,
+    '',
+    'Posso te explicar como funciona? A conversa é sem compromisso.',
+    '',
+    `_Se este número não for ${engano}, por favor desconsidere esta mensagem. Pedimos desculpas pelo incômodo._`,
+  ].join('\n');
+}
+
+/** A mensagem sem as marcas de negrito e itálico do WhatsApp (para e-mail e planilha) */
+export const semFormatacao = (t) => String(t || '').replace(/[*_]/g, '');
+
+/**
+ * Telefones para o WhatsApp: celular primeiro. Fixo também entra (muita empresa usa o WhatsApp Business no fixo), mas só
+ * abre a conversa se o número tiver WhatsApp.
+ */
+export function telefonesWhatsApp(r) {
+  return [...telefonesDe({ ddd_telefone_1: r.tel1, ddd_telefone_2: r.tel2 })].sort((a, b) => Number(b.celular) - Number(a.celular));
+}
+
+/** Link do WhatsApp com a mensagem pronta para o melhor telefone; vazio sem telefone */
+export function linkWhatsAppProblematico(r, msg) {
+  const t = telefonesWhatsApp(r)[0];
+  return t ? `https://wa.me/55${t.numero}?text=${encodeURIComponent(msg)}` : '';
 }
 
 /** Linhas da planilha Excel (uma por estabelecimento), com todos os dados */
@@ -315,9 +365,14 @@ export function linhasPlanilhaProblematicos(dados, lista, NSOC = 4) {
  * @param {{ base: string, anos: string[], cidades: string[], qualificacao?: object, natureza?: object, cnae?: object }} dados
  * @param {any[]} lista  os estabelecimentos a exportar (o filtro da tela ou a lista toda)
  * @param {(cnpj: string) => string} [etapa]  etapa do funil de prospecção de cada CNPJ
+ * @param {(r: any) => Record<string, any>} [extra]  colunas a mais no começo de cada linha (envio, mensagem, link do WhatsApp)
  */
-export function abasPlanilhaProblematicos(dados, lista, etapa) {
-  const base = linhasPlanilhaProblematicos(dados, lista).map((l, i) => (etapa ? { ...l, 'Etapa da prospecção': etapa(lista[i].cnpj) } : l));
+export function abasPlanilhaProblematicos(dados, lista, etapa, extra) {
+  const base = linhasPlanilhaProblematicos(dados, lista).map((l, i) => ({
+    ...(extra ? extra(lista[i]) : {}),
+    ...l,
+    ...(etapa ? { 'Etapa da prospecção': etapa(lista[i].cnpj) } : {}),
+  }));
   const caso = (tipo, ano) => (r) => r.casos.find((c) => c.tipo === tipo && (!ano || c.data.startsWith(ano)));
   const aba = (nome, achar, rotuloData) => ({
     nome,
@@ -373,6 +428,10 @@ export function abasPlanilhaProblematicos(dados, lista, etapa) {
     [
       'Sócios',
       'CPF mascarado como a Receita publica. Até 4 sócios em colunas; os demais em "Demais sócios". MEI e empresário individual não têm quadro de sócios: veja "Titular do MEI/empresário".',
+    ],
+    [
+      'WhatsApp',
+      'A coluna WhatsApp abre a conversa com a mensagem pronta (no celular ou no WhatsApp Web). "Enviado em" é a data em que alguém marcou o envio no site; marcar na planilha não volta para o site.',
     ],
     ['LGPD', 'Dados públicos da Receita, mas com nomes de pessoas: use só para oferecer o serviço e tire da lista quem pedir para não ser procurado.'],
   ].map(([Item, Explicação]) => ({ Item, Explicação }));

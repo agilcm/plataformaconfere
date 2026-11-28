@@ -4,8 +4,8 @@
 /**
  * @typedef {{ titulo: string, largura?: number, tipo?: 'texto' | 'numero' | 'moeda' | 'data' | 'dataHora' }} Coluna
  * @typedef {{ nome: string, colunas: Coluna[], linhas: any[][] }} Aba
- * Uma célula pode ser uma fórmula: { f: 'SUM(B2:B9)' } (sem o "="), com o formato da coluna, ou ter formato próprio:
- * { v: 16.4, tipo: 'numero' } / { f: '...', tipo: 'numero' }.
+ * Uma célula pode ser uma fórmula: { f: 'SUM(B2:B9)' } (sem o "="), com o formato da coluna, ter formato próprio:
+ * { v: 16.4, tipo: 'numero' } / { f: '...', tipo: 'numero' }, ou ser um link clicável: { texto: 'Abrir conversa', link: 'https://…' }.
  */
 
 const CRC = (() => {
@@ -87,18 +87,21 @@ export const letra = (i) => {
   return s;
 };
 
-// estilos (cellXfs): 0 padrão, 1 cabeçalho, 2 moeda, 3 data, 4 data e hora, 5 número
+// estilos (cellXfs): 0 padrão, 1 cabeçalho, 2 moeda, 3 data, 4 data e hora, 5 número, 6 link (azul sublinhado)
 const ESTILO = { texto: 0, moeda: 2, data: 3, dataHora: 4, numero: 5 };
+const ESTILO_LINK = 6;
 
 /** Data ISO ("2025-07-04T08:41") -> número de série do Excel, no horário local do texto */
 function serial(v) {
   const m = String(v || '').match(/^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2})(?::(\d{2}))?)?/);
   if (!m) return null;
   const dias = Date.UTC(+m[1], +m[2] - 1, +m[3]) / 86400000 + 25569;
-  return dias + ((+(m[4] || 0)) * 3600 + (+(m[5] || 0)) * 60 + (+(m[6] || 0))) / 86400;
+  return dias + (+(m[4] || 0) * 3600 + +(m[5] || 0) * 60 + +(m[6] || 0)) / 86400;
 }
 
+/** O XML da aba e os links que ela tem (cada link vira uma relação "hyperlink" no arquivo .rels da aba) */
 function planilha(aba) {
+  const links = [];
   const linhas = [aba.colunas.map((c) => c.titulo), ...aba.linhas];
   const rows = linhas.map((l, r) => {
     const cells = l.map((v, c) => {
@@ -108,6 +111,10 @@ function planilha(aba) {
       const tipo = aba.colunas[c]?.tipo || 'texto';
       if (typeof v === 'object') {
         // célula com formato próprio ({ v: 16.4, tipo: 'numero' }) ou fórmula ({ f: 'SUM(B2:B9)', tipo? })
+        if (typeof v.link === 'string' && v.link) {
+          links.push({ ref, url: v.link });
+          return `<c r="${ref}" s="${ESTILO_LINK}" t="inlineStr"><is><t xml:space="preserve">${esc(v.texto || v.link)}</t></is></c>`;
+        }
         const est = ESTILO[v.tipo || tipo] ?? 0;
         if (typeof v.f === 'string') return `<c r="${ref}" s="${est}"><f>${esc(v.f.replace(/^=/, ''))}</f></c>`;
         if (typeof v.v === 'number' && Number.isFinite(v.v)) return `<c r="${ref}" s="${est}"><v>${v.v}</v></c>`;
@@ -123,33 +130,47 @@ function planilha(aba) {
     return `<row r="${r + 1}">${cells.join('')}</row>`;
   });
   const ultima = `${letra(aba.colunas.length - 1)}${linhas.length}`;
-  return (
+  const xml =
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
     '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>' +
     `<cols>${aba.colunas.map((c, i) => `<col min="${i + 1}" max="${i + 1}" width="${c.largura || 16}" customWidth="1"/>`).join('')}</cols>` +
     `<sheetData>${rows.join('')}</sheetData>` +
     `<autoFilter ref="A1:${ultima}"/>` +
-    '</worksheet>'
-  );
+    (links.length ? `<hyperlinks>${links.map((l, i) => `<hyperlink ref="${l.ref}" r:id="rId${i + 1}"/>`).join('')}</hyperlinks>` : '') +
+    '</worksheet>';
+  return { xml, links };
 }
+
+/** Relações da aba: os endereços dos links (externos) */
+const relsDosLinks = (links) =>
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+  links
+    .map(
+      (l, i) =>
+        `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="${esc(l.url)}" TargetMode="External"/>`,
+    )
+    .join('') +
+  '</Relationships>';
 
 export const ESTILOS =
   '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
   '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
   '<numFmts count="3"><numFmt numFmtId="164" formatCode="&quot;R$&quot; #,##0.00"/><numFmt numFmtId="165" formatCode="dd/mm/yyyy"/>' +
   '<numFmt numFmtId="166" formatCode="dd/mm/yyyy hh:mm"/></numFmts>' +
-  '<fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font></fonts>' +
+  '<fonts count="3"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>' +
+  '<font><u/><sz val="11"/><color rgb="FF0563C1"/><name val="Calibri"/></font></fonts>' +
   '<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>' +
   '<fill><patternFill patternType="solid"><fgColor rgb="FF0F2053"/><bgColor indexed="64"/></patternFill></fill></fills>' +
   '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>' +
   '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
-  '<cellXfs count="6"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
+  '<cellXfs count="7"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
   '<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/>' +
   '<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>' +
   '<xf numFmtId="165" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>' +
   '<xf numFmtId="166" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>' +
-  '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs>' +
+  '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
+  '<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs>' +
   '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>' +
   '</styleSheet>';
 
@@ -158,6 +179,7 @@ export function criarXlsx(abas) {
   // nome de aba: até 31 caracteres, sem : \ / ? * [ ]
   const nomes = abas.map((a) => a.nome.replace(/[:\\/?*[\]]/g, ' ').slice(0, 31));
   const ns = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+  const folhas = abas.map(planilha);
   return zipar([
     {
       nome: '[Content_Types].xml',
@@ -166,7 +188,12 @@ export function criarXlsx(abas) {
         '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>' +
         '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
         '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
-        abas.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('') +
+        abas
+          .map(
+            (_, i) =>
+              `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`,
+          )
+          .join('') +
         '</Types>',
     },
     {
@@ -179,7 +206,12 @@ export function criarXlsx(abas) {
         `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="${ns}"><sheets>` +
         nomes.map((n, i) => `<sheet name="${esc(n)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join('') +
         '</sheets><definedNames>' +
-        abas.map((a, i) => `<definedName name="_xlnm._FilterDatabase" localSheetId="${i}" hidden="1">'${esc(nomes[i]).replace(/'/g, "''")}'!$A$1:$${letra(a.colunas.length - 1)}$${a.linhas.length + 1}</definedName>`).join('') +
+        abas
+          .map(
+            (a, i) =>
+              `<definedName name="_xlnm._FilterDatabase" localSheetId="${i}" hidden="1">'${esc(nomes[i]).replace(/'/g, "''")}'!$A$1:$${letra(a.colunas.length - 1)}$${a.linhas.length + 1}</definedName>`,
+          )
+          .join('') +
         '</definedNames><calcPr calcId="191029" fullCalcOnLoad="1"/></workbook>',
     },
     {
@@ -190,7 +222,8 @@ export function criarXlsx(abas) {
         `<Relationship Id="rId${abas.length + 1}" Type="${ns}/styles" Target="styles.xml"/></Relationships>`,
     },
     { nome: 'xl/styles.xml', dados: ESTILOS },
-    ...abas.map((a, i) => ({ nome: `xl/worksheets/sheet${i + 1}.xml`, dados: planilha(a) })),
+    ...folhas.map((f, i) => ({ nome: `xl/worksheets/sheet${i + 1}.xml`, dados: f.xml })),
+    ...folhas.flatMap((f, i) => (f.links.length ? [{ nome: `xl/worksheets/_rels/sheet${i + 1}.xml.rels`, dados: relsDosLinks(f.links) }] : [])),
   ]);
 }
 

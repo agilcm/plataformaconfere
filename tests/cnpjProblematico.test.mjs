@@ -11,14 +11,18 @@ import {
   abasPlanilhaProblematicos,
   filtrarProblematicos,
   linhasPlanilhaProblematicos,
+  linkWhatsAppProblematico,
   mensagemProblematico,
   motivoMei,
   motivoSimples,
   nomeTitular,
   ordemProblematicos,
+  primeiroNome,
   prioridadeDe,
   semCpf,
+  semFormatacao,
   telefone,
+  telefonesWhatsApp,
   titularCpf,
 } from '../src/lib/cnpjProblematico.js';
 
@@ -204,14 +208,42 @@ test('lista: busca por sócio e CNPJ, filtros e ordem', () => {
 
 test('mensagem e planilha', () => {
   const a = registro({});
-  const msg = mensagemProblematico(a);
-  assert.match(msg, /^Olá, Maria!/);
-  assert.match(msg, /PADARIA BOM PAO LTDA \(CNPJ 12\.345\.678\/0001-95\) foi excluída do Simples Nacional em 31\/12\/2025/);
+  const msg = mensagemProblematico(a, { remetente: 'Allan' });
+  assert.match(msg, /^Olá, Maria, tudo bem\?\n\nAqui é Allan, da \*Ágil CM\*, de Astolfo Dutra \(MG\)\./);
+  assert.match(msg, /a \*PADARIA BOM PAO LTDA\* \(CNPJ 12\.345\.678\/0001-95\) foi \*excluída do Simples Nacional\* em 31\/12\/2025/);
+  assert.match(
+    msg,
+    /\n\n_Se este número não for de Maria ou da PADARIA BOM PAO LTDA, por favor desconsidere esta mensagem\. Pedimos desculpas pelo incômodo\._$/,
+  );
+  assert.match(mensagemProblematico(a), /^Olá, Maria, tudo bem\?\n\nSomos da \*Ágil CM\*/, 'sem remetente');
   assert.match(
     mensagemProblematico(registro({ situacao: '04', dataSituacao: '2026-05-14', motivoSituacao: 'OMISSAO DE DECLARACOES' })),
-    /CNPJ inapto.*falta de declarações/,
+    /\*CNPJ inapto\* por falta de declarações/,
   );
   assert.match(mensagemProblematico(registro({ simples: simples('S', '', '', 'N', '', '2026-03-01') })), /passou a ser microempresa/);
+  assert.ok(!semFormatacao(msg).includes('*') && !semFormatacao(msg).includes('_'), 'sem as marcas do WhatsApp para e-mail e planilha');
+  // MEI (sem sócios, CPF no fim do nome): fala com o titular e não repete o nome da empresa no pedido de desculpas
+  const mei = registro({ razao: 'JOSE PEREIRA 12345678901', socios: [] });
+  assert.equal(primeiroNome(mei), 'Jose');
+  assert.match(mensagemProblematico(mei), /a empresa \*JOSE PEREIRA\*/);
+  assert.match(mensagemProblematico(mei), /_Se este número não for de Jose, por favor desconsidere/);
+  // empresa sem sócio pessoa física: sem nome no cumprimento
+  assert.match(
+    mensagemProblematico(registro({ socios: [{ nome: 'HOLDING X LTDA', pj: true, doc: '11222333000181', qual: '22', entrada: '' }] })),
+    /^Olá, tudo bem\?/,
+  );
+  // link do WhatsApp: celular primeiro, com a mensagem; fixo também entra
+  const dois = registro({ tel1: '3234221234', tel2: '32988887777' });
+  assert.deepEqual(
+    telefonesWhatsApp(dois).map((t) => [t.numero, t.celular]),
+    [
+      ['32988887777', true],
+      ['3234221234', false],
+    ],
+  );
+  const link = linkWhatsAppProblematico(dois, 'Olá, tudo bem?');
+  assert.equal(link, 'https://wa.me/5532988887777?text=Ol%C3%A1%2C%20tudo%20bem%3F');
+  assert.equal(linkWhatsAppProblematico(registro({ tel1: '', tel2: '' }), 'x'), '');
 
   const socios = Array.from({ length: 6 }, (_, i) => ({ nome: `SOCIO ${i + 1}`, doc: '***123456**', pj: false, qual: '22', entrada: '2020-01-01' }));
   const [l] = linhasPlanilhaProblematicos({ qualificacao: { 22: 'Sócio', 49: 'Sócio-Administrador' }, natureza: {}, cnae: {} }, [registro({ socios })]);
@@ -266,4 +298,25 @@ test('planilha em abas: leia-me, resumo, contatos e uma aba por situação e ano
       ['Total', 3, 1, 1],
     ],
   );
+});
+
+test('planilha: coluna WhatsApp vira link clicável no Excel', async () => {
+  const { criarXlsx } = await import('../src/lib/xlsx.js');
+  const b = criarXlsx([
+    {
+      nome: 'Contatos',
+      colunas: [{ titulo: 'Empresa' }, { titulo: 'WhatsApp' }],
+      linhas: [
+        ['A', { texto: 'Abrir conversa', link: 'https://wa.me/5532988887777?text=Ol%C3%A1&x=1' }],
+        ['B', ''],
+      ],
+    },
+  ]);
+  // o zip é guardado sem compressão: dá para achar os arquivos no próprio conteúdo
+  const t = Buffer.from(b).toString('utf8');
+  assert.ok(t.includes('xl/worksheets/_rels/sheet1.xml.rels'), 'a aba ganha o arquivo de relações dos links');
+  assert.match(t, /<hyperlink ref="B2" r:id="rId1"\/>/);
+  assert.match(t, /Target="https:\/\/wa\.me\/5532988887777\?text=Ol%C3%A1&amp;x=1" TargetMode="External"/);
+  assert.match(t, /<c r="B2" s="6" t="inlineStr"><is><t xml:space="preserve">Abrir conversa<\/t><\/is><\/c>/);
+  assert.ok(!/<hyperlink ref="B3"/.test(t), 'célula vazia não vira link');
 });
