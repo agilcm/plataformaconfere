@@ -2,7 +2,7 @@
 // Simples ou do MEI no ano da base da Receita ou no anterior, com sócios, contato e o motivo provável (regras em
 // src/lib/cnpjProblematico.js). A lista é montada pelo workflow "CNPJ problemático" (scripts/cnpj-problematico.mjs) e
 // publicada cifrada com a senha do Privado (prospeccao/problematicos.bin). Serve para oferecer a regularização.
-import { useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Container, Icon, WhatsAppIcon } from '../components/ui.tsx';
 import { cnpjFormatado } from '../lib/possiveisClientes.js';
 import {
@@ -20,6 +20,8 @@ import {
   PORTES,
   PRIORIDADES,
   rotuloCaso,
+  anoCaso,
+  anosDosCasos,
   semCpf,
   semFormatacao,
   SITUACOES,
@@ -29,6 +31,7 @@ import {
 import { linkWhatsApp } from '../lib/contatoCnpj.js';
 import { atualizarFunil, ETAPAS_FUNIL, PREFIXO_FUNIL, useFunil, type EtapaFunil, type MeuEdital } from '../lib/meusEditais.ts';
 import { baixarXlsx } from '../lib/xlsx.js';
+import ManualProblematico from './ManualProblematico.tsx';
 import { Cadeado, campo, chip, dataBR, useClientesCifrados } from './prospeccaoUi.tsx';
 
 type Classe = 'problema' | 'crescimento' | 'verificar';
@@ -111,6 +114,7 @@ const paraFunil = (r: Registro) => ({ cnpj: r.cnpj, razao: semCpf(r.razao), cida
 /** Data daqui a n dias (retorno do funil) */
 const daquiA = (n: number) => new Date(Date.now() - 3 * 3600e3 + n * 86400e3).toISOString().slice(0, 10);
 /** Quem envia as mensagens: guardado neste navegador */
+const anoAtual = String(new Date().getFullYear());
 const CHAVE_REMETENTE = 'agilcm:problematicos:remetente';
 const lerRemetente = () => {
   try {
@@ -417,6 +421,22 @@ export default function CnpjProblematico({ onConsultar }: { onConsultar: (cnpj: 
     }
   };
   const [mostrar, setMostrar] = useState(30);
+  // o manual abre pelo botão ou pelo endereço .../consulta-cnpj/#manual
+  const [manual, setManual] = useState(() => typeof window !== 'undefined' && window.location.hash === '#manual');
+  const abrirManual = (sim: boolean) => {
+    setManual(sim);
+    try {
+      window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#${sim ? 'manual' : 'problematico'}`);
+    } catch {
+      /* sem histórico */
+    }
+    requestAnimationFrame(() => document.getElementById(sim ? 'manual-titulo' : 'titulo-problematico')?.focus());
+  };
+  useEffect(() => {
+    const ler = () => setManual(window.location.hash === '#manual');
+    window.addEventListener('hashchange', ler);
+    return () => window.removeEventListener('hashchange', ler);
+  }, []);
 
   const indice = useMemo(() => new Map((dados?.empresas || []).map((r) => [r, textoBuscaProblematico(r, dados!.cnae)])), [dados]);
   const filtrada = useMemo(
@@ -438,7 +458,7 @@ export default function CnpjProblematico({ onConsultar }: { onConsultar: (cnpj: 
       c[`classe:${r.classe}`] = (c[`classe:${r.classe}`] || 0) + 1;
       c[`prioridade:${r.prioridade}`] = (c[`prioridade:${r.prioridade}`] || 0) + 1;
       for (const x of r.casos) {
-        const k = x.tipo === 'inapta' ? 'inapta' : `${x.tipo}-${x.data.slice(0, 4)}`;
+        const k = x.tipo === 'inapta' ? 'inapta' : `${x.tipo}-${anoCaso(x)}`;
         c[`caso:${k}`] = (c[`caso:${k}`] || 0) + 1;
       }
     }
@@ -449,8 +469,8 @@ export default function CnpjProblematico({ onConsultar }: { onConsultar: (cnpj: 
       dados
         ? [
             { id: 'inapta', nome: 'CNPJ inapto' },
-            ...dados.anos.map((a) => ({ id: `simples-${a}`, nome: `Excluídas do Simples em ${a}` })),
-            ...dados.anos.map((a) => ({ id: `mei-${a}`, nome: `Excluídas do MEI em ${a}` })),
+            ...anosDosCasos(dados.anos, dados.empresas).map((a) => ({ id: `simples-${a}`, nome: `${a > anoAtual ? 'Saem' : 'Saíram'} do Simples em ${a}` })),
+            ...anosDosCasos(dados.anos, dados.empresas).map((a) => ({ id: `mei-${a}`, nome: `${a > anoAtual ? 'Saem' : 'Saíram'} do MEI em ${a}` })),
           ].map((x) => ({ ...x, n: contagem[`caso:${x.id}`] || 0 }))
         : [],
     [dados, contagem],
@@ -534,16 +554,31 @@ export default function CnpjProblematico({ onConsultar }: { onConsultar: (cnpj: 
   return (
     <section aria-labelledby="titulo-problematico" className="bg-[#F4F7FB] py-8 sm:py-10">
       <Container>
-        <h2 id="titulo-problematico" className="text-2xl sm:text-3xl font-bold font-display text-[#0F2053] tracking-tight">
-          CNPJ problemático
-        </h2>
-        <p className="mt-2 max-w-4xl text-base sm:text-lg text-slate-700 leading-relaxed">
-          Empresas da região com o CNPJ inapto ou que saíram do Simples ou do MEI, com os sócios, o contato e o motivo provável. Quem saiu por ato da Receita
-          (débitos, falta de declaração) precisa de regularização; quem saiu do MEI por faturamento está crescendo e precisa de contabilidade.
-        </p>
+        <div className="flex flex-col md:flex-row md:items-start gap-4">
+          <div className="flex-1 min-w-0">
+            <h2 id="titulo-problematico" tabIndex={-1} className="text-2xl sm:text-3xl font-bold font-display text-[#0F2053] tracking-tight outline-none">
+              CNPJ problemático
+            </h2>
+            <p className="mt-2 max-w-4xl text-base sm:text-lg text-slate-700 leading-relaxed">
+              Empresas da região com o CNPJ inapto ou que saíram (ou vão sair) do Simples ou do MEI, com os sócios, o contato e o motivo provável. Quem saiu por
+              ato da Receita (débitos, falta de declaração) precisa de regularização; quem saiu do MEI e continua no Simples precisa de contabilidade.
+            </p>
+          </div>
+          {!manual && (
+            <button
+              type="button"
+              onClick={() => abrirManual(true)}
+              className="md:shrink-0 inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl border-2 border-[#0F2053] bg-white text-[#0F2053] text-base font-bold hover:bg-[#F7FAFD] cursor-pointer"
+            >
+              <Icon name="doc" className="w-5 h-5" />
+              Manual: como proceder
+            </button>
+          )}
+        </div>
 
-        {estado !== 'ok' && <Cadeado estado={estado} desbloquear={desbloquear} oQue="A lista de CNPJs problemáticos" />}
-        {estado === 'ok' && dados && (
+        {manual && <ManualProblematico onFechar={() => abrirManual(false)} />}
+        {!manual && estado !== 'ok' && <Cadeado estado={estado} desbloquear={desbloquear} oQue="A lista de CNPJs problemáticos" />}
+        {!manual && estado === 'ok' && dados && (
           <>
             <p className="mt-2 text-sm text-slate-600">
               {dados.empresas.length.toLocaleString('pt-BR')} estabelecimentos de {dados.cidades.join(', ')}. Base da Receita de{' '}
@@ -651,7 +686,7 @@ export default function CnpjProblematico({ onConsultar }: { onConsultar: (cnpj: 
                 <strong className="text-[#0F2053]">
                   {lista.length.toLocaleString('pt-BR')} {lista.length === 1 ? 'estabelecimento' : 'estabelecimentos'}
                 </strong>{' '}
-                com esses filtros. Primeiro os de prioridade alta.{' '}
+                com esses filtros. Primeiro os de prioridade alta e, dentro dela, os casos mais recentes.{' '}
                 <span className="text-slate-600">
                   Mensagem enviada a {nEnviados.toLocaleString('pt-BR')} de {filtrada.length.toLocaleString('pt-BR')}.
                 </span>
@@ -703,16 +738,14 @@ export default function CnpjProblematico({ onConsultar }: { onConsultar: (cnpj: 
 
             <div className="mt-8 max-w-4xl space-y-3 text-[15px] text-slate-600 leading-relaxed">
               <p>
-                <strong className="text-slate-800">Como o motivo é deduzido.</strong> A Receita não publica o motivo da exclusão do Simples ou do MEI na base
-                aberta; ele só aparece por CNPJ na Consulta Optantes do Portal do Simples. Por isso o motivo é deduzido pelo que aconteceu com a empresa.{' '}
-                <em>Problema</em>: CNPJ inapto, saída do MEI e do Simples na mesma data, exclusão do Simples com efeito em 1º de janeiro (a exclusão anual de
-                ofício por débitos) ou saída do MEI seguida de exclusão do Simples. <em>Crescimento</em>: saiu do MEI e continua no Simples como microempresa
-                (em geral faturamento acima do limite, entrada de sócio, filial ou atividade não permitida ao MEI). <em>Verificar</em>: exclusão no meio do ano,
-                que pode ser pedido da empresa ou ato de ofício; confirme na Consulta Optantes.
-              </p>
-              <p>
-                <strong className="text-slate-800">Prioridade.</strong> Alta: problema e com telefone ou e-mail que não é de contador. Média: problema com
-                e-mail de contador, ou crescimento sem contador. Baixa: o resto. Nas exclusões entram só empresas ainda abertas (ativas, suspensas ou inaptas).
+                <strong className="text-slate-800">Como a lista é montada.</strong> O motivo da exclusão é deduzido, porque a base aberta da Receita não o
+                publica. <em>Problema</em>: CNPJ inapto, saída do MEI e do Simples na mesma data, exclusão do Simples com efeito em 1º de janeiro (a exclusão
+                anual por débitos) ou saída do MEI seguida de exclusão do Simples. <em>Crescimento</em>: saiu do MEI e continua no Simples. <em>Verificar</em>:
+                exclusão no meio do ano, saída do MEI sem estar no Simples, ou empresa que já voltou. As datas são as da saída (a Receita grava a saída de 1º de
+                janeiro como 31/12). Prioridade alta: problema e com telefone ou e-mail que não é de contador.{' '}
+                <button type="button" onClick={() => abrirManual(true)} className="font-bold text-[#0369B3] underline underline-offset-4 cursor-pointer">
+                  Ver o manual completo
+                </button>
               </p>
               <p>
                 Fonte: Dados Abertos do CNPJ da Receita Federal (estabelecimentos, empresas, sócios e Simples/MEI). CPFs mascarados como a Receita publica.

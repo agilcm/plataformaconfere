@@ -461,7 +461,9 @@ export default function ConsultaCnpjPage() {
   const [cnpjInicial, setCnpjInicial] = useState('');
   useEffect(() => {
     const ler = () => {
-      const h = window.location.hash.replace('#', '') as Parte;
+      const lida = window.location.hash.replace('#', '');
+      // #manual: o manual do CNPJ problemático
+      const h = (lida === 'manual' ? 'problematico' : lida) as Parte;
       const q = new URLSearchParams(window.location.search).get('cnpj') || '';
       setParte(PARTES.some((p) => p.id === h) ? h : 'um');
       if (q) setCnpjInicial(q);

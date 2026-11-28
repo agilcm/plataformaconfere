@@ -115,17 +115,25 @@ test('motivo do MEI: inapto, de ofício, crescimento, excluído depois do Simple
   assert.doesNotMatch(motivoMei(est('02'), simples('S', '', '', 'N', '', '2026-03-01'), 'Empresário (Individual)').motivo, /Hoje é/);
   assert.match(
     motivoMei(est('02'), simples('N', '', '2026-08-01', 'N', '', '2026-03-01'), '').motivo,
-    /depois foi excluído também do Simples, em 01\/08\/2026/,
+    /depois foi excluído também do Simples, a partir de 01\/08\/2026/,
   );
   assert.equal(motivoMei(est('02'), simples('N', '', '', 'N', '', '2026-03-01'), '').classe, 'verificar');
+  // já voltou ao MEI: o problema parece resolvido
+  const voltou = motivoMei(est('02'), simples('S', '2026-01-01', '2025-12-31', 'S', '2026-01-01', '2025-12-31'), '');
+  assert.equal(voltou.classe, 'verificar');
+  assert.match(voltou.motivo, /Saiu do MEI em 01\/01\/2026 e já voltou ao MEI em 01\/01\/2026/);
 });
 
 test('motivo do Simples: inapto, junto com o MEI, 1º de janeiro, meio do ano e volta ao Simples', () => {
   assert.match(motivoSimples(est('04', '20251215', '21'), simples('N', '', '2025-12-31', 'N', '', '')).motivo, /declarado inapto/);
   assert.match(motivoSimples(est('02'), simples('N', '', '2026-03-01', 'N', '', '2026-03-01')).motivo, /Simples e do MEI na mesma data/);
-  const jan = motivoSimples(est('02'), simples('S', '2026-02-01', '2025-12-31', 'N', '', ''));
+  const jan = motivoSimples(est('02'), simples('N', '2015-01-01', '2025-12-31', 'N', '', ''));
   assert.equal(jan.classe, 'problema');
-  assert.match(jan.motivo, /1º de janeiro.*Já voltou ao Simples em 01\/02\/2026\.$/);
+  assert.match(jan.motivo, /^Exclusão com efeito em 1º de janeiro/);
+  // já voltou ao Simples: sai do "problema" (e da prioridade), com o aviso no motivo
+  const voltou = motivoSimples(est('02'), simples('S', '2026-02-01', '2025-12-31', 'N', '', ''));
+  assert.equal(voltou.classe, 'verificar');
+  assert.match(voltou.motivo, /1º de janeiro.*Já voltou ao Simples em 01\/02\/2026\. O problema parece resolvido/);
   assert.equal(motivoSimples(est('02'), simples('N', '', '2026-06-15', 'N', '', '')).classe, 'verificar');
 });
 
@@ -193,7 +201,9 @@ test('lista: busca por sócio e CNPJ, filtros e ordem', () => {
     filtrarProblematicos(dados, { caso: 'mei-2026' }).map((r) => r.cnpj),
     [c.cnpj],
   );
-  assert.equal(filtrarProblematicos(dados, { caso: 'simples-2026' }).length, 0);
+  // a saída gravada como 31/12/2025 vale em 01/01/2026: conta no ano de 2026
+  assert.equal(filtrarProblematicos(dados, { caso: 'simples-2025' }).length, 0);
+  assert.equal(filtrarProblematicos(dados, { caso: 'simples-2026' }).length, 2);
   assert.equal(filtrarProblematicos(dados, { caso: 'simples' }).length, 2);
   assert.deepEqual(
     filtrarProblematicos(dados, { telefone: true, classe: 'problema' }).map((r) => r.cnpj),
@@ -213,7 +223,8 @@ test('mensagem e planilha', () => {
   assert.ok(!/Astolfo/.test(msg), 'sem a cidade');
   // sociedade: a dívida pode chegar ao CPF do sócio (não em todo caso), por isso "podem acabar"
   assert.match(msg, /E o problema não fica só na empresa: multas e dívidas da empresa podem acabar no \*seu CPF\*\./);
-  assert.match(msg, /a \*PADARIA BOM PAO LTDA\* \(CNPJ 12\.345\.678\/0001-95\) foi \*excluída do Simples Nacional\* em 31\/12\/2025/);
+  assert.match(msg, /a \*PADARIA BOM PAO LTDA\* \(CNPJ 12\.345\.678\/0001-95\) está \*fora do Simples Nacional\* desde 01\/01\/2026\./);
+  assert.match(msg, /o pedido de volta ao Simples, que é feito em janeiro\./);
   assert.match(
     msg,
     /\n\n_Se este número não for de Maria ou da PADARIA BOM PAO LTDA, por favor desconsidere esta mensagem\. Pedimos desculpas pelo incômodo\._$/,
@@ -239,15 +250,38 @@ test('mensagem e planilha', () => {
   assert.ok(!/seguro-desemprego/.test(cresceu));
   // saiu do MEI e do Simples na mesma data: uma frase só, o aviso do MEI e depois o da pendência
   const mesmaData = mensagemProblematico(registro({ simples: simples('N', '', '2026-01-01', 'N', '', '2026-01-01') }));
-  assert.match(mesmaData, /foi \*excluída do MEI e do Simples Nacional\* em 01\/01\/2026\./);
+  assert.match(mesmaData, /está \*fora do MEI e do Simples Nacional\* desde 01\/01\/2026\./);
   assert.match(mesmaData, /\n\nFora do MEI, ela passa a ter o regime de uma empresa comum[^\n]*R\$ 500\*\.\n\nAlém disso, a pendência pode gerar bloqueio/);
   // inapto e fora do MEI: os dois fatos na mesma frase
   assert.match(
     mensagemProblematico(
       registro({ situacao: '04', dataSituacao: '2026-05-14', motivoSituacao: 'OMISSAO DE DECLARACOES', simples: simples('N', '', '', 'N', '', '2026-05-20') }),
     ),
-    /está com o \*CNPJ inapto\* por falta de declarações e foi \*desenquadrada do MEI\* em 20\/05\/2026\./,
+    /está com o \*CNPJ inapto\* por falta de declarações e foi \*desenquadrada do MEI\* em 20\/05\/2026\.[\s\S]*parcelamos os débitos e reativamos o CNPJ\./,
   );
+  // exclusão marcada para o próximo 1º de janeiro: "ainda dá tempo"
+  const marcada = mensagemProblematico(
+    registro({
+      simples: simples('S', '2015-03-10', '2099-12-31', 'N', '', ''),
+      casos: [{ tipo: 'simples', data: '2099-12-31', classe: 'problema', motivo: 'Exclusão com efeito em 1º de janeiro' }],
+    }),
+  );
+  assert.match(marcada, /tem a \*exclusão do Simples Nacional\* marcada para 01\/01\/2100\./);
+  assert.match(marcada, /Ainda dá tempo de resolver\./);
+  // já voltou ao Simples (vale o cadastro de hoje, mesmo com a classe antiga da lista): sem falar em pendência
+  const voltou = mensagemProblematico(
+    registro({
+      simples: simples('S', '2026-01-02', '2025-12-31', 'N', '', ''),
+      casos: [{ tipo: 'simples', data: '2025-12-31', classe: 'problema', motivo: 'lista antiga' }],
+    }),
+  );
+  assert.match(voltou, /foi excluída do Simples Nacional em 01\/01\/2026 e já voltou em 02\/01\/2026\./);
+  assert.match(voltou, /Fazemos o acompanhamento mensal/);
+  assert.ok(!/pendência|seguro-desemprego|regularização/.test(voltou));
+  // saída no meio do ano (verificar): mensagem leve, sem "pendência"
+  const meio = mensagemProblematico(registro({ simples: simples('N', '2015-03-10', '2026-06-15', 'N', '', '') }));
+  assert.match(meio, /Se a saída não foi planejada, vale conferir se compensa voltar ao Simples/);
+  assert.ok(!/pendência|seguro-desemprego/.test(meio));
   assert.ok(!semFormatacao(msg).includes('*') && !semFormatacao(msg).includes('_'), 'sem as marcas do WhatsApp para e-mail e planilha');
   // MEI (sem sócios, CPF no fim do nome): fala com o titular e não repete o nome da empresa no pedido de desculpas
   const mei = registro({ razao: 'JOSE PEREIRA 12345678901', socios: [] });
@@ -303,8 +337,8 @@ test('planilha em abas: leia-me, resumo, contatos e uma aba por situação e ano
   const abas = abasPlanilhaProblematicos(dados, [a, b, c], (cnpj) => (cnpj === a.cnpj ? 'Respondeu' : 'Sem contato'));
   assert.deepEqual(
     abas.map((x) => x.nome),
-    ['Leia-me', 'Resumo', 'Contatos', 'Inaptas', 'Excluídas do Simples 2025', 'Excluídas do MEI 2026'],
-    'abas vazias (Simples 2026, MEI 2025) saem',
+    ['Leia-me', 'Resumo', 'Contatos', 'Inaptas', 'Saíram do Simples 2026', 'Saíram do MEI 2026'],
+    'abas vazias (Simples 2025, MEI 2025) saem; a saída gravada como 31/12/2025 vale em 2026',
   );
   const contatos = abas.find((x) => x.nome === 'Contatos').linhas;
   assert.equal(contatos.length, 3);
@@ -313,14 +347,14 @@ test('planilha em abas: leia-me, resumo, contatos e uma aba por situação e ano
   assert.equal(inaptas.length, 1);
   assert.equal(inaptas[0]['Inapta desde'], '14/05/2026');
   assert.match(inaptas[0]['Motivo provável deste caso'], /omissao de declaracoes/);
-  const simples25 = abas.find((x) => x.nome === 'Excluídas do Simples 2025').linhas;
-  assert.equal(simples25.length, 2, 'a inapta também foi excluída do Simples em 31/12/2025');
-  assert.equal(simples25[0]['Data da exclusão'], '31/12/2025');
-  const mei = abas.find((x) => x.nome === 'Excluídas do MEI 2026').linhas;
+  const simples26 = abas.find((x) => x.nome === 'Saíram do Simples 2026').linhas;
+  assert.equal(simples26.length, 2, 'a inapta também saiu do Simples em 01/01/2026');
+  assert.equal(simples26[0]['Saída em'], '01/01/2026');
+  const mei = abas.find((x) => x.nome === 'Saíram do MEI 2026').linhas;
   assert.equal(mei[0]['Tipo deste caso'], 'Crescimento (faturamento)');
   const resumo = abas.find((x) => x.nome === 'Resumo').linhas;
   assert.deepEqual(
-    resumo.map((l) => [l.Cidade, l.Estabelecimentos, l.Inaptas, l['Excluídas do MEI 2026']]),
+    resumo.map((l) => [l.Cidade, l.Estabelecimentos, l.Inaptas, l['Saíram do MEI 2026']]),
     [
       ['Cataguases', 2, 0, 1],
       ['Ubá', 1, 1, 0],

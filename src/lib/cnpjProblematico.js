@@ -40,6 +40,16 @@ export const dataIso = (s) => {
 /** "2026-12-31" → "31/12/2026" */
 export const dataBr = (iso) => (iso ? iso.slice(0, 10).split('-').reverse().join('/') : '');
 const dias = (a, b) => Math.abs(Date.parse(a) - Date.parse(b)) / 86400e3;
+const hoje = () => new Date().toISOString().slice(0, 10);
+
+/**
+ * Data em que a saída do Simples ou do MEI vale. A base da Receita grava a saída de 1º de janeiro como 31/12 (o último
+ * dia no regime): "2025-12-31" → "2026-01-01". Na inapta, a data da inaptidão.
+ */
+export const efeitoCaso = (c) => (c && c.tipo !== 'inapta' && /-12-31$/.test(c.data || '') ? `${Number(c.data.slice(0, 4)) + 1}-01-01` : c?.data || '');
+/** Ano em que o caso vale (o da saída, nas exclusões) */
+export const anoCaso = (c) => efeitoCaso(c).slice(0, 4);
+const efeito = (d) => efeitoCaso({ tipo: 'saida', data: d });
 
 /** CPF mascarado como a Receita publica ("***654321**") → "***.654.321-**"; CNPJ de sócio PJ formatado */
 export function docMascarado(d) {
@@ -88,13 +98,15 @@ export function motivoMei(est, s, naturezaNome) {
   const ds = s.dataExclusao;
   if (est.situacao === '04' && est.dataSituacao && dias(est.dataSituacao, dm) <= 45)
     return { classe: 'problema', motivo: `Saiu do MEI quando o CNPJ foi declarado inapto (${(est.motivoSituacao || 'motivo não informado').toLowerCase()})` };
+  if (s.mei === 'S' && s.dataOpcaoMei && s.dataOpcaoMei > dm)
+    return { classe: 'verificar', motivo: `Saiu do MEI em ${dataBr(efeito(dm))} e já voltou ao MEI em ${dataBr(s.dataOpcaoMei)}: o problema parece resolvido` };
   if (ds && ds === dm) return { classe: 'problema', motivo: 'Excluído do MEI e do Simples na mesma data, de ofício (em geral por débitos ou irregularidade)' };
   if (s.opcao === 'S') {
     let motivo = 'Saiu do MEI e continua no Simples como ME: faturamento acima do limite, entrada de sócio, filial ou atividade não permitida ao MEI';
     if (naturezaNome && !individual(naturezaNome)) motivo += `. Hoje é ${naturezaNome}`;
     return { classe: 'crescimento', motivo };
   }
-  if (ds && ds > dm) return { classe: 'problema', motivo: `Saiu do MEI e depois foi excluído também do Simples, em ${dataBr(ds)}` };
+  if (ds && ds > dm) return { classe: 'problema', motivo: `Saiu do MEI e depois foi excluído também do Simples, a partir de ${dataBr(efeito(ds))}` };
   return { classe: 'verificar', motivo: 'Saiu do MEI e não está no Simples; confirmar na Consulta Optantes' };
 }
 
@@ -110,14 +122,20 @@ export function motivoSimples(est, s) {
       classe: 'problema',
       motivo: `Excluído do Simples quando o CNPJ foi declarado inapto (${(est.motivoSituacao || 'motivo não informado').toLowerCase()}).${voltou}`,
     };
+  // já voltou ao Simples depois da exclusão: o problema parece resolvido (sai da prioridade)
+  if (voltou)
+    return {
+      classe: 'verificar',
+      motivo: `${ds.endsWith('-12-31') ? 'Exclusão com efeito em 1º de janeiro (em geral por débitos)' : 'Exclusão no meio do ano'}.${voltou} O problema parece resolvido: ofereça acompanhamento.`,
+    };
   if (s.dataExclusaoMei && s.dataExclusaoMei === ds)
-    return { classe: 'problema', motivo: `Excluído do Simples e do MEI na mesma data, de ofício (em geral por débitos).${voltou}` };
+    return { classe: 'problema', motivo: 'Excluído do Simples e do MEI na mesma data, de ofício (em geral por débitos).' };
   if (ds.endsWith('-12-31'))
     return {
       classe: 'problema',
-      motivo: `Exclusão com efeito em 1º de janeiro: em geral a exclusão anual de ofício por débitos; pode também ter sido pedido da empresa.${voltou}`,
+      motivo: 'Exclusão com efeito em 1º de janeiro: em geral a exclusão anual de ofício por débitos; pode também ter sido pedido da empresa.',
     };
-  return { classe: 'verificar', motivo: `Exclusão no meio do ano: pedido da empresa, mudança de atividade, excesso de receita ou ato de ofício.${voltou}` };
+  return { classe: 'verificar', motivo: 'Exclusão no meio do ano: pedido da empresa, mudança de atividade, excesso de receita ou ato de ofício.' };
 }
 
 /**
@@ -138,10 +156,11 @@ export function casosDe(est, s, naturezaNome, anos) {
       motivo: `CNPJ inapto desde ${dataBr(est.dataSituacao)}: ${(est.motivoSituacao || 'motivo não informado').toLowerCase()}`,
     });
   const aberta = ['02', '03', '04'].includes(est.situacao);
+  // o ano vale pela data gravada ou pela de efeito: a saída de 01/01/2025 vem gravada como 31/12/2024
+  const noPeriodo = (d) => anos.includes(d.slice(0, 4)) || anos.includes(efeito(d).slice(0, 4));
   if (s && aberta) {
-    if (s.dataExclusao && anos.includes(s.dataExclusao.slice(0, 4))) casos.push({ tipo: 'simples', data: s.dataExclusao, ...motivoSimples(est, s) });
-    if (s.dataExclusaoMei && anos.includes(s.dataExclusaoMei.slice(0, 4)))
-      casos.push({ tipo: 'mei', data: s.dataExclusaoMei, ...motivoMei(est, s, naturezaNome) });
+    if (s.dataExclusao && noPeriodo(s.dataExclusao)) casos.push({ tipo: 'simples', data: s.dataExclusao, ...motivoSimples(est, s) });
+    if (s.dataExclusaoMei && noPeriodo(s.dataExclusaoMei)) casos.push({ tipo: 'mei', data: s.dataExclusaoMei, ...motivoMei(est, s, naturezaNome) });
   }
   return casos;
 }
@@ -162,7 +181,17 @@ export function prioridadeDe(r) {
 }
 
 export const rotuloCaso = (c) =>
-  c.tipo === 'inapta' ? 'CNPJ inapto' : c.tipo === 'simples' ? `Excluída do Simples em ${dataBr(c.data)}` : `Excluída do MEI em ${dataBr(c.data)}`;
+  c.tipo === 'inapta' ? 'CNPJ inapto' : `${efeitoCaso(c) > hoje() ? 'Sai' : 'Saiu'} do ${c.tipo === 'simples' ? 'Simples' : 'MEI'} em ${dataBr(efeitoCaso(c))}`;
+
+/** Anos das saídas do Simples e do MEI (pela data de efeito), para os filtros e as abas da planilha */
+export function anosDosCasos(anos, lista) {
+  const todos = new Set(anos || []);
+  for (const r of lista || []) for (const c of r.casos || []) if (c.tipo !== 'inapta' && c.data) todos.add(anoCaso(c));
+  return [...todos].sort();
+}
+
+/** O caso mais recente do estabelecimento (pela data de efeito): os mais recentes vêm primeiro na lista */
+const maisRecente = (r) => (r.casos || []).map(efeitoCaso).sort().pop() || '';
 
 // ---------------------------------------------------------------- lista na página
 
@@ -170,6 +199,7 @@ export function ordemProblematicos(a, b) {
   return (
     ORDEM_PRIORIDADE[a.prioridade] - ORDEM_PRIORIDADE[b.prioridade] ||
     ORDEM_CLASSE[a.classe] - ORDEM_CLASSE[b.classe] ||
+    maisRecente(b).localeCompare(maisRecente(a)) ||
     a.cidade.localeCompare(b.cidade, 'pt-BR') ||
     a.razao.localeCompare(b.razao, 'pt-BR')
   );
@@ -207,7 +237,7 @@ export function filtrarProblematicos(dados, f, indice) {
     if (f.semContador && emailDeContador(r.email)) return false;
     if (f.caso) {
       const [tipo, ano] = f.caso.split('-');
-      if (!r.casos.some((c) => c.tipo === tipo && (!ano || c.data.startsWith(ano)))) return false;
+      if (!r.casos.some((c) => c.tipo === tipo && (!ano || anoCaso(c) === ano))) return false;
     }
     if (q) {
       if (dig.length >= 8 && r.cnpj.includes(dig)) return true;
@@ -242,54 +272,83 @@ export function mensagemProblematico(r, o = {}) {
   const nome = primeiroNome(r);
   const empresa = semCpf(r.razao);
   const cnpj = r.cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
+  const s = r.simples || {};
   const inapta = r.casos.find((c) => c.tipo === 'inapta');
   const simples = r.casos.find((c) => c.tipo === 'simples');
   const mei = r.casos.find((c) => c.tipo === 'mei');
-  const crescimento = mei && mei.classe === 'crescimento' && !inapta && !simples;
-  const futura = simples && simples.data >= new Date().toISOString().slice(0, 10);
+  const quando = (c) => dataBr(efeitoCaso(c));
+  const futuro = (c) => efeitoCaso(c) > hoje();
+  // já voltou ao Simples ou ao MEI depois da saída (vale o cadastro de hoje, mesmo numa lista gerada antes desta regra)
+  const voltouSimples = Boolean(simples && s.opcao === 'S' && s.dataOpcao && s.dataOpcao > simples.data);
+  const voltouMei = Boolean(mei && s.mei === 'S' && s.dataOpcaoMei && s.dataOpcaoMei > mei.data);
+  const foraSimples = Boolean(simples && !voltouSimples);
+  const foraMei = Boolean(mei && !voltouMei);
+  // problema: inapto, ou fora do Simples ou do MEI por ato da Receita e ainda sem voltar
+  const problema = Boolean(inapta || (foraSimples && simples.classe === 'problema') || (foraMei && mei.classe === 'problema' && !voltouSimples));
+  // microempresa no Simples que veio do MEI: precisa de contabilidade
+  const crescimento = foraMei && !inapta && !foraSimples && (mei.classe === 'crescimento' || voltouSimples);
+
   // o que aconteceu, juntando os casos (inapto, MEI e Simples) numa frase só
   const partes = [];
   if (inapta) partes.push(`está com o *CNPJ inapto*${/omiss/i.test(inapta.motivo) ? ' por falta de declarações' : ''}`);
-  if (mei && simples && mei.data === simples.data)
-    partes.push(
-      futura
-        ? `tem a *exclusão do MEI e do Simples Nacional* marcada para ${dataBr(simples.data)}`
-        : `foi *excluída do MEI e do Simples Nacional* em ${dataBr(simples.data)}`,
-    );
-  else {
-    if (mei)
-      partes.push(
-        mei.classe === 'crescimento'
-          ? `*saiu do MEI* em ${dataBr(mei.data)}${crescimento ? ' e passou a ser microempresa no Simples' : ''}`
-          : `foi *desenquadrada do MEI* em ${dataBr(mei.data)}`,
-      );
-    if (simples)
-      partes.push(
-        futura ? `tem a *exclusão do Simples Nacional* marcada para ${dataBr(simples.data)}` : `foi *excluída do Simples Nacional* em ${dataBr(simples.data)}`,
-      );
+  if (mei && simples && mei.data === simples.data) {
+    if (voltouSimples) partes.push(`saiu do MEI e do Simples Nacional em ${quando(simples)} e já voltou ao Simples`);
+    else if (futuro(simples)) partes.push(`tem a *exclusão do MEI e do Simples Nacional* marcada para ${quando(simples)}`);
+    else partes.push(`está *fora do MEI e do Simples Nacional* desde ${quando(simples)}`);
+  } else {
+    if (mei) {
+      if (voltouMei) partes.push(`saiu do MEI em ${quando(mei)} e já voltou ao MEI`);
+      else if (mei.classe === 'crescimento')
+        partes.push(
+          `${futuro(mei) ? '*sai do MEI*' : '*saiu do MEI*'} em ${quando(mei)}${crescimento ? ` e ${futuro(mei) ? 'passa' : 'passou'} a ser microempresa no Simples` : ''}`,
+        );
+      else partes.push(futuro(mei) ? `tem o *desenquadramento do MEI* marcado para ${quando(mei)}` : `foi *desenquadrada do MEI* em ${quando(mei)}`);
+    }
+    if (simples) {
+      if (voltouSimples) partes.push(`foi excluída do Simples Nacional em ${quando(simples)} e já voltou em ${dataBr(s.dataOpcao)}`);
+      else if (futuro(simples)) partes.push(`tem a *exclusão do Simples Nacional* marcada para ${quando(simples)}`);
+      else partes.push(`está *fora do Simples Nacional* desde ${quando(simples)}`);
+    }
   }
   const fato = partes.length > 1 ? `${partes.slice(0, -1).join(', ')} e ${partes[partes.length - 1]}` : partes[0] || '';
+
   const pessoa = ehPessoa(r);
   // a quem a dívida pode chegar: no MEI e no empresário individual a empresa é a própria pessoa (cai direto no CPF);
   // na sociedade, pode chegar ao CPF dos sócios e do administrador
   const cpf = nome ? '*seu CPF*' : pessoa ? '*CPF do titular*' : '*CPF dos sócios*';
+  const noCpf = pessoa ? `caem direto no ${cpf}` : `podem acabar no ${cpf}`;
   // saiu do MEI: passa a ter as declarações mensais de uma empresa comum (PGDAS-D no Simples; DCTFWeb e outras fora dele).
   // A multa mínima de cada uma vai de R$ 50 (PGDAS-D) a R$ 500 (DCTFWeb fora do Simples), por isso "conforme o regime"
-  const regimeMei = mei
+  const regimeMei = foraMei
     ? `${crescimento ? 'Como microempresa, ela passa a precisar de contabilidade: são declarações todo mês (12 por ano), além das anuais' : 'Fora do MEI, ela passa a ter o regime de uma empresa comum, com uma declaração por mês (12 por ano)'}. Quem não entrega fica sujeito a multas e outras penalidades: conforme o regime e o faturamento, a multa de cada declaração em atraso pode chegar a *R$ 500*${
         crescimento ? (pessoa ? `, e ela cai direto no ${cpf}` : `, e ela pode acabar no ${cpf}`) : ''
       }.`
     : '';
-  const risco = crescimento
-    ? ''
-    : `${regimeMei ? 'Além disso, a pendência pode gerar' : 'Isso pode gerar multa,'} bloqueio de notas fiscais e impedir empréstimos e vendas para órgãos públicos. E o problema não fica só na empresa: ${
-        pessoa
-          ? `como a empresa está no ${nome ? 'seu nome' : 'nome do titular'}, as multas e dívidas dela caem direto no ${cpf}`
-          : `multas e dívidas da empresa podem acabar no ${cpf}`
-      }. Uma pendência assim também pode atrapalhar pedidos de auxílio ou de seguro-desemprego, e até a abertura de um MEI ou de outra empresa no futuro.`;
-  const oferta = crescimento
-    ? 'Oferecemos os *serviços contábeis* completos para microempresas: as declarações mensais e anuais, o cálculo dos impostos e a orientação para a empresa crescer sem multa.'
-    : 'Fazemos a regularização completa: declarações em atraso, parcelamento de débitos e volta ao Simples.';
+  let risco = '';
+  if (problema)
+    risco = `${regimeMei ? 'Além disso, a pendência pode gerar' : 'Isso pode gerar multa,'} bloqueio de notas fiscais e impedir empréstimos e vendas para órgãos públicos. E o problema não fica só na empresa: ${
+      pessoa
+        ? `como a empresa está no ${nome ? 'seu nome' : 'nome do titular'}, as multas e dívidas dela caem direto no ${cpf}`
+        : `multas e dívidas da empresa podem acabar no ${cpf}`
+    }. Uma pendência assim também pode atrapalhar pedidos de auxílio ou de seguro-desemprego, e até a abertura de um MEI ou de outra empresa no futuro.`;
+  else if (!crescimento && (voltouSimples || voltouMei))
+    risco = `Que bom que isso já foi resolvido. Para não acontecer de novo, é importante manter as declarações e os impostos em dia: uma nova exclusão traz mais imposto e multas, e as dívidas da empresa ${noCpf}.`;
+  else if (!crescimento)
+    // "verificar": a saída pode ter sido pedido da própria empresa, então sem falar em pendência
+    risco = `${foraMei ? '' : 'Fora do Simples, a empresa paga os impostos por outro regime, em geral mais caro, e tem mais declarações para entregar. '}Se a saída não foi planejada, vale conferir se compensa voltar ao Simples e se não ficou nada pendente, porque multas e dívidas da empresa ${noCpf}.`;
+
+  let oferta;
+  if (crescimento)
+    oferta =
+      'Oferecemos os *serviços contábeis* completos para microempresas: as declarações mensais e anuais, o cálculo dos impostos e a orientação para a empresa crescer sem multa.';
+  else if (problema && inapta)
+    oferta = `Fazemos a regularização completa: entregamos as declarações em atraso, parcelamos os débitos${foraSimples ? ', reativamos o CNPJ e pedimos a volta ao Simples' : ' e reativamos o CNPJ'}. Se a empresa não funciona mais, também cuidamos do encerramento.`;
+  else if (problema)
+    oferta = `${foraSimples && futuro(simples) ? 'Ainda dá tempo de resolver. ' : ''}Fazemos a regularização completa: declarações em atraso, parcelamento de débitos e o pedido de volta ao Simples${foraMei ? ' ou ao MEI' : ''}, que é feito em janeiro.`;
+  else if (voltouSimples || voltouMei)
+    oferta = 'Fazemos o acompanhamento mensal da contabilidade, das declarações e dos impostos, para a empresa ficar sempre em dia.';
+  else oferta = 'Fazemos essa análise e, se for o caso, cuidamos da regularização e da contabilidade da empresa.';
+
   const remetente = String(o.remetente || '').trim();
   const quem = remetente ? `Aqui é ${remetente}, da *Ágil CM*, empresa de consultoria` : 'Somos da *Ágil CM*, empresa de consultoria';
   const sujeito = pessoa ? `a empresa *${empresa}*` : `a *${empresa}*`;
@@ -407,13 +466,15 @@ export function abasPlanilhaProblematicos(dados, lista, etapa, extra) {
     ...l,
     ...(etapa ? { 'Etapa da prospecção': etapa(lista[i].cnpj) } : {}),
   }));
-  const caso = (tipo, ano) => (r) => r.casos.find((c) => c.tipo === tipo && (!ano || c.data.startsWith(ano)));
+  const caso = (tipo, ano) => (r) => r.casos.find((c) => c.tipo === tipo && (!ano || anoCaso(c) === ano));
+  const anos = anosDosCasos(dados.anos, lista);
+  const futuro = (a) => a > hoje().slice(0, 4);
   const aba = (nome, achar, rotuloData) => ({
     nome,
     linhas: lista
       .map((r, i) => [achar(r), base[i]])
       .filter(([c]) => c)
-      .map(([c, l]) => ({ [rotuloData]: dataBr(c.data), 'Tipo deste caso': CLASSES[c.classe], 'Motivo provável deste caso': c.motivo, ...l })),
+      .map(([c, l]) => ({ [rotuloData]: dataBr(efeitoCaso(c)), 'Tipo deste caso': CLASSES[c.classe], 'Motivo provável deste caso': c.motivo, ...l })),
   });
   const conta = (f) => lista.filter(f).length;
   const cidades = [...new Set([...(dados.cidades || []), ...lista.map((r) => r.cidade)])].filter((c) => lista.some((r) => r.cidade === c));
@@ -427,8 +488,8 @@ export function abasPlanilhaProblematicos(dados, lista, etapa, extra) {
       'Crescimento (faturamento)': conta((r) => daqui(r) && r.classe === 'crescimento'),
       Inaptas: conta((r) => daqui(r) && caso('inapta')(r)),
     };
-    for (const a of dados.anos) linha[`Excluídas do Simples ${a}`] = conta((r) => daqui(r) && caso('simples', a)(r));
-    for (const a of dados.anos) linha[`Excluídas do MEI ${a}`] = conta((r) => daqui(r) && caso('mei', a)(r));
+    for (const a of anos) linha[`${futuro(a) ? 'Saem' : 'Saíram'} do Simples ${a}`] = conta((r) => daqui(r) && caso('simples', a)(r));
+    for (const a of anos) linha[`${futuro(a) ? 'Saem' : 'Saíram'} do MEI ${a}`] = conta((r) => daqui(r) && caso('mei', a)(r));
     linha['Com telefone'] = conta((r) => daqui(r) && (r.tel1 || r.tel2));
     linha['Com e-mail'] = conta((r) => daqui(r) && r.email);
     return linha;
@@ -436,7 +497,7 @@ export function abasPlanilhaProblematicos(dados, lista, etapa, extra) {
   const leiame = [
     [
       'O que é',
-      `Empresas de ${(dados.cidades || []).join(', ')} com o CNPJ inapto ou excluídas do Simples ou do MEI em ${(dados.anos || []).join(' ou ')}. Base da Receita de ${String(
+      `Empresas de ${(dados.cidades || []).join(', ')} com o CNPJ inapto ou que saíram (ou vão sair) do Simples ou do MEI em ${anos.join(', ')}. Base da Receita de ${String(
         dados.base || '',
       )
         .split('-')
@@ -453,12 +514,20 @@ export function abasPlanilhaProblematicos(dados, lista, etapa, extra) {
       'Crescimento (faturamento)',
       'Saiu do MEI e continua no Simples como microempresa (faturamento acima do limite, entrada de sócio, filial ou atividade não permitida ao MEI). Precisa de contabilidade.',
     ],
-    ['Verificar', 'Exclusão no meio do ano: pedido da empresa ou ato de ofício. Confirme na Consulta Optantes do Portal do Simples.'],
+    [
+      'Verificar',
+      'Exclusão no meio do ano (pedido da empresa ou ato de ofício), saída do MEI sem estar no Simples, ou empresa que já voltou ao Simples ou ao MEI depois da saída (o problema parece resolvido: ofereça acompanhamento). Confirme na Consulta Optantes do Portal do Simples.',
+    ],
     [
       'Prioridade',
       'Alta: problema e com telefone ou e-mail que não é de contador. Média: problema com e-mail de contador, ou crescimento sem contador. Baixa: o resto.',
     ],
     ['Motivo', 'A Receita não publica o motivo da exclusão na base aberta; ele é deduzido pelo que aconteceu com a empresa.'],
+    [
+      'Datas',
+      '"Saída em" e as abas por ano usam a data em que a saída vale: a Receita grava a saída de 1º de janeiro como 31/12 do ano anterior (o último dia no regime), e é essa data que aparece nas colunas "Exclusão do Simples" e "Exclusão do MEI". "Saem" são as saídas já marcadas para o próximo 1º de janeiro.',
+    ],
+    ['Ordem', 'Por prioridade, depois o tipo de caso e, dentro disso, os casos mais recentes primeiro.'],
     [
       'Sócios',
       'CPF mascarado como a Receita publica. Até 4 sócios em colunas; os demais em "Demais sócios". MEI e empresário individual não têm quadro de sócios: veja "Titular do MEI/empresário".',
@@ -474,7 +543,7 @@ export function abasPlanilhaProblematicos(dados, lista, etapa, extra) {
     { nome: 'Resumo', linhas: resumo },
     { nome: 'Contatos', linhas: base },
     aba('Inaptas', caso('inapta'), 'Inapta desde'),
-    ...(dados.anos || []).map((a) => aba(`Excluídas do Simples ${a}`, caso('simples', a), 'Data da exclusão')),
-    ...(dados.anos || []).map((a) => aba(`Excluídas do MEI ${a}`, caso('mei', a), 'Data da exclusão')),
+    ...anos.map((a) => aba(`${futuro(a) ? 'Saem' : 'Saíram'} do Simples ${a}`, caso('simples', a), 'Saída em')),
+    ...anos.map((a) => aba(`${futuro(a) ? 'Saem' : 'Saíram'} do MEI ${a}`, caso('mei', a), 'Saída em')),
   ].filter((x) => x.linhas.length);
 }
