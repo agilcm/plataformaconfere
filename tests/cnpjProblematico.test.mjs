@@ -229,7 +229,12 @@ test('mensagem e planilha', () => {
   // saiu do MEI por crescimento: obrigações de empresa comum, 12 declarações por ano e multa de até R$ 500; sem o aviso de pendência
   const cresceu = mensagemProblematico(registro({ simples: simples('S', '', '', 'N', '', '2026-03-01') }));
   assert.match(cresceu, /\*saiu do MEI\* em 01\/03\/2026 e passou a ser microempresa no Simples\./);
-  assert.match(cresceu, /com uma declaração por mês \(12 por ano\)\. Quem não entrega fica sujeito a multas e outras penalidades/);
+  assert.match(
+    cresceu,
+    /Como microempresa, ela passa a precisar de contabilidade: são declarações todo mês \(12 por ano\), além das anuais\. Quem não entrega/,
+  );
+  assert.match(cresceu, /\n\nOferecemos os \*serviços contábeis\* completos para microempresas/, 'oferta de contabilidade, não de regularização');
+  assert.ok(!/regularização/.test(cresceu));
   assert.match(cresceu, /pode chegar a \*R\$ 500\*, e ela pode acabar no \*seu CPF\*\./);
   assert.ok(!/seguro-desemprego/.test(cresceu));
   // saiu do MEI e do Simples na mesma data: uma frase só, o aviso do MEI e depois o da pendência

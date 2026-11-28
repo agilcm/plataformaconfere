@@ -276,7 +276,7 @@ export function mensagemProblematico(r, o = {}) {
   // saiu do MEI: passa a ter as declarações mensais de uma empresa comum (PGDAS-D no Simples; DCTFWeb e outras fora dele).
   // A multa mínima de cada uma vai de R$ 50 (PGDAS-D) a R$ 500 (DCTFWeb fora do Simples), por isso "conforme o regime"
   const regimeMei = mei
-    ? `${crescimento ? 'Como microempresa, ela passa a ter as obrigações de uma empresa comum' : 'Fora do MEI, ela passa a ter o regime de uma empresa comum'}, com uma declaração por mês (12 por ano). Quem não entrega fica sujeito a multas e outras penalidades: conforme o regime e o faturamento, a multa de cada declaração em atraso pode chegar a *R$ 500*${
+    ? `${crescimento ? 'Como microempresa, ela passa a precisar de contabilidade: são declarações todo mês (12 por ano), além das anuais' : 'Fora do MEI, ela passa a ter o regime de uma empresa comum, com uma declaração por mês (12 por ano)'}. Quem não entrega fica sujeito a multas e outras penalidades: conforme o regime e o faturamento, a multa de cada declaração em atraso pode chegar a *R$ 500*${
         crescimento ? (pessoa ? `, e ela cai direto no ${cpf}` : `, e ela pode acabar no ${cpf}`) : ''
       }.`
     : '';
@@ -288,7 +288,7 @@ export function mensagemProblematico(r, o = {}) {
           : `multas e dívidas da empresa podem acabar no ${cpf}`
       }. Uma pendência assim também pode atrapalhar pedidos de auxílio ou de seguro-desemprego, e até a abertura de um MEI ou de outra empresa no futuro.`;
   const oferta = crescimento
-    ? 'Cuidamos da contabilidade e das declarações para a empresa crescer sem multa.'
+    ? 'Oferecemos os *serviços contábeis* completos para microempresas: as declarações mensais e anuais, o cálculo dos impostos e a orientação para a empresa crescer sem multa.'
     : 'Fazemos a regularização completa: declarações em atraso, parcelamento de débitos e volta ao Simples.';
   const remetente = String(o.remetente || '').trim();
   const quem = remetente ? `Aqui é ${remetente}, da *Ágil CM*, empresa de consultoria` : 'Somos da *Ágil CM*, empresa de consultoria';
