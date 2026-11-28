@@ -252,21 +252,32 @@ export function mensagemProblematico(r, o = {}) {
   else if (mei && mei.classe === 'crescimento') fato = `*saiu do MEI* em ${dataBr(mei.data)} e passou a ser microempresa no Simples`;
   else fato = `foi *desenquadrada do MEI* em ${dataBr(mei?.data)}`;
   const crescimento = mei && mei.classe === 'crescimento' && !inapta && !simples;
+  const pessoa = ehPessoa(r);
+  // a quem a dívida pode chegar: no MEI e no empresário individual a empresa é a própria pessoa (cai direto no CPF);
+  // na sociedade, pode chegar ao CPF dos sócios e do administrador
+  const cpf = nome ? '*seu CPF*' : pessoa ? '*CPF do titular*' : '*CPF dos sócios*';
+  const risco = crescimento
+    ? `Como microempresa, ela passa a ter obrigações mensais que o MEI não tinha, e cada atraso vira multa${pessoa ? ` que cai direto no ${cpf}` : ` que pode acabar no ${cpf}`}.`
+    : `Isso pode gerar multa, bloqueio de notas fiscais e impedir empréstimos e vendas para órgãos públicos. E o problema não fica só na empresa: ${
+        pessoa
+          ? `como a empresa está no ${nome ? 'seu nome' : 'nome do titular'}, as multas e dívidas dela caem direto no ${cpf}`
+          : `multas e dívidas da empresa podem acabar no ${cpf}`
+      }.`;
   const oferta = crescimento
-    ? 'Como microempresa, ela passa a ter obrigações mensais que o MEI não tinha. Cuidamos da contabilidade e das declarações para a empresa crescer sem multa.'
-    : 'Isso pode gerar multa, bloqueio de notas fiscais e impedir empréstimos e vendas para órgãos públicos. Fazemos a regularização completa: declarações em atraso, parcelamento de débitos e volta ao Simples.';
+    ? 'Cuidamos da contabilidade e das declarações para a empresa crescer sem multa.'
+    : 'Fazemos a regularização completa: declarações em atraso, parcelamento de débitos e volta ao Simples.';
   const remetente = String(o.remetente || '').trim();
-  const quem = remetente ? `Aqui é ${remetente}, da *Ágil CM*` : 'Somos da *Ágil CM*';
-  const sujeito = ehPessoa(r) ? `a empresa *${empresa}*` : `a *${empresa}*`;
-  const engano = ehPessoa(r) ? (nome ? `de ${nome}` : `de ${empresa}`) : nome ? `de ${nome} ou da ${empresa}` : `da ${empresa}`;
+  const quem = remetente ? `Aqui é ${remetente}, da *Ágil CM*, empresa de consultoria` : 'Somos da *Ágil CM*, empresa de consultoria';
+  const sujeito = pessoa ? `a empresa *${empresa}*` : `a *${empresa}*`;
+  const engano = pessoa ? (nome ? `de ${nome}` : `de ${empresa}`) : nome ? `de ${nome} ou da ${empresa}` : `da ${empresa}`;
   return [
     `Olá${nome ? `, ${nome}` : ''}, tudo bem?`,
     '',
-    `${quem}, de Astolfo Dutra (MG). Numa consulta ao cadastro público da Receita Federal, vimos que ${sujeito} (CNPJ ${cnpj}) ${fato}.`,
+    `${quem}. Numa consulta ao cadastro público da Receita Federal, vimos que ${sujeito} (CNPJ ${cnpj}) ${fato}.`,
     '',
-    oferta,
+    risco,
     '',
-    'Posso te explicar como funciona? A conversa é sem compromisso.',
+    `${oferta} Posso te explicar como funciona? A conversa é sem compromisso.`,
     '',
     `_Se este número não for ${engano}, por favor desconsidere esta mensagem. Pedimos desculpas pelo incômodo._`,
   ].join('\n');

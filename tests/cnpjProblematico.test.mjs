@@ -209,7 +209,10 @@ test('lista: busca por sócio e CNPJ, filtros e ordem', () => {
 test('mensagem e planilha', () => {
   const a = registro({});
   const msg = mensagemProblematico(a, { remetente: 'Allan' });
-  assert.match(msg, /^Olá, Maria, tudo bem\?\n\nAqui é Allan, da \*Ágil CM\*, de Astolfo Dutra \(MG\)\./);
+  assert.match(msg, /^Olá, Maria, tudo bem\?\n\nAqui é Allan, da \*Ágil CM\*, empresa de consultoria\./);
+  assert.ok(!/Astolfo/.test(msg), 'sem a cidade');
+  // sociedade: a dívida pode chegar ao CPF do sócio (não em todo caso), por isso "podem acabar"
+  assert.match(msg, /E o problema não fica só na empresa: multas e dívidas da empresa podem acabar no \*seu CPF\*\./);
   assert.match(msg, /a \*PADARIA BOM PAO LTDA\* \(CNPJ 12\.345\.678\/0001-95\) foi \*excluída do Simples Nacional\* em 31\/12\/2025/);
   assert.match(
     msg,
@@ -227,10 +230,12 @@ test('mensagem e planilha', () => {
   assert.equal(primeiroNome(mei), 'Jose');
   assert.match(mensagemProblematico(mei), /a empresa \*JOSE PEREIRA\*/);
   assert.match(mensagemProblematico(mei), /_Se este número não for de Jose, por favor desconsidere/);
+  // MEI: a empresa é a própria pessoa, então cai direto no CPF
+  assert.match(mensagemProblematico(mei), /como a empresa está no seu nome, as multas e dívidas dela caem direto no \*seu CPF\*\./);
   // empresa sem sócio pessoa física: sem nome no cumprimento
   assert.match(
     mensagemProblematico(registro({ socios: [{ nome: 'HOLDING X LTDA', pj: true, doc: '11222333000181', qual: '22', entrada: '' }] })),
-    /^Olá, tudo bem\?/,
+    /^Olá, tudo bem\?[\s\S]*podem acabar no \*CPF dos sócios\*/,
   );
   // link do WhatsApp: celular primeiro, com a mensagem; fixo também entra
   const dois = registro({ tel1: '3234221234', tel2: '32988887777' });
