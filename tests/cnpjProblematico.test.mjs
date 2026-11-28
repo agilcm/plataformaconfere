@@ -223,7 +223,26 @@ test('mensagem e planilha', () => {
     mensagemProblematico(registro({ situacao: '04', dataSituacao: '2026-05-14', motivoSituacao: 'OMISSAO DE DECLARACOES' })),
     /\*CNPJ inapto\* por falta de declarações/,
   );
-  assert.match(mensagemProblematico(registro({ simples: simples('S', '', '', 'N', '', '2026-03-01') })), /passou a ser microempresa/);
+  // problema (inapto, fora do Simples...): também atrapalha auxílio, seguro-desemprego e abrir outra empresa
+  assert.match(msg, /pode atrapalhar pedidos de auxílio ou de seguro-desemprego, e até a abertura de um MEI ou de outra empresa no futuro\./);
+  assert.ok(!/R\$ 500/.test(msg), 'o aviso das 12 declarações é só para quem saiu do MEI');
+  // saiu do MEI por crescimento: obrigações de empresa comum, 12 declarações por ano e multa de até R$ 500; sem o aviso de pendência
+  const cresceu = mensagemProblematico(registro({ simples: simples('S', '', '', 'N', '', '2026-03-01') }));
+  assert.match(cresceu, /\*saiu do MEI\* em 01\/03\/2026 e passou a ser microempresa no Simples\./);
+  assert.match(cresceu, /com uma declaração por mês \(12 por ano\)\. Quem não entrega fica sujeito a multas e outras penalidades/);
+  assert.match(cresceu, /pode chegar a \*R\$ 500\*, e ela pode acabar no \*seu CPF\*\./);
+  assert.ok(!/seguro-desemprego/.test(cresceu));
+  // saiu do MEI e do Simples na mesma data: uma frase só, o aviso do MEI e depois o da pendência
+  const mesmaData = mensagemProblematico(registro({ simples: simples('N', '', '2026-01-01', 'N', '', '2026-01-01') }));
+  assert.match(mesmaData, /foi \*excluída do MEI e do Simples Nacional\* em 01\/01\/2026\./);
+  assert.match(mesmaData, /\n\nFora do MEI, ela passa a ter o regime de uma empresa comum[^\n]*R\$ 500\*\.\n\nAlém disso, a pendência pode gerar bloqueio/);
+  // inapto e fora do MEI: os dois fatos na mesma frase
+  assert.match(
+    mensagemProblematico(
+      registro({ situacao: '04', dataSituacao: '2026-05-14', motivoSituacao: 'OMISSAO DE DECLARACOES', simples: simples('N', '', '', 'N', '', '2026-05-20') }),
+    ),
+    /está com o \*CNPJ inapto\* por falta de declarações e foi \*desenquadrada do MEI\* em 20\/05\/2026\./,
+  );
   assert.ok(!semFormatacao(msg).includes('*') && !semFormatacao(msg).includes('_'), 'sem as marcas do WhatsApp para e-mail e planilha');
   // MEI (sem sócios, CPF no fim do nome): fala com o titular e não repete o nome da empresa no pedido de desculpas
   const mei = registro({ razao: 'JOSE PEREIRA 12345678901', socios: [] });

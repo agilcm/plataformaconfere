@@ -245,24 +245,48 @@ export function mensagemProblematico(r, o = {}) {
   const inapta = r.casos.find((c) => c.tipo === 'inapta');
   const simples = r.casos.find((c) => c.tipo === 'simples');
   const mei = r.casos.find((c) => c.tipo === 'mei');
-  let fato;
-  if (inapta) fato = `está com o *CNPJ inapto*${/omiss/i.test(inapta.motivo) ? ' por falta de declarações' : ''}`;
-  else if (simples && simples.data >= new Date().toISOString().slice(0, 10)) fato = `tem a *exclusão do Simples Nacional* marcada para ${dataBr(simples.data)}`;
-  else if (simples) fato = `foi *excluída do Simples Nacional* em ${dataBr(simples.data)}`;
-  else if (mei && mei.classe === 'crescimento') fato = `*saiu do MEI* em ${dataBr(mei.data)} e passou a ser microempresa no Simples`;
-  else fato = `foi *desenquadrada do MEI* em ${dataBr(mei?.data)}`;
   const crescimento = mei && mei.classe === 'crescimento' && !inapta && !simples;
+  const futura = simples && simples.data >= new Date().toISOString().slice(0, 10);
+  // o que aconteceu, juntando os casos (inapto, MEI e Simples) numa frase só
+  const partes = [];
+  if (inapta) partes.push(`está com o *CNPJ inapto*${/omiss/i.test(inapta.motivo) ? ' por falta de declarações' : ''}`);
+  if (mei && simples && mei.data === simples.data)
+    partes.push(
+      futura
+        ? `tem a *exclusão do MEI e do Simples Nacional* marcada para ${dataBr(simples.data)}`
+        : `foi *excluída do MEI e do Simples Nacional* em ${dataBr(simples.data)}`,
+    );
+  else {
+    if (mei)
+      partes.push(
+        mei.classe === 'crescimento'
+          ? `*saiu do MEI* em ${dataBr(mei.data)}${crescimento ? ' e passou a ser microempresa no Simples' : ''}`
+          : `foi *desenquadrada do MEI* em ${dataBr(mei.data)}`,
+      );
+    if (simples)
+      partes.push(
+        futura ? `tem a *exclusão do Simples Nacional* marcada para ${dataBr(simples.data)}` : `foi *excluída do Simples Nacional* em ${dataBr(simples.data)}`,
+      );
+  }
+  const fato = partes.length > 1 ? `${partes.slice(0, -1).join(', ')} e ${partes[partes.length - 1]}` : partes[0] || '';
   const pessoa = ehPessoa(r);
   // a quem a dívida pode chegar: no MEI e no empresário individual a empresa é a própria pessoa (cai direto no CPF);
   // na sociedade, pode chegar ao CPF dos sócios e do administrador
   const cpf = nome ? '*seu CPF*' : pessoa ? '*CPF do titular*' : '*CPF dos sócios*';
+  // saiu do MEI: passa a ter as declarações mensais de uma empresa comum (PGDAS-D no Simples; DCTFWeb e outras fora dele).
+  // A multa mínima de cada uma vai de R$ 50 (PGDAS-D) a R$ 500 (DCTFWeb fora do Simples), por isso "conforme o regime"
+  const regimeMei = mei
+    ? `${crescimento ? 'Como microempresa, ela passa a ter as obrigações de uma empresa comum' : 'Fora do MEI, ela passa a ter o regime de uma empresa comum'}, com uma declaração por mês (12 por ano). Quem não entrega fica sujeito a multas e outras penalidades: conforme o regime e o faturamento, a multa de cada declaração em atraso pode chegar a *R$ 500*${
+        crescimento ? (pessoa ? `, e ela cai direto no ${cpf}` : `, e ela pode acabar no ${cpf}`) : ''
+      }.`
+    : '';
   const risco = crescimento
-    ? `Como microempresa, ela passa a ter obrigações mensais que o MEI não tinha, e cada atraso vira multa${pessoa ? ` que cai direto no ${cpf}` : ` que pode acabar no ${cpf}`}.`
-    : `Isso pode gerar multa, bloqueio de notas fiscais e impedir empréstimos e vendas para órgãos públicos. E o problema não fica só na empresa: ${
+    ? ''
+    : `${regimeMei ? 'Além disso, a pendência pode gerar' : 'Isso pode gerar multa,'} bloqueio de notas fiscais e impedir empréstimos e vendas para órgãos públicos. E o problema não fica só na empresa: ${
         pessoa
           ? `como a empresa está no ${nome ? 'seu nome' : 'nome do titular'}, as multas e dívidas dela caem direto no ${cpf}`
           : `multas e dívidas da empresa podem acabar no ${cpf}`
-      }.`;
+      }. Uma pendência assim também pode atrapalhar pedidos de auxílio ou de seguro-desemprego, e até a abertura de um MEI ou de outra empresa no futuro.`;
   const oferta = crescimento
     ? 'Cuidamos da contabilidade e das declarações para a empresa crescer sem multa.'
     : 'Fazemos a regularização completa: declarações em atraso, parcelamento de débitos e volta ao Simples.';
@@ -275,8 +299,7 @@ export function mensagemProblematico(r, o = {}) {
     '',
     `${quem}. Numa consulta ao cadastro público da Receita Federal, vimos que ${sujeito} (CNPJ ${cnpj}) ${fato}.`,
     '',
-    risco,
-    '',
+    ...[regimeMei, risco].filter(Boolean).flatMap((p) => [p, '']),
     `${oferta} Posso te explicar como funciona? A conversa é sem compromisso.`,
     '',
     `_Se este número não for ${engano}, por favor desconsidere esta mensagem. Pedimos desculpas pelo incômodo._`,
